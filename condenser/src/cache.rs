@@ -63,7 +63,7 @@ impl Saver {
         };
 
         let contents = serde_json::to_string_pretty(&cache).unwrap();
-        std::fs::write(&self.config.wikidata_output_cache_path, &contents)?;
+        std::fs::write(&self.config.wikidata_output_cache_path, contents)?;
         Ok(())
     }
 }

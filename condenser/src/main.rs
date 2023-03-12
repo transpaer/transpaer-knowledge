@@ -17,7 +17,7 @@ async fn main() {
     if let Err(err) =
         fern::Dispatch::new().level(log::LevelFilter::Info).chain(std::io::stdout()).apply()
     {
-        println!("Logger error: {}", err);
+        println!("Logger error: {err}");
         return;
     }
 
@@ -25,7 +25,7 @@ async fn main() {
 
     let config = config::Config::new_from_args();
     if let Err(err) = config.check() {
-        log::error!("Coonfig error: {}", err);
+        log::error!("Coonfig error: {err}");
         return;
     }
 
