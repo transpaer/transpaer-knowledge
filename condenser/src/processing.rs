@@ -16,7 +16,7 @@ fn handle_entity(
 ) {
     match entity {
         Entity::Item(item) => {
-            if let Some(name) = &item.labels.get(LANG_EN).map(|label| &label.value) {
+            if let Some(name) = item.labels.get(LANG_EN).map(|label| &label.value) {
                 // Gather all manufacturer IDs and collect products
                 if let Some(manufacturer_ids) = item.get_manufacturer_ids() {
                     let category = if item.is_instance_of(categories::SMARTPHONE_MODEL) {
@@ -33,7 +33,7 @@ fn handle_entity(
                             .get(LANG_EN)
                             .map(|desc| desc.value.clone())
                             .unwrap_or_default(),
-                        category: category,
+                        category,
                         manufacturer_ids: item.get_manufacturer_ids(),
                         follows: item.get_follows(),
                         followed_by: item.get_followed_by(),
@@ -66,7 +66,7 @@ fn handle_entity(
                             .get(LANG_EN)
                             .map(|desc| desc.value.clone())
                             .unwrap_or_default(),
-                        websites: websites.unwrap_or_else(Vec::new),
+                        websites: websites.unwrap_or_default(),
                         certifications: knowledge::Certifications { bcorp: is_bcorp, tco: is_tco },
                     };
                     collector.add_manufacturer(manufacturer);
@@ -77,27 +77,17 @@ fn handle_entity(
     }
 }
 
-/// Handles a message from `consumers_wikidata::reader::WikidataReader`
+/// Handles a message from `consumers_wikidata::dump::Loader`
 async fn handle_messages(
     rx: async_channel::Receiver<String>,
     sources: std::sync::Arc<sources::Sources>,
 ) -> data_collector::DataCollector {
     let mut data_collector = data_collector::DataCollector::new();
-    loop {
-        match rx.recv().await {
-            Ok(msg) => {
-                let result: Result<Entity, serde_json::Error> = serde_json::from_str(&msg);
-                match result {
-                    Ok(entity) => handle_entity(&entity, sources.borrow(), &mut data_collector),
-                    Err(err) => {
-                        log::error!("Failed to parse an entity: {} \nMessage:\n'{}'\n\n", err, msg)
-                    }
-                }
-            }
-            Err(_) => {
-                // channel closed - quit
-                break;
-            }
+    while let Ok(msg) = rx.recv().await {
+        let result: Result<Entity, serde_json::Error> = serde_json::from_str(&msg);
+        match result {
+            Ok(entity) => handle_entity(&entity, sources.borrow(), &mut data_collector),
+            Err(err) => log::error!("Failed to parse an entity: {} \nMessage:\n'{}'\n\n", err, msg),
         }
     }
     data_collector
@@ -105,7 +95,7 @@ async fn handle_messages(
 
 pub async fn process(config: config::Config) {
     const CHANNEL_QUEUE_BOUND: usize = 100;
-    let sources = std::sync::Arc::new(sources::Sources::new(config.clone()).unwrap());
+    let sources = std::sync::Arc::new(sources::Sources::new(&config).unwrap());
 
     let mut pool = future_pool::FuturePool::<data_collector::DataCollector>::new();
     let (tx, rx) = async_channel::bounded(CHANNEL_QUEUE_BOUND);
@@ -115,13 +105,14 @@ pub async fn process(config: config::Config) {
         pool.spawn(handle_messages(rx, sources));
     }
 
-    consumers_wikidata::reader::WikidataReader::new(&config.wikidata_dump_path)
+    consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)
+        .unwrap()
         .run_with_channel(tx)
         .await
         .unwrap();
 
     let mut collector = pool.join().await;
     collector.postprocess();
-    cache::CacheWriter::new(config.clone()).write(&collector).unwrap();
-    targets::TargetWriter::new(config.clone()).write(collector).unwrap();
+    cache::Saver::new(config.clone()).save(&collector).unwrap();
+    targets::TargetWriter::new(config.clone()).write(&collector).unwrap();
 }

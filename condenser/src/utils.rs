@@ -12,7 +12,7 @@ pub fn extract_domain_from_url(url: &str) -> String {
     if domain.starts_with("www.") {
         domain = &domain[4..];
     }
-    if let Some((host, _path)) = domain.split_once("/") {
+    if let Some((host, _path)) = domain.split_once('/') {
         domain = host;
     }
     domain.to_lowercase()

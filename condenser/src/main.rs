@@ -1,3 +1,5 @@
+#![deny(clippy::pedantic)]
+
 mod advisors;
 mod cache;
 mod categories;

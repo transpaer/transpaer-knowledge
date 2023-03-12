@@ -38,7 +38,7 @@ impl DataCollector {
 
     /// Adds a new product.
     pub fn add_product(&mut self, product: Product) {
-        self.products.push(product)
+        self.products.push(product);
     }
 
     /// Adds a new manufacturer.

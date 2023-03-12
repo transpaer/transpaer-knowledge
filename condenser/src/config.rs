@@ -22,9 +22,9 @@ pub struct Args {
     output_cache: String,
 }
 
-/// Error returned id config checking failed.
+/// Error returned if config checking failed.
 #[derive(Error, Debug)]
-pub enum ConfigCheckError {
+pub enum CheckError {
     #[error("Path '{0}' is not a directory")]
     PathIsNotADirectory(std::path::PathBuf),
 
@@ -80,7 +80,7 @@ pub struct Config {
 
 impl Config {
     //i/ Constructs a new `Config`.
-    pub fn new(args: Args) -> Config {
+    pub fn new(args: &Args) -> Config {
         let input_data = std::path::PathBuf::from(&args.input_data);
         let input_cache = std::path::PathBuf::from(&args.input_cache);
         let output_data = std::path::PathBuf::from(&args.output_data);
@@ -94,35 +94,35 @@ impl Config {
             consumers_path: input_data.join("consumers.yaml"),
             products_target_path: output_data.join("products.json"),
             manufacturers_target_path: output_data.join("manufacturers.json"),
-            input_data: input_data,
-            input_cache: input_cache,
-            output_data: output_data,
-            output_cache: output_cache,
+            input_data,
+            input_cache,
+            output_data,
+            output_cache,
         }
     }
 
     /// Constructs a new config from `Args::parse()`.
     pub fn new_from_args() -> Config {
-        Config::new(Args::parse())
+        Config::new(&Args::parse())
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), ConfigCheckError> {
+    pub fn check(&self) -> Result<(), CheckError> {
         // Output should be an mepty directory
         if !self.output_data.exists() {
-            return Err(ConfigCheckError::DirectoryDoesNotExist(self.output_data.clone()));
+            return Err(CheckError::DirectoryDoesNotExist(self.output_data.clone()));
         }
         if !self.output_data.is_dir() {
-            return Err(ConfigCheckError::PathIsNotADirectory(self.output_data.clone()));
+            return Err(CheckError::PathIsNotADirectory(self.output_data.clone()));
         }
         match self.output_data.read_dir() {
             Ok(entries) => {
                 if entries.count() != 0 {
-                    return Err(ConfigCheckError::DirectoryIsNotEmpty(self.output_data.clone()));
+                    return Err(CheckError::DirectoryIsNotEmpty(self.output_data.clone()));
                 }
             }
             Err(_) => {
-                return Err(ConfigCheckError::CannotReadDirectory(self.output_data.clone()));
+                return Err(CheckError::CannotReadDirectory(self.output_data.clone()));
             }
         }
 

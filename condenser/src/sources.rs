@@ -2,10 +2,12 @@
 
 use crate::{advisors, cache, config};
 
+use consumers_collecting::errors::IoOrParsingError;
+
 /// Holds all the source data.
 pub struct Sources {
     /// Wikidata cache.
-    pub cache: cache::WikidataCache,
+    pub cache: cache::Wikidata,
 
     /// BCorp data.
     pub bcorp: advisors::BCorpAdvisor,
@@ -19,22 +21,13 @@ pub struct Sources {
 
 impl Sources {
     /// Constructs a new `Sources`.
-    pub fn new(config: config::Config) -> Result<Self, ()> {
-        let cache = cache::CacheReader::new(config.clone()).read().unwrap();
+    pub fn new(config: &config::Config) -> Result<Self, IoOrParsingError> {
+        let cache = cache::Loader::new(config.clone()).load()?;
 
-        let bcorp_data = consumers_collecting::bcorp::reader::parse(&config.bcorp_path).unwrap();
-        let bcorp_advisor = advisors::BCorpAdvisor::new(&bcorp_data);
+        let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
+        let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
+        let consumers = advisors::ConsumersAdvisor::load(&config.consumers_path);
 
-        let tco_data = consumers_collecting::tco::reader::parse(&config.tco_path).unwrap();
-        let tco_advisor = advisors::TcoAdvisor::new(&tco_data);
-
-        let consumers_advisor = advisors::ConsumersAdvisor::load(&config.consumers_path).unwrap();
-
-        Ok(Self {
-            cache: cache,
-            bcorp: bcorp_advisor,
-            tco: tco_advisor,
-            consumers: consumers_advisor,
-        })
+        Ok(Self { cache, bcorp, tco, consumers })
     }
 }

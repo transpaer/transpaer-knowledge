@@ -12,7 +12,7 @@ impl TargetWriter {
     }
 
     /// Writes the data to files.
-    pub fn write(&self, collector: DataCollector) -> Result<(), std::io::Error> {
+    pub fn write(&self, collector: &DataCollector) -> Result<(), std::io::Error> {
         let contents = serde_json::to_string_pretty(&collector.get_products()).unwrap();
         std::fs::write(&self.config.products_target_path, &contents)?;
 

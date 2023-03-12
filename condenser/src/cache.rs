@@ -6,12 +6,12 @@ use crate::{config::Config, data_collector::DataCollector};
 
 /// Cached data from search over Wikidata data.
 #[derive(Serialize, Deserialize, Debug, Default)]
-pub struct WikidataCache {
+pub struct Wikidata {
     /// Manufacturer IDs.
     manufacturer_ids: Vec<String>,
 }
 
-impl WikidataCache {
+impl Wikidata {
     /// Checks if the passed ID belongs to a known manufacturer.
     pub fn has_manufacturer_id(&self, id: &String) -> bool {
         self.manufacturer_ids.contains(id)
@@ -19,46 +19,46 @@ impl WikidataCache {
 }
 
 /// Reads in whole saved cache from the previous run.
-pub struct CacheReader {
+pub struct Loader {
     config: Config,
 }
 
-impl CacheReader {
-    /// Constructs a new `CacheReader`.
+impl Loader {
+    /// Constructs a new `Loader`.
     pub fn new(config: Config) -> Self {
         Self { config }
     }
 
     /// Reads in the cache data.
-    pub fn read(&self) -> Result<WikidataCache, std::io::Error> {
+    pub fn load(&self) -> Result<Wikidata, std::io::Error> {
         if self.config.wikidata_input_cache_path.exists() {
             let contents = std::fs::read_to_string(&self.config.wikidata_input_cache_path)?;
             let cache = serde_json::from_str(&contents).unwrap();
             Ok(cache)
         } else {
-            Ok(WikidataCache::default())
+            Ok(Wikidata::default())
         }
     }
 }
 
 /// Writes the new cache from the current run for use in the next run.
-pub struct CacheWriter {
+pub struct Saver {
     config: Config,
 }
 
-impl CacheWriter {
-    /// Constructs a new `CacheReader`.
+impl Saver {
+    /// Constructs a new `Saver`.
     pub fn new(config: Config) -> Self {
         Self { config }
     }
 
     /// Writes the cache data.
-    pub fn write(&self, collector: &DataCollector) -> Result<(), std::io::Error> {
-        let cache = WikidataCache {
+    pub fn save(&self, collector: &DataCollector) -> Result<(), std::io::Error> {
+        let cache = Wikidata {
             manufacturer_ids: collector
                 .get_manufacturer_ids()
                 .iter()
-                .map(|id| id.to_string())
+                .map(|id| id.as_string().clone())
                 .collect(),
         };
 

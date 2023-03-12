@@ -16,26 +16,25 @@ pub struct Id(String);
 
 impl Id {
     /// Constructs a new `Id`.
+    #[must_use]
     pub fn new(string: String) -> Self {
         Self(string)
     }
 
     /// Returns a `&str`.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
     /// Returns a `&String`.
+    #[must_use]
     pub fn as_string(&self) -> &String {
         &self.0
     }
 
-    /// Returns a copy of the underlying `String`.
-    pub fn to_string(&self) -> String {
-        self.0.clone()
-    }
-
     /// Consumes this `Id` and returns the underlying `String`.
+    #[must_use]
     pub fn into_string(self) -> String {
         self.0
     }
@@ -99,6 +98,7 @@ pub struct GlobeCoordinateDataValue {}
 pub struct QuantityDataValue {}
 
 /// `DataValue` holds value and type of the data.
+#[allow(clippy::module_name_repetitions)]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", content = "value")]
 pub enum DataValue {
@@ -221,21 +221,25 @@ impl Item {
 
 impl Item {
     /// Returns IDs of entities linked with "follows" property.
+    #[must_use]
     pub fn get_follows(&self) -> Option<Vec<Id>> {
         self.get_entity_ids(properties::FOLLOWS)
     }
 
     /// Returns IDs of entities linked with "followed by" property.
+    #[must_use]
     pub fn get_followed_by(&self) -> Option<Vec<Id>> {
         self.get_entity_ids(properties::FOLLOWED_BY)
     }
 
     /// Returns IDs of entities linked with "manufacturer" property.
+    #[must_use]
     pub fn get_manufacturer_ids(&self) -> Option<Vec<Id>> {
         self.get_entity_ids(properties::MANUFACTURER)
     }
 
     /// Returns IDs of entities linked with "official website" property.
+    #[must_use]
     pub fn get_official_websites(&self) -> Option<Vec<String>> {
         self.get_strings(properties::OFFICIAL_WEBSITE)
     }
@@ -243,6 +247,7 @@ impl Item {
     /// Checks if this items is linked to the passed entity with `instalce of` property.
     ///
     /// In simpler words: chacks if this item is an instance of the passed class.
+    #[must_use]
     pub fn is_instance_of(&self, class: &str) -> bool {
         if let Some(claims) = self.claims.get(properties::INSTANCE_OF) {
             for claim in claims {

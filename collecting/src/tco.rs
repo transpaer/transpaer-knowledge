@@ -2,7 +2,7 @@
 pub mod data {
     use serde::{Deserialize, Serialize};
 
-    /// Record in a BCorp data.
+    /// Record in TCO data.
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Entry {
         /// Company name.
@@ -18,11 +18,16 @@ pub mod data {
 /// Reader to loading TCO data.
 pub mod reader {
     use super::data::Entry;
+    use crate::errors::IoOrParsingError;
 
     /// Loads the TCO data from a file.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Entry>, std::io::Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path`.
+    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Entry>, IoOrParsingError> {
         let contents = std::fs::read_to_string(path)?;
-        let parsed: Vec<Entry> = serde_yaml::from_str(&contents).unwrap();
+        let parsed: Vec<Entry> = serde_yaml::from_str(&contents)?;
         Ok(parsed)
     }
 }
