@@ -57,6 +57,7 @@ fn handle_entity(
                     };
 
                     let is_bcorp = sources.bcorp.has_domains(&domains);
+                    let is_tco = sources.tco.has_company(&item.id);
                     let manufacturer = knowledge::Manufacturer {
                         id: item.id.clone().into(),
                         name: name.to_string(),
@@ -66,7 +67,7 @@ fn handle_entity(
                             .map(|desc| desc.value.clone())
                             .unwrap_or_default(),
                         websites: websites.unwrap_or_else(Vec::new),
-                        certifications: knowledge::Certifications { bcorp: is_bcorp },
+                        certifications: knowledge::Certifications { bcorp: is_bcorp, tco: is_tco },
                     };
                     collector.add_manufacturer(manufacturer);
                 }

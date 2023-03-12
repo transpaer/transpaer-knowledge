@@ -65,6 +65,9 @@ pub struct Config {
     /// Path to BCorp data.
     pub bcorp_path: std::path::PathBuf,
 
+    /// Path to TCO data.
+    pub tco_path: std::path::PathBuf,
+
     /// Path to internaly created data.
     pub consumers_path: std::path::PathBuf,
 
@@ -87,6 +90,7 @@ impl Config {
             wikidata_input_cache_path: input_cache.join("wikidata.json"),
             wikidata_output_cache_path: output_cache.join("wikidata.json"),
             bcorp_path: input_data.join("bcorp.csv"),
+            tco_path: input_data.join("tco.yaml"),
             consumers_path: input_data.join("consumers.yaml"),
             products_target_path: output_data.join("products.json"),
             manufacturers_target_path: output_data.join("manufacturers.json"),

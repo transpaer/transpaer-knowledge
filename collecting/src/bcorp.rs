@@ -31,7 +31,7 @@ pub mod data {
 
 /// Reder to loading BCorp data.
 pub mod reader {
-    use crate::bcorp::data::Record;
+    use super::data::Record;
 
     /// Loads the BCorp data from a file.
     pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Record>, std::io::Error> {

@@ -17,6 +17,10 @@ pub struct Certifications {
     /// Manufacturer certifiad by BCorp.
     #[merge(strategy = merge::bool::overwrite_false)]
     pub bcorp: bool,
+
+    /// Manufacturer certifiad by TCO.
+    #[merge(strategy = merge::bool::overwrite_false)]
+    pub tco: bool,
 }
 
 /// Represents a product.
