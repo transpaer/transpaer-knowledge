@@ -93,9 +93,9 @@ async fn handle_messages(
     data_collector
 }
 
-pub async fn process(config: config::Config) {
+pub async fn process(config: config::Config) -> Result<(), crate::errors::ProcessingError> {
     const CHANNEL_QUEUE_BOUND: usize = 100;
-    let sources = std::sync::Arc::new(sources::Sources::new(&config).unwrap());
+    let sources = std::sync::Arc::new(sources::Sources::new(&config)?);
 
     let mut pool = future_pool::FuturePool::<data_collector::DataCollector>::new();
     let (tx, rx) = async_channel::bounded(CHANNEL_QUEUE_BOUND);
@@ -105,14 +105,14 @@ pub async fn process(config: config::Config) {
         pool.spawn(handle_messages(rx, sources));
     }
 
-    consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)
-        .unwrap()
+    consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)?
         .run_with_channel(tx)
-        .await
-        .unwrap();
+        .await?;
 
-    let mut collector = pool.join().await;
+    let mut collector = pool.join().await?;
     collector.postprocess();
-    cache::Saver::new(config.clone()).save(&collector).unwrap();
-    targets::TargetWriter::new(config.clone()).write(&collector).unwrap();
+    cache::Saver::new(config.clone()).save(&collector)?;
+    targets::TargetWriter::new(config.clone()).write(&collector)?;
+
+    Ok(())
 }

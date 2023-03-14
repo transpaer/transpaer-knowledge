@@ -35,7 +35,7 @@ jobs:
 
       - name: Lint
         run: |
-          cargo clippy -- -D warnings          
+          cargo clippy -- -D warnings -W clippy::pedantic         
 
       - name: Test
         run: |

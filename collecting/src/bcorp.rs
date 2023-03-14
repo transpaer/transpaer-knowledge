@@ -32,13 +32,14 @@ pub mod data {
 /// Reader to loading `BCorp` data.
 pub mod reader {
     use super::data::Record;
+    use crate::errors::IoOrSerdeError;
 
     /// Loads the `BCorp` data from a file.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if fails to read from `path`.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Record>, std::io::Error> {
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Record>, IoOrSerdeError> {
         let mut parsed = Vec::<Record>::new();
         let mut reader = csv::Reader::from_path(path)?;
         for result in reader.deserialize() {

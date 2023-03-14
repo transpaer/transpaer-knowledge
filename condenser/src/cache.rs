@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use consumers_collecting::errors::IoOrSerdeError;
+
 use crate::{config::Config, data_collector::DataCollector};
 
 /// Cached data from search over Wikidata data.
@@ -30,10 +32,10 @@ impl Loader {
     }
 
     /// Reads in the cache data.
-    pub fn load(&self) -> Result<Wikidata, std::io::Error> {
+    pub fn load(&self) -> Result<Wikidata, IoOrSerdeError> {
         if self.config.wikidata_input_cache_path.exists() {
             let contents = std::fs::read_to_string(&self.config.wikidata_input_cache_path)?;
-            let cache = serde_json::from_str(&contents).unwrap();
+            let cache = serde_json::from_str(&contents)?;
             Ok(cache)
         } else {
             Ok(Wikidata::default())
@@ -53,7 +55,7 @@ impl Saver {
     }
 
     /// Writes the cache data.
-    pub fn save(&self, collector: &DataCollector) -> Result<(), std::io::Error> {
+    pub fn save(&self, collector: &DataCollector) -> Result<(), IoOrSerdeError> {
         let cache = Wikidata {
             manufacturer_ids: collector
                 .get_manufacturer_ids()
@@ -62,7 +64,7 @@ impl Saver {
                 .collect(),
         };
 
-        let contents = serde_json::to_string_pretty(&cache).unwrap();
+        let contents = serde_json::to_string_pretty(&cache)?;
         std::fs::write(&self.config.wikidata_output_cache_path, contents)?;
         Ok(())
     }

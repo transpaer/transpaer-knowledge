@@ -7,12 +7,14 @@ edition = "2021"
 
 async-channel = { version = "1.8" }
 clap = { version = "4.1", features = ["derive"] }
+csv = { version = "1.1" }
 fern = { version = "0.6" }
 log = { version = "0.4" }
 merge = { version = "0.1.0" }
 num_cpus = { version = "1.0" }
-serde_json = { version = "1.0" }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+serde_yaml = { version = "0.9" }
 thiserror = { version = "1.0" }
 tokio = { version = "1.24", features = ["full"] }
 

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use consumers_collecting::{bcorp, errors::IoOrParsingError, tco};
+use consumers_collecting::{bcorp, errors::IoOrSerdeError, tco};
 
 use crate::utils;
 
@@ -21,7 +21,7 @@ impl BCorpAdvisor {
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
+    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, IoOrSerdeError> {
         let data = consumers_collecting::bcorp::reader::parse(&path)?;
         Ok(Self::new(&data))
     }
@@ -50,7 +50,7 @@ impl TcoAdvisor {
     }
 
     /// Loads a new `Tcodvisor` from a file.
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, IoOrParsingError> {
+    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, IoOrSerdeError> {
         let data = consumers_collecting::tco::reader::parse(&path)?;
         Ok(Self::new(&data))
     }

@@ -10,7 +10,7 @@ pub enum IoOrChannelError {
     Io(std::io::Error),
 
     #[error("Channel sending error: {0}")]
-    Yaml(async_channel::SendError<std::string::String>),
+    Channel(async_channel::SendError<std::string::String>),
 }
 
 impl From<std::io::Error> for IoOrChannelError {
@@ -21,7 +21,7 @@ impl From<std::io::Error> for IoOrChannelError {
 
 impl From<async_channel::SendError<std::string::String>> for IoOrChannelError {
     fn from(error: async_channel::SendError<std::string::String>) -> Self {
-        Self::Yaml(error)
+        Self::Channel(error)
     }
 }
 

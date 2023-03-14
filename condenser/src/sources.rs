@@ -2,7 +2,7 @@
 
 use crate::{advisors, cache, config};
 
-use consumers_collecting::errors::IoOrParsingError;
+use consumers_collecting::errors::IoOrSerdeError;
 
 /// Holds all the source data.
 pub struct Sources {
@@ -21,7 +21,7 @@ pub struct Sources {
 
 impl Sources {
     /// Constructs a new `Sources`.
-    pub fn new(config: &config::Config) -> Result<Self, IoOrParsingError> {
+    pub fn new(config: &config::Config) -> Result<Self, IoOrSerdeError> {
         let cache = cache::Loader::new(config.clone()).load()?;
 
         let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;

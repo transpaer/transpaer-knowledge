@@ -1,10 +1,13 @@
 #![deny(clippy::pedantic)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 
 mod advisors;
 mod cache;
 mod categories;
 mod config;
 mod data_collector;
+mod errors;
 mod future_pool;
 mod knowledge;
 mod processing;
@@ -31,7 +34,9 @@ async fn main() {
 
     log::info!("Start processing!");
 
-    processing::process(config).await;
+    if let Err(err) = processing::process(config).await {
+        log::error!("Processing error: {err}");
+    }
 
     log::info!("Done! Elapsed time: {:?}", start_time.elapsed());
 }

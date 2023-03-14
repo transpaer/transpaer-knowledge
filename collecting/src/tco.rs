@@ -18,14 +18,14 @@ pub mod data {
 /// Reader to loading TCO data.
 pub mod reader {
     use super::data::Entry;
-    use crate::errors::IoOrParsingError;
+    use crate::errors::IoOrSerdeError;
 
     /// Loads the TCO data from a file.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if fails to read from `path`.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Entry>, IoOrParsingError> {
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Entry>, IoOrSerdeError> {
         let contents = std::fs::read_to_string(path)?;
         let parsed: Vec<Entry> = serde_yaml::from_str(&contents)?;
         Ok(parsed)

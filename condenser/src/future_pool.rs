@@ -28,11 +28,11 @@ where
     }
 
     /// Waits for all the tasks to finish and merges returned results.
-    pub async fn join(self) -> R {
+    pub async fn join(self) -> Result<R, tokio::task::JoinError> {
         let mut result = R::default();
         for handle in self.handles {
-            result.merge(handle.await.unwrap());
+            result.merge(handle.await?);
         }
-        result
+        Ok(result)
     }
 }
