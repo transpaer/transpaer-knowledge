@@ -14,6 +14,7 @@ mod processing;
 mod sources;
 mod targets;
 mod utils;
+mod wikidata;
 
 #[tokio::main]
 async fn main() {
@@ -38,5 +39,5 @@ async fn main() {
         log::error!("Processing error: {err}");
     }
 
-    log::info!("Done! Elapsed time: {:?}", start_time.elapsed());
+    log::info!("Done! Elapsed time: {}", utils::format_elapsed_time(start_time.elapsed()));
 }

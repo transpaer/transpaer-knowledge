@@ -6,19 +6,19 @@ use thiserror::Error;
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// Input data directory.
-    #[arg(short, long)]
+    #[arg(long)]
     input_data: String,
 
     /// Output data directory.
-    #[arg(short, long)]
+    #[arg(long)]
     output_data: String,
 
     /// Input cache directory.
-    #[arg(short, long)]
+    #[arg(long)]
     input_cache: String,
 
     /// Output cache directory.
-    #[arg(short, long)]
+    #[arg(long)]
     output_cache: String,
 }
 

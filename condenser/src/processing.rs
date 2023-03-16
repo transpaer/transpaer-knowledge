@@ -4,6 +4,7 @@ use consumers_wikidata::data::Entity;
 
 use crate::{
     cache, categories, config, data_collector, future_pool, knowledge, sources, targets, utils,
+    wikidata::ItemExt,
 };
 
 const LANG_EN: &str = "en";

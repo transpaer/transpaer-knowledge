@@ -21,9 +21,17 @@ impl BCorpAdvisor {
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, IoOrSerdeError> {
-        let data = consumers_collecting::bcorp::reader::parse(&path)?;
-        Ok(Self::new(&data))
+    pub fn load<P>(path: P) -> Result<Self, IoOrSerdeError>
+    where
+        P: AsRef<std::path::Path> + std::fmt::Debug,
+    {
+        if utils::is_path_ok(path.as_ref()) {
+            let data = consumers_collecting::bcorp::reader::parse(&path)?;
+            Ok(Self::new(&data))
+        } else {
+            log::warn!("Could not access {path:?}. BCorp data won't be loaded!");
+            Ok(Self::new(&[]))
+        }
     }
 
     /// Checks if at least one of the passed domains corresponds to a `BCorp` company.
@@ -50,9 +58,17 @@ impl TcoAdvisor {
     }
 
     /// Loads a new `Tcodvisor` from a file.
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self, IoOrSerdeError> {
-        let data = consumers_collecting::tco::reader::parse(&path)?;
-        Ok(Self::new(&data))
+    pub fn load<P>(path: P) -> Result<Self, IoOrSerdeError>
+    where
+        P: AsRef<std::path::Path> + std::fmt::Debug,
+    {
+        if utils::is_path_ok(path.as_ref()) {
+            let data = consumers_collecting::tco::reader::parse(&path)?;
+            Ok(Self::new(&data))
+        } else {
+            log::warn!("Could not access {path:?}. TCO data won't be loaded!");
+            Ok(Self::new(&[]))
+        }
     }
 
     /// Checks if the comapny was certified.

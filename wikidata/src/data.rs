@@ -6,8 +6,6 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::properties;
-
 /// Represents a Wikidata ID.
 ///
 /// Internally the ID is representad as a `String`.
@@ -48,6 +46,7 @@ impl From<String> for Id {
 
 /// Represents a Wikidata label.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Label {
     /// Language of the text.
     pub language: String,
@@ -60,47 +59,118 @@ pub struct Label {
 ///
 /// The ID is a number with "Q" or "P" prefix.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct EntityIdItemInfo {
+#[serde(deny_unknown_fields)]
+pub struct EntityIdInfo {
     /// Full ID.
     pub id: String,
 
     /// Number from the ID without the prefix.
     #[serde(rename = "numeric-id")]
-    pub numeric_id: usize,
+    pub numeric_id: u64,
+}
+
+/// Represents a Wikidata entity ID.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EntityIdOptionInfo {
+    /// Full ID.
+    pub id: Option<String>,
+
+    /// Number from the ID without the prefix.
+    #[serde(rename = "numeric-id")]
+    pub numeric_id: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "entity-type")]
+#[serde(tag = "entity-type", deny_unknown_fields)]
 pub enum EntityIdDataValue {
     #[serde(rename = "item")]
-    Item(EntityIdItemInfo),
+    Item(EntityIdInfo),
 
     #[serde(rename = "property")]
-    Property {},
+    Property(EntityIdInfo),
 
     #[serde(rename = "form")]
-    Form {},
+    Form(EntityIdOptionInfo),
 
     #[serde(rename = "lexeme")]
-    Lexeme {},
+    Lexeme(EntityIdOptionInfo),
+
+    #[serde(rename = "sense")]
+    Sense(EntityIdOptionInfo),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TimeDataValue {}
+#[serde(deny_unknown_fields)]
+pub struct TimeDataValue {
+    #[serde(rename = "time")]
+    pub time: String,
+
+    #[serde(rename = "timezone")]
+    pub timezone: i64,
+
+    #[serde(rename = "before")]
+    pub before: i64,
+
+    #[serde(rename = "after")]
+    pub after: i64,
+
+    #[serde(rename = "precision")]
+    pub precision: i64,
+
+    #[serde(rename = "calendarmodel")]
+    pub calendarmodel: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct MonolingualTextDataValue {}
+#[serde(deny_unknown_fields)]
+pub struct MonolingualTextDataValue {
+    #[serde(rename = "text")]
+    pub text: String,
+
+    #[serde(rename = "language")]
+    pub language: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GlobeCoordinateDataValue {}
+#[serde(deny_unknown_fields)]
+pub struct GlobeCoordinateDataValue {
+    #[serde(rename = "latitude")]
+    pub latitude: f64,
+
+    #[serde(rename = "longitude")]
+    pub longitude: f64,
+
+    #[serde(rename = "altitude")]
+    pub altitude: Option<f64>,
+
+    #[serde(rename = "precision")]
+    pub precision: Option<f64>,
+
+    #[serde(rename = "globe")]
+    pub globe: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct QuantityDataValue {}
+#[serde(deny_unknown_fields)]
+pub struct QuantityDataValue {
+    #[serde(rename = "amount")]
+    pub amount: String,
+
+    #[serde(rename = "upperBound")]
+    pub upper_bound: Option<String>,
+
+    #[serde(rename = "lowerBound")]
+    pub lower_bound: Option<String>,
+
+    #[serde(rename = "unit")]
+    pub unit: String,
+}
 
 /// `DataValue` holds value and type of the data.
 #[allow(clippy::module_name_repetitions)]
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", content = "value")]
+#[serde(tag = "type", content = "value", deny_unknown_fields)]
 pub enum DataValue {
     /// String.
     #[serde(rename = "string")]
@@ -124,22 +194,49 @@ pub enum DataValue {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Value {
+    #[serde(rename = "hash")]
+    pub hash: Option<String>,
+
+    #[serde(rename = "property")]
+    pub property: String,
+
+    #[serde(rename = "datatype")]
     pub datatype: String,
 
+    #[serde(rename = "datavalue")]
     pub datavalue: DataValue,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct SomeValue {
+    #[serde(rename = "hash")]
+    pub hash: Option<String>,
+
+    #[serde(rename = "property")]
     pub property: String,
+
+    #[serde(rename = "datatype")]
+    pub datatype: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NoValue {}
+#[serde(deny_unknown_fields)]
+pub struct NoValue {
+    #[serde(rename = "hash")]
+    pub hash: Option<String>,
+
+    #[serde(rename = "property")]
+    pub property: String,
+
+    #[serde(rename = "datatype")]
+    pub datatype: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "snaktype")]
+#[serde(tag = "snaktype", deny_unknown_fields)]
 pub enum Snak {
     #[serde(rename = "value")]
     Value(Value),
@@ -152,22 +249,80 @@ pub enum Snak {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Statement {
-    pub mainsnak: Snak,
+#[serde(deny_unknown_fields)]
+pub enum Rank {
+    #[serde(rename = "preferred")]
+    Preferred,
+
+    #[serde(rename = "normal")]
+    Normal,
+
+    #[serde(rename = "deprecated")]
+    Deprecated,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
+#[serde(deny_unknown_fields)]
+pub struct Reference {
+    #[serde(rename = "hash")]
+    hash: String,
+
+    #[serde(rename = "snaks")]
+    snaks: HashMap<Id, Vec<Snak>>,
+
+    #[serde(rename = "snaks-order")]
+    snaks_order: Vec<Id>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Statement {
+    #[serde(rename = "id")]
+    pub id: String,
+
+    #[serde(rename = "mainsnak")]
+    pub mainsnak: Snak,
+
+    #[serde(rename = "rank")]
+    pub rank: Rank,
+
+    #[serde(rename = "qualifiers")]
+    pub qualifiers: Option<HashMap<Id, Vec<Snak>>>,
+
+    #[serde(rename = "qualifiers-order")]
+    pub qualifiers_order: Option<Vec<Id>>,
+
+    #[serde(rename = "references")]
+    pub references: Option<Vec<Reference>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type", deny_unknown_fields)]
 pub enum Claim {
     #[serde(rename = "statement")]
     Statement(Statement),
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Sitelink {
+    pub site: String,
+    pub title: String,
+    pub badges: Vec<Id>,
+}
+
 /// Represents an item ("Q") entry.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Item {
     /// Item ID.
     pub id: String,
+
+    pub title: String,
+    pub pageid: u64,
+    pub ns: u64,
+    pub lastrevid: u64,
+    pub modified: String,
 
     /// Short names of the item in various languages.
     pub labels: HashMap<String, Label>,
@@ -175,108 +330,46 @@ pub struct Item {
     /// Descriptions of the item in various languages.
     pub descriptions: HashMap<String, Label>,
 
-    /// PRoperties of this item.
+    /// Aliases of the item in various languages.
+    pub aliases: HashMap<String, Vec<Label>>,
+
+    /// Properties of this item.
     pub claims: HashMap<String, Vec<Claim>>,
-}
 
-impl Item {
-    /// Returns ID associated with the passed property.
-    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<Id>> {
-        if let Some(claims) = self.claims.get(property_id) {
-            let mut result = Vec::<Id>::new();
-            for claim in claims {
-                let Claim::Statement(statement) = claim;
-                if let Snak::Value(value) = &statement.mainsnak {
-                    if let DataValue::WikibaseEntityId(EntityIdDataValue::Item(entity_info)) =
-                        &value.datavalue
-                    {
-                        result.push(Id::new(entity_info.id.clone()));
-                    }
-                }
-            }
-            Some(result)
-        } else {
-            None
-        }
-    }
-
-    /// Returns strings associated with the passed property.
-    fn get_strings(&self, property_id: &str) -> Option<Vec<String>> {
-        if let Some(claims) = self.claims.get(property_id) {
-            let mut result = Vec::new();
-            for claim in claims {
-                let Claim::Statement(statement) = claim;
-                if let Snak::Value(value) = &statement.mainsnak {
-                    if let DataValue::String(website) = &value.datavalue {
-                        result.push(website.clone());
-                    }
-                }
-            }
-            Some(result)
-        } else {
-            None
-        }
-    }
-}
-
-impl Item {
-    /// Returns IDs of entities linked with "follows" property.
-    #[must_use]
-    pub fn get_follows(&self) -> Option<Vec<Id>> {
-        self.get_entity_ids(properties::FOLLOWS)
-    }
-
-    /// Returns IDs of entities linked with "followed by" property.
-    #[must_use]
-    pub fn get_followed_by(&self) -> Option<Vec<Id>> {
-        self.get_entity_ids(properties::FOLLOWED_BY)
-    }
-
-    /// Returns IDs of entities linked with "manufacturer" property.
-    #[must_use]
-    pub fn get_manufacturer_ids(&self) -> Option<Vec<Id>> {
-        self.get_entity_ids(properties::MANUFACTURER)
-    }
-
-    /// Returns IDs of entities linked with "official website" property.
-    #[must_use]
-    pub fn get_official_websites(&self) -> Option<Vec<String>> {
-        self.get_strings(properties::OFFICIAL_WEBSITE)
-    }
-
-    /// Checks if this items is linked to the passed entity with `instalce of` property.
-    ///
-    /// In simpler words: chacks if this item is an instance of the passed class.
-    #[must_use]
-    pub fn is_instance_of(&self, class: &str) -> bool {
-        if let Some(claims) = self.claims.get(properties::INSTANCE_OF) {
-            for claim in claims {
-                let Claim::Statement(statement) = claim;
-                if let Snak::Value(value) = &statement.mainsnak {
-                    if let DataValue::WikibaseEntityId(EntityIdDataValue::Item(entity_info)) =
-                        &value.datavalue
-                    {
-                        if entity_info.id == class {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
+    /// Sitelinks.
+    pub sitelinks: HashMap<String, Sitelink>,
 }
 
 /// Represents a property ("P") entry.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Property {
     /// Property ID.
     pub id: String,
+
+    pub title: String,
+    pub pageid: u64,
+    pub ns: u64,
+    pub lastrevid: u64,
+    pub modified: String,
+    pub datatype: String,
+
+    /// Short names of the item in various languages.
+    pub labels: HashMap<String, Label>,
+
+    /// Descriptions of the item in various languages.
+    pub descriptions: HashMap<String, Label>,
+
+    /// Aliases of the item in various languages.
+    pub aliases: HashMap<String, Vec<Label>>,
+
+    /// Properties of this item.
+    pub claims: HashMap<String, Vec<Claim>>,
 }
 
 /// Represents one entry in Wikidata.
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
+#[serde(tag = "type", deny_unknown_fields)]
 pub enum Entity {
     /// Item ("Q") entry.
     #[serde(rename = "item")]
