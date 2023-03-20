@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use consumers_collecting::errors::IoOrSerdeError;
-use consumers_wikidata::dump::IoOrChannelError;
+use consumers_wikidata::dump::LoaderError;
 
 /// Error returned when a problem with processing.
 #[derive(Error, Debug)]
@@ -20,6 +20,9 @@ pub enum ProcessingError {
 
     #[error("Task joining error: {0}")]
     Join(tokio::task::JoinError),
+
+    #[error("Unknown compression method")]
+    CompressionMethod,
 
     #[error("Channel sending error: {0}")]
     Channel(async_channel::SendError<std::string::String>),
@@ -62,7 +65,7 @@ impl From<async_channel::SendError<std::string::String>> for ProcessingError {
 }
 
 impl From<IoOrSerdeError> for ProcessingError {
-    fn from(error: consumers_collecting::errors::IoOrSerdeError) -> Self {
+    fn from(error: IoOrSerdeError) -> Self {
         match error {
             IoOrSerdeError::Io(error) => Self::Io(error),
             IoOrSerdeError::Csv(error) => Self::Csv(error),
@@ -72,11 +75,12 @@ impl From<IoOrSerdeError> for ProcessingError {
     }
 }
 
-impl From<IoOrChannelError> for ProcessingError {
-    fn from(error: consumers_wikidata::dump::IoOrChannelError) -> Self {
+impl From<LoaderError> for ProcessingError {
+    fn from(error: LoaderError) -> Self {
         match error {
-            IoOrChannelError::Io(error) => Self::Io(error),
-            IoOrChannelError::Channel(error) => Self::Channel(error),
+            LoaderError::Io(error) => Self::Io(error),
+            LoaderError::CompressionMethod => Self::CompressionMethod,
+            LoaderError::Channel(error) => Self::Channel(error),
         }
     }
 }

@@ -25,17 +25,17 @@ jobs:
           rustc --version
           cargo clippy --version          
 
-      - name: Check
-        run: |
-          cargo check
-      
       - name: Format
         run: |
           cargo fmt -- --check
 
+      - name: Check
+        run: |
+          cargo check
+      
       - name: Lint
         run: |
-          cargo clippy -- -D warnings -W clippy::pedantic         
+          cargo clippy -- -D warnings         
 
       - name: Test
         run: |

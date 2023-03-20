@@ -98,17 +98,22 @@ pub async fn process(config: config::Config) -> Result<(), crate::errors::Proces
     const CHANNEL_QUEUE_BOUND: usize = 100;
     let sources = std::sync::Arc::new(sources::Sources::new(&config)?);
 
+    let cpus: usize = num_cpus::get();
+    log::info!("Using {cpus} CPUs");
+
     let mut pool = future_pool::FuturePool::<data_collector::DataCollector>::new();
     let (tx, rx) = async_channel::bounded(CHANNEL_QUEUE_BOUND);
-    for _ in 0..num_cpus::get() {
+    for _ in 0..cpus {
         let rx = rx.clone();
         let sources = sources.clone();
         pool.spawn(handle_messages(rx, sources));
     }
 
-    consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)?
+    let entries = consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)?
         .run_with_channel(tx)
         .await?;
+
+    log::info!("Processed {entries} entries");
 
     let mut collector = pool.join().await?;
     collector.postprocess();

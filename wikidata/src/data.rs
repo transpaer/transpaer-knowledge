@@ -318,11 +318,11 @@ pub struct Item {
     /// Item ID.
     pub id: String,
 
-    pub title: String,
-    pub pageid: u64,
-    pub ns: u64,
+    pub title: Option<String>,
+    pub pageid: Option<u64>,
+    pub ns: Option<u64>,
     pub lastrevid: u64,
-    pub modified: String,
+    pub modified: Option<String>,
 
     /// Short names of the item in various languages.
     pub labels: HashMap<String, Label>,
@@ -347,11 +347,11 @@ pub struct Property {
     /// Property ID.
     pub id: String,
 
-    pub title: String,
-    pub pageid: u64,
-    pub ns: u64,
+    pub title: Option<String>,
+    pub pageid: Option<u64>,
+    pub ns: Option<u64>,
     pub lastrevid: u64,
-    pub modified: String,
+    pub modified: Option<String>,
     pub datatype: String,
 
     /// Short names of the item in various languages.
