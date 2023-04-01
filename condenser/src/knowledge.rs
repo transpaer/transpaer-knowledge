@@ -69,3 +69,16 @@ pub struct Manufacturer {
     /// Known certifications.
     pub certifications: Certifications,
 }
+
+/// Represents a topic info.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Info {
+    /// Topic ID.
+    pub id: String,
+
+    /// Article title.
+    pub title: String,
+
+    /// Contents of the article in markdown format.
+    pub article: String,
+}

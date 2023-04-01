@@ -26,7 +26,7 @@ impl Sources {
 
         let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
         let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
-        let consumers = advisors::ConsumersAdvisor::load(&config.consumers_path);
+        let consumers = advisors::ConsumersAdvisor::load(&config.consumers_path)?;
 
         Ok(Self { cache, bcorp, tco, consumers })
     }

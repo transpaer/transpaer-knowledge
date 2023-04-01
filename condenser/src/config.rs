@@ -76,6 +76,9 @@ pub struct Config {
 
     /// Path to the output manufacturers file.
     pub manufacturers_target_path: std::path::PathBuf,
+
+    /// Path to the output info file.
+    pub info_target_path: std::path::PathBuf,
 }
 
 impl Config {
@@ -94,6 +97,7 @@ impl Config {
             consumers_path: input_data.join("consumers.yaml"),
             products_target_path: output_data.join("products.json"),
             manufacturers_target_path: output_data.join("manufacturers.json"),
+            info_target_path: output_data.join("info.json"),
             input_data,
             input_cache,
             output_data,

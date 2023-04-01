@@ -9,6 +9,14 @@ use crate::{
 
 const LANG_EN: &str = "en";
 
+fn convert_info(info: &consumers_collecting::consumers::data::Info) -> knowledge::Info {
+    knowledge::Info {
+        id: info.id.clone(),
+        title: info.title.clone(),
+        article: info.article.clone(),
+    }
+}
+
 /// Handles on Wikidata entity.
 fn handle_entity(
     entity: &Entity,
@@ -98,7 +106,7 @@ pub async fn process(config: config::Config) -> Result<(), crate::errors::Proces
     const CHANNEL_QUEUE_BOUND: usize = 100;
     let sources = std::sync::Arc::new(sources::Sources::new(&config)?);
 
-    let cpus: usize = num_cpus::get();
+    let cpus: usize = std::cmp::max(1, num_cpus::get() - 1);
     log::info!("Using {cpus} CPUs");
 
     let mut pool = future_pool::FuturePool::<data_collector::DataCollector>::new();
@@ -117,8 +125,14 @@ pub async fn process(config: config::Config) -> Result<(), crate::errors::Proces
 
     let mut collector = pool.join().await?;
     collector.postprocess();
+
     cache::Saver::new(config.clone()).save(&collector)?;
-    targets::TargetWriter::new(config.clone()).write(&collector)?;
+
+    let target_writer = targets::TargetWriter::new(config.clone());
+    target_writer.write_collected_data(&collector)?;
+    target_writer.write_info_data(
+        &sources.consumers.get_info().iter().map(convert_info).collect::<Vec<knowledge::Info>>(),
+    )?;
 
     Ok(())
 }

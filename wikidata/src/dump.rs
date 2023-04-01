@@ -124,7 +124,7 @@ impl Loader {
     ) -> Result<usize, LoaderError> {
         let mut entries: usize = 0;
 
-        let decoder = bzip2::bufread::BzDecoder::new(&mut self.reader);
+        let decoder = bzip2::bufread::MultiBzDecoder::new(&mut self.reader);
         for line in std::io::BufReader::new(decoder).lines() {
             entries += Self::handle_line(&tx, &line?).await?;
         }

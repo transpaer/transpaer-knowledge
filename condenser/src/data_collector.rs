@@ -30,7 +30,7 @@ impl DataCollector {
     }
 
     /// Adds a new manufacturer ID.
-    pub fn add_manufacturer_ids(&mut self, ids: &Vec<consumers_wikidata::data::Id>) {
+    pub fn add_manufacturer_ids(&mut self, ids: &[consumers_wikidata::data::Id]) {
         for id in ids {
             self.manufacturer_ids.insert(id.clone());
         }

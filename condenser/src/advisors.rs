@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use consumers_collecting::{bcorp, errors::IoOrSerdeError, tco};
+use consumers_collecting::{bcorp, consumers, errors::IoOrSerdeError, tco};
 
 use crate::utils;
 
@@ -71,23 +71,40 @@ impl TcoAdvisor {
         }
     }
 
-    /// Checks if the comapny was certified.
+    /// Checks if the company was certified.
     pub fn has_company(&self, company_id: &String) -> bool {
         self.companies.contains(company_id)
     }
 }
 
 /// Holds the information read from out internal data set.
-pub struct ConsumersAdvisor {}
+pub struct ConsumersAdvisor {
+    /// Topic info.
+    info: Vec<consumers::data::Info>,
+}
 
 impl ConsumersAdvisor {
     /// Constructs a new `ConsumersAdvisor`.
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(info: Vec<consumers::data::Info>) -> Self {
+        Self { info }
     }
 
     /// Loads a new `ConsumersAdvisor` from a file.
-    pub fn load<P: AsRef<std::path::Path>>(_path: P) -> Self {
-        ConsumersAdvisor::new()
+    pub fn load<P>(path: P) -> Result<Self, IoOrSerdeError>
+    where
+        P: AsRef<std::path::Path> + std::fmt::Debug,
+    {
+        if utils::is_path_ok(path.as_ref()) {
+            let data = consumers_collecting::consumers::reader::parse(&path)?;
+            Ok(Self::new(data))
+        } else {
+            log::warn!("Could not access {path:?}. Consumers data won't be loaded!");
+            Ok(Self::new(Vec::new()))
+        }
+    }
+
+    /// Returns all info.
+    pub fn get_info(&self) -> &[consumers::data::Info] {
+        &self.info
     }
 }
