@@ -29,7 +29,11 @@ impl From<async_channel::SendError<std::string::String>> for LoaderError {
 }
 
 /// Compression method used in the dump.
+#[derive(Clone, Debug)]
 enum CompressionMethod {
+    /// `json` or `jsonl` file.
+    None,
+
     /// `json.gz` file.
     Gz,
 
@@ -47,6 +51,7 @@ enum CompressionMethod {
 /// composed of many confactenated zips, which in not supported by `flate2-rs`
 /// (`https://github.com/rust-lang/flate2-rs/issues/23`). Parsing such concatenated zip structure
 /// had to be implemented within this reader.
+#[derive(Debug)]
 pub struct Loader {
     /// Reader of the zip file.
     reader: std::io::BufReader<std::fs::File>,
@@ -63,6 +68,7 @@ impl Loader {
     /// Returns `Err` if fails to read from `path`.
     pub fn load(path: &std::path::Path) -> Result<Self, LoaderError> {
         let compression_method = match path.extension().and_then(std::ffi::OsStr::to_str) {
+            Some("json" | "jsonl") => CompressionMethod::None,
             Some("gz") => CompressionMethod::Gz,
             Some("bz2") => CompressionMethod::Bz2,
             _ => return Err(LoaderError::CompressionMethod),
@@ -91,6 +97,7 @@ impl Loader {
         match self.compression_method {
             CompressionMethod::Gz => self.run_gz_with_channel(tx).await,
             CompressionMethod::Bz2 => self.run_bz2_with_channel(tx).await,
+            CompressionMethod::None => self.run_none_with_channel(tx).await,
         }
     }
 
@@ -114,7 +121,6 @@ impl Loader {
                 break;
             }
         }
-        tx.close();
         Ok(entries)
     }
 
@@ -129,7 +135,19 @@ impl Loader {
             entries += Self::handle_line(&tx, &line?).await?;
         }
 
-        tx.close();
+        Ok(entries)
+    }
+
+    async fn run_none_with_channel(
+        &mut self,
+        tx: async_channel::Sender<String>,
+    ) -> Result<usize, LoaderError> {
+        let mut entries: usize = 0;
+
+        for line in std::io::BufReader::new(&mut self.reader).lines() {
+            entries += Self::handle_line(&tx, &line?).await?;
+        }
+
         Ok(entries)
     }
 

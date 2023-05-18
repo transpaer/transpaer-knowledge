@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 
 async-channel = { version = "1.8" }
+async-trait = { version = "0.1.68" }
 clap = { version = "4.1", features = ["derive"] }
 csv = { version = "1.1" }
 fern = { version = "0.6" }

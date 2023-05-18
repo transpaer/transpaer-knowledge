@@ -3,6 +3,8 @@
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 
+pub use consumers_wikidata::data::Id;
+
 /// Defins a product category.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Category {
@@ -27,7 +29,7 @@ pub struct Certifications {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Product {
     /// Wikidata ID.
-    pub id: consumers_wikidata::data::Id,
+    pub id: Id,
 
     /// Name of the product.
     pub name: String,
@@ -39,13 +41,13 @@ pub struct Product {
     pub category: Option<Category>,
 
     /// Wikidata IDs of manufacturers.
-    pub manufacturer_ids: Option<Vec<consumers_wikidata::data::Id>>,
+    pub manufacturer_ids: Option<Vec<Id>>,
 
     /// Wikidata IDs newer version products.
-    pub follows: Option<Vec<consumers_wikidata::data::Id>>,
+    pub follows: Option<Vec<Id>>,
 
     /// Wikidata IDs older version products.
-    pub followed_by: Option<Vec<consumers_wikidata::data::Id>>,
+    pub followed_by: Option<Vec<Id>>,
 
     /// Known certifications.
     pub certifications: Certifications,
@@ -55,7 +57,7 @@ pub struct Product {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Manufacturer {
     /// Wikidata Id.
-    pub id: consumers_wikidata::data::Id,
+    pub id: Id,
 
     /// Name of the manufacturer.
     pub name: String,

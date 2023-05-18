@@ -1,20 +1,50 @@
 #![deny(clippy::pedantic)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
+#![allow(clippy::module_name_repetitions)]
 
 mod advisors;
 mod cache;
 mod categories;
+mod condensing;
 mod config;
-mod data_collector;
 mod errors;
+mod filtering_manufacturers;
+mod filtering_products;
 mod future_pool;
 mod knowledge;
 mod processing;
-mod sources;
-mod targets;
+mod transcribing;
 mod utils;
 mod wikidata;
+
+use processing::Processor;
+
+async fn run() -> Result<(), errors::ProcessingError> {
+    match config::Config::new_from_args() {
+        config::Config::FilterProducts(config) => {
+            config.check()?;
+            log::info!("Start filtering products!");
+            filtering_products::ProductProcessor::process(config).await?;
+        }
+        config::Config::FilterManufacturers(config) => {
+            config.check()?;
+            log::info!("Start filtering manufacturers!");
+            filtering_manufacturers::ManufacturerProcessor::process(config).await?;
+        }
+        config::Config::Condense(config) => {
+            config.check()?;
+            log::info!("Start condensing!");
+            condensing::CondensingProcessor::process(config).await?;
+        }
+        config::Config::Transcription(config) => {
+            config.check()?;
+            log::info!("Start transcribing!");
+            transcribing::Transcriptor::transcribe(&config)?;
+        }
+    }
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() {
@@ -27,15 +57,7 @@ async fn main() {
 
     let start_time = std::time::Instant::now();
 
-    let config = config::Config::new_from_args();
-    if let Err(err) = config.check() {
-        log::error!("Coonfig error: {err}");
-        return;
-    }
-
-    log::info!("Start processing!");
-
-    if let Err(err) = processing::process(config).await {
+    if let Err(err) = run().await {
         log::error!("Processing error: {err}");
     }
 

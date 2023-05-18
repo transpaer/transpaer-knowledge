@@ -3,6 +3,25 @@ use thiserror::Error;
 use consumers_collecting::errors::IoOrSerdeError;
 use consumers_wikidata::dump::LoaderError;
 
+/// Error returned if config checking failed.
+#[derive(Error, Debug)]
+pub enum CheckError {
+    #[error("Path '{0}' does not exist")]
+    PathDoesNotExist(std::path::PathBuf),
+
+    #[error("Path '{0}' is not a file")]
+    PathIsNotAFile(std::path::PathBuf),
+
+    #[error("Path '{0}' already exists")]
+    PathAlreadyExists(std::path::PathBuf),
+
+    #[error("Base of '{0}' does not exist")]
+    BaseDoesNotExist(std::path::PathBuf),
+
+    #[error("Base of '{0}' is not a directory")]
+    BaseIsNotADirectory(std::path::PathBuf),
+}
+
 /// Error returned when a problem with processing.
 #[derive(Error, Debug)]
 pub enum ProcessingError {
@@ -12,7 +31,7 @@ pub enum ProcessingError {
     #[error("Csv parsing error: {0}")]
     Csv(csv::Error),
 
-    #[error("JSON parsing error: {0}")]
+    #[error("parsing error: {0}")]
     Json(serde_json::Error),
 
     #[error("YAML parsing error: {0}")]
@@ -26,6 +45,9 @@ pub enum ProcessingError {
 
     #[error("Channel sending error: {0}")]
     Channel(async_channel::SendError<std::string::String>),
+
+    #[error("Config check: {0}")]
+    Check(CheckError),
 }
 
 impl From<std::io::Error> for ProcessingError {
@@ -61,6 +83,12 @@ impl From<tokio::task::JoinError> for ProcessingError {
 impl From<async_channel::SendError<std::string::String>> for ProcessingError {
     fn from(error: async_channel::SendError<std::string::String>) -> Self {
         Self::Channel(error)
+    }
+}
+
+impl From<CheckError> for ProcessingError {
+    fn from(error: CheckError) -> Self {
+        Self::Check(error)
     }
 }
 

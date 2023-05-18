@@ -1,6 +1,8 @@
 //! Miscellaneous utilities.
 
-/// Extracs domain from a URL.
+use crate::errors;
+
+/// Extracits domain from a URL.
 pub fn extract_domain_from_url(url: &str) -> String {
     let mut domain = url;
     if domain.starts_with("http://") {
@@ -21,6 +23,37 @@ pub fn extract_domain_from_url(url: &str) -> String {
 /// Checks is the path exists and is a file.
 pub fn is_path_ok(path: &std::path::Path) -> bool {
     path.exists() && path.is_file()
+}
+
+/// Verifies that the path exists and is a file.
+pub fn path_exists(path: &std::path::Path) -> Result<(), errors::CheckError> {
+    if !path.exists() {
+        return Err(errors::CheckError::PathDoesNotExist(path.to_owned()));
+    }
+    if !path.is_file() {
+        return Err(errors::CheckError::PathIsNotAFile(path.to_owned()));
+    }
+    Ok(())
+}
+
+/// Verifies that the path itself does not exist, but it's parent exists and is a directory.
+pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::CheckError> {
+    if path.exists() {
+        return Err(errors::CheckError::PathAlreadyExists(path.to_owned()));
+    }
+
+    if let Some(base) = path.parent() {
+        if !base.exists() {
+            return Err(errors::CheckError::BaseDoesNotExist(path.to_owned()));
+        }
+        if !base.is_dir() {
+            return Err(errors::CheckError::BaseIsNotADirectory(path.to_owned()));
+        }
+    } else {
+        return Err(errors::CheckError::BaseDoesNotExist(path.to_owned()));
+    }
+
+    Ok(())
 }
 
 /// Formats duration to a human-readable format.
