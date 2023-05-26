@@ -9,10 +9,10 @@ mod categories;
 mod condensing;
 mod config;
 mod errors;
-mod filtering_manufacturers;
-mod filtering_products;
+mod filtering;
 mod future_pool;
 mod knowledge;
+mod prefiltering;
 mod processing;
 mod transcribing;
 mod utils;
@@ -22,19 +22,19 @@ use processing::Processor;
 
 async fn run() -> Result<(), errors::ProcessingError> {
     match config::Config::new_from_args() {
-        config::Config::FilterProducts(config) => {
+        config::Config::Prefiltering(config) => {
             config.check()?;
-            log::info!("Start filtering products!");
-            filtering_products::ProductProcessor::process(config).await?;
+            log::info!("Start pre-filtering!");
+            prefiltering::PrefilteringProcessor::process(config).await?;
         }
-        config::Config::FilterManufacturers(config) => {
+        config::Config::Filtering(config) => {
             config.check()?;
-            log::info!("Start filtering manufacturers!");
-            filtering_manufacturers::ManufacturerProcessor::process(config).await?;
+            log::info!("Start filtering!");
+            filtering::FilteringProcessor::process(config).await?;
         }
-        config::Config::Condense(config) => {
+        config::Config::Condensation(config) => {
             config.check()?;
-            log::info!("Start condensing!");
+            log::info!("Start condensation!");
             condensing::CondensingProcessor::process(config).await?;
         }
         config::Config::Transcription(config) => {

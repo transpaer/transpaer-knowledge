@@ -9,6 +9,9 @@ pub trait ItemExt {
     /// Returns strings associated with the passed property.
     fn get_strings(&self, property_id: &str) -> Option<Vec<String>>;
 
+    /// Checks if has at least one passed property.
+    fn has_property(&self, property_id: &str) -> bool;
+
     /// Returns IDs of entities linked with "follows" property.
     #[must_use]
     fn get_follows(&self) -> Option<Vec<data::Id>>;
@@ -21,9 +24,17 @@ pub trait ItemExt {
     #[must_use]
     fn get_manufacturer_ids(&self) -> Option<Vec<data::Id>>;
 
+    /// Checks if has any entities linked with "manufacturer" property.
+    #[must_use]
+    fn has_manufacturer(&self) -> bool;
+
     /// Returns IDs of entities linked with "official website" property.
     #[must_use]
     fn get_official_websites(&self) -> Option<Vec<String>>;
+
+    /// Checks if has entities linked with "official website" property.
+    #[must_use]
+    fn has_official_website(&self) -> bool;
 
     /// Checks if this items is linked to the passed entity with `instalce of` property.
     ///
@@ -72,6 +83,15 @@ impl ItemExt for data::Item {
         }
     }
 
+    /// Checks if has at least one passed property.
+    fn has_property(&self, property_id: &str) -> bool {
+        if let Some(claims) = self.claims.get(property_id) {
+            !claims.is_empty()
+        } else {
+            false
+        }
+    }
+
     /// Returns IDs of entities linked with "follows" property.
     #[must_use]
     fn get_follows(&self) -> Option<Vec<data::Id>> {
@@ -90,10 +110,22 @@ impl ItemExt for data::Item {
         self.get_entity_ids(properties::MANUFACTURER)
     }
 
+    /// Checks if has any entities linked with "manufacturer" property.
+    #[must_use]
+    fn has_manufacturer(&self) -> bool {
+        self.has_property(properties::MANUFACTURER)
+    }
+
     /// Returns IDs of entities linked with "official website" property.
     #[must_use]
     fn get_official_websites(&self) -> Option<Vec<String>> {
         self.get_strings(properties::OFFICIAL_WEBSITE)
+    }
+
+    /// Checks if has entities linked with "official website" property.
+    #[must_use]
+    fn has_official_website(&self) -> bool {
+        self.has_property(properties::MANUFACTURER)
     }
 
     /// Checks if this items is linked to the passed entity with `instalce of` property.

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io::Write};
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 
@@ -12,14 +12,14 @@ use crate::{
 
 /// Provides the core data for the processor.
 #[derive(Debug)]
-pub struct ProductEssentials {
+pub struct PrefilteringEssentials {
     /// Wikidata dump file loader.
     wiki: consumers_wikidata::dump::Loader,
 }
 
 #[async_trait]
-impl Essential for ProductEssentials {
-    type Config = config::ProductFilterConfig;
+impl Essential for PrefilteringEssentials {
+    type Config = config::PrefilteringConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         Ok(Self { wiki: consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)? })
@@ -35,10 +35,10 @@ impl Essential for ProductEssentials {
 
 /// Holds all the supplementary source data.
 #[derive(Debug)]
-pub struct ProductSources;
+pub struct PrefilteringSources;
 
-impl Sourceable for ProductSources {
-    type Config = config::ProductFilterConfig;
+impl Sourceable for PrefilteringSources {
+    type Config = config::PrefilteringConfig;
 
     fn load(_config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         Ok(Self)
@@ -49,19 +49,12 @@ impl Sourceable for ProductSources {
 ///
 /// Allows merging different instances.
 #[derive(Default, Debug)]
-pub struct ProductCollector {
+pub struct PrefilteringCollector {
     /// IDs of manufacturers.
     manufacturer_ids: HashSet<knowledge::Id>,
-
-    /// Entries in wikidata about manufacturers.
-    products: Vec<String>,
 }
 
-impl ProductCollector {
-    pub fn add_product(&mut self, product: String) {
-        self.products.push(product);
-    }
-
+impl PrefilteringCollector {
     pub fn add_manufacturer_ids(&mut self, ids: &[knowledge::Id]) {
         for id in ids {
             self.manufacturer_ids.insert(id.clone());
@@ -69,28 +62,27 @@ impl ProductCollector {
     }
 }
 
-impl merge::Merge for ProductCollector {
+impl merge::Merge for PrefilteringCollector {
     fn merge(&mut self, other: Self) {
         self.manufacturer_ids.extend(other.manufacturer_ids);
-        self.products.extend_from_slice(&other.products);
     }
 }
 
-impl Collectable for ProductCollector {}
+impl Collectable for PrefilteringCollector {}
 
 /// Filters product entries out from the wikidata dump file.
 #[derive(Debug)]
-pub struct ProductProcessor;
+pub struct PrefilteringProcessor;
 
-impl Processor for ProductProcessor {
-    type Config = config::ProductFilterConfig;
-    type Essentials = ProductEssentials;
-    type Sources = ProductSources;
-    type Collector = ProductCollector;
+impl Processor for PrefilteringProcessor {
+    type Config = config::PrefilteringConfig;
+    type Essentials = PrefilteringEssentials;
+    type Sources = PrefilteringSources;
+    type Collector = PrefilteringCollector;
 
     /// Handles one Wikidata entity.
     fn handle_entity(
-        msg: &str,
+        _msg: &str,
         entity: &Entity,
         _sources: &Self::Sources,
         collector: &mut Self::Collector,
@@ -98,7 +90,6 @@ impl Processor for ProductProcessor {
         match entity {
             Entity::Item(item) => {
                 if let Some(manufacturer_ids) = item.get_manufacturer_ids() {
-                    collector.add_product(msg.to_string());
                     collector.add_manufacturer_ids(&manufacturer_ids);
                 }
             }
@@ -111,7 +102,6 @@ impl Processor for ProductProcessor {
         config: &Self::Config,
         collector: &Self::Collector,
     ) -> Result<(), errors::ProcessingError> {
-        log::info!("Found {} products", collector.products.len());
         log::info!("Found {} manufacturers", collector.manufacturer_ids.len());
 
         let cache = cache::Wikidata {
@@ -124,12 +114,6 @@ impl Processor for ProductProcessor {
 
         let contents = serde_json::to_string_pretty(&cache)?;
         std::fs::write(&config.wikidata_cache_path, contents)?;
-
-        let mut file = std::fs::File::create(&config.wikidata_products_path)?;
-        for line in &collector.products {
-            file.write_all(line.as_bytes())?;
-            file.write_all(b"\n")?;
-        }
 
         Ok(())
     }

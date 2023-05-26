@@ -2,26 +2,27 @@ use std::io::Write;
 
 use async_trait::async_trait;
 
-use consumers_wikidata::data::Entity;
+use consumers_wikidata::data::{Entity, Item};
 
 use crate::{
     cache, config, errors,
     processing::{Collectable, Essential, Processor, Sourceable},
+    wikidata::ItemExt,
 };
 
 /// Provides the core data for the processor.
 #[derive(Debug)]
-pub struct ManufacturerEssentials {
+pub struct FilteringEssentials {
     /// Wikidata dump file loader.
     wiki: consumers_wikidata::dump::Loader,
 }
 
 #[async_trait]
-impl Essential for ManufacturerEssentials {
-    type Config = config::ManufacturerFilterConfig;
+impl Essential for FilteringEssentials {
+    type Config = config::FilteringConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)? })
+        Ok(Self { wiki: consumers_wikidata::dump::Loader::load(&config.wikidata_full_dump_path)? })
     }
 
     async fn run(
@@ -34,13 +35,13 @@ impl Essential for ManufacturerEssentials {
 
 /// Holds all the supplementary source data.
 #[derive(Debug)]
-pub struct ManufacturerSources {
+pub struct FilteringSources {
     /// Wikidata cache.
     cache: cache::Wikidata,
 }
 
-impl Sourceable for ManufacturerSources {
-    type Config = config::ManufacturerFilterConfig;
+impl Sourceable for FilteringSources {
+    type Config = config::FilteringConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         let cache = cache::load(&config.wikidata_cache_path)?;
@@ -53,34 +54,48 @@ impl Sourceable for ManufacturerSources {
 ///
 /// Allows merging different instances.
 #[derive(Default, Debug)]
-pub struct ManufacturerCollector {
-    /// Entries in wikidata about manufacturers.
-    manufacturers: Vec<String>,
+pub struct FilteringCollector {
+    /// Picked entries from wikidata.
+    entries: Vec<String>,
 }
 
-impl ManufacturerCollector {
-    pub fn add_manufacturer(&mut self, manufacturer: String) {
-        self.manufacturers.push(manufacturer);
+impl FilteringCollector {
+    pub fn add_entry(&mut self, entry: String) {
+        self.entries.push(entry);
     }
 }
 
-impl merge::Merge for ManufacturerCollector {
+impl merge::Merge for FilteringCollector {
     fn merge(&mut self, other: Self) {
-        self.manufacturers.extend_from_slice(&other.manufacturers);
+        self.entries.extend_from_slice(&other.entries);
     }
 }
 
-impl Collectable for ManufacturerCollector {}
+impl Collectable for FilteringCollector {}
 
 /// Filters manufacturer entries out from the wikidata dump file.
 #[derive(Debug)]
-pub struct ManufacturerProcessor;
+pub struct FilteringProcessor;
 
-impl Processor for ManufacturerProcessor {
-    type Config = config::ManufacturerFilterConfig;
-    type Essentials = ManufacturerEssentials;
-    type Sources = ManufacturerSources;
-    type Collector = ManufacturerCollector;
+impl FilteringProcessor {
+    /// Decides if the passed item should be kept or filtered out.
+    ///
+    /// The item is kept if it:
+    /// - is present in the cache, or
+    /// - has a website, or
+    /// - has a manufacturer
+    fn should_keep(item: &Item, sources: &FilteringSources) -> bool {
+        sources.cache.has_manufacturer_id(&item.id)
+            || item.has_official_website()
+            || item.has_manufacturer()
+    }
+}
+
+impl Processor for FilteringProcessor {
+    type Config = config::FilteringConfig;
+    type Essentials = FilteringEssentials;
+    type Sources = FilteringSources;
+    type Collector = FilteringCollector;
 
     /// Handles one Wikidata entity.
     fn handle_entity(
@@ -91,8 +106,8 @@ impl Processor for ManufacturerProcessor {
     ) {
         match entity {
             Entity::Item(item) => {
-                if sources.cache.has_manufacturer_id(&item.id) {
-                    collector.add_manufacturer(msg.to_string());
+                if Self::should_keep(item, sources) {
+                    collector.add_entry(msg.to_string());
                 }
             }
             Entity::Property(_property) => (),
@@ -104,9 +119,9 @@ impl Processor for ManufacturerProcessor {
         config: &Self::Config,
         collector: &Self::Collector,
     ) -> Result<(), errors::ProcessingError> {
-        log::info!("Found {} manufacturers", collector.manufacturers.len());
-        let mut file = std::fs::File::create(&config.wikidata_manufacturers_path)?;
-        for line in &collector.manufacturers {
+        log::info!("Found {} entries", collector.entries.len());
+        let mut file = std::fs::File::create(&config.wikidata_filtered_dump_path)?;
+        for line in &collector.entries {
             file.write_all(line.as_bytes())?;
             file.write_all(b"\n")?;
         }

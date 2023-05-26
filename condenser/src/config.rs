@@ -2,9 +2,9 @@ use clap::{Parser, Subcommand};
 
 use crate::{errors::CheckError, utils};
 
-/// Arguments of the `filter-products` command.
+/// Arguments of the `prefilter` command.
 #[derive(Parser, Debug)]
-pub struct FilterProductsArgs {
+pub struct PrefilteringArgs {
     /// Input data directory.
     #[arg(long)]
     input_data: String,
@@ -14,9 +14,9 @@ pub struct FilterProductsArgs {
     output_cache: String,
 }
 
-/// Arguments of the `filter-manufacturers` command.
+/// Arguments of the `filter` command.
 #[derive(Parser, Debug)]
-pub struct FilterManufacturersArgs {
+pub struct FilteringArgs {
     /// Input data directory.
     #[arg(long)]
     input_data: String,
@@ -32,7 +32,7 @@ pub struct FilterManufacturersArgs {
 
 /// Arguments of the `condense` command.
 #[derive(Parser, Debug)]
-pub struct CondenseArgs {
+pub struct CondensationArgs {
     /// Input data directory.
     #[arg(long)]
     input_data: String,
@@ -60,9 +60,9 @@ pub struct TranscriptionArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    FilterProducts(FilterProductsArgs),
-    FilterManufacturers(FilterManufacturersArgs),
-    Condense(CondenseArgs),
+    Prefilter(PrefilteringArgs),
+    Filter(FilteringArgs),
+    Condense(CondensationArgs),
     Transcribe(TranscriptionArgs),
 }
 
@@ -77,26 +77,22 @@ pub struct Args {
 
 /// Configuration for the `filter-products` command.
 #[derive(Debug, Clone)]
-pub struct ProductFilterConfig {
+pub struct PrefilteringConfig {
     /// Path to input Wikidata data.
     pub wikidata_dump_path: std::path::PathBuf,
 
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
-
-    /// Path to output filtered products.
-    pub wikidata_products_path: std::path::PathBuf,
 }
 
-impl ProductFilterConfig {
-    /// Constructs a new `ProductFilterConfig`.
-    pub fn new(args: &FilterProductsArgs) -> ProductFilterConfig {
+impl PrefilteringConfig {
+    /// Constructs a new `Prefiltering`.
+    pub fn new(args: &PrefilteringArgs) -> PrefilteringConfig {
         let input_data = std::path::PathBuf::from(&args.input_data);
         let output_cache = std::path::PathBuf::from(&args.output_cache);
         Self {
             wikidata_dump_path: input_data.join("wikidata.json.gz"),
             wikidata_cache_path: output_cache.join("wikidata_cache.json"),
-            wikidata_products_path: output_cache.join("wikidata_products.jsonl"),
         }
     }
 
@@ -104,42 +100,41 @@ impl ProductFilterConfig {
     pub fn check(&self) -> Result<(), CheckError> {
         utils::path_exists(&self.wikidata_dump_path)?;
         utils::path_creatable(&self.wikidata_cache_path)?;
-        utils::path_creatable(&self.wikidata_products_path)?;
         Ok(())
     }
 }
 
 /// Configuration for the `filter-manufacturers` command.
 #[derive(Debug, Clone)]
-pub struct ManufacturerFilterConfig {
+pub struct FilteringConfig {
     /// Path to input Wikidata data.
-    pub wikidata_dump_path: std::path::PathBuf,
+    pub wikidata_full_dump_path: std::path::PathBuf,
 
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
-    /// Path to output filtered manufacturers.
-    pub wikidata_manufacturers_path: std::path::PathBuf,
+    /// Path to output filtered .
+    pub wikidata_filtered_dump_path: std::path::PathBuf,
 }
 
-impl ManufacturerFilterConfig {
-    /// Constructs a new `ManufacturerFilterConfig`.
-    pub fn new(args: &FilterManufacturersArgs) -> ManufacturerFilterConfig {
+impl FilteringConfig {
+    /// Constructs a new `FilteringConfig`.
+    pub fn new(args: &FilteringArgs) -> FilteringConfig {
         let input_data = std::path::PathBuf::from(&args.input_data);
         let input_cache = std::path::PathBuf::from(&args.input_cache);
         let output_cache = std::path::PathBuf::from(&args.output_cache);
         Self {
-            wikidata_dump_path: input_data.join("wikidata.json.gz"),
+            wikidata_full_dump_path: input_data.join("wikidata.json.gz"),
             wikidata_cache_path: input_cache.join("wikidata_cache.json"),
-            wikidata_manufacturers_path: output_cache.join("wikidata_manufacturers.jsonl"),
+            wikidata_filtered_dump_path: output_cache.join("wikidata.jsonl"),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), CheckError> {
-        utils::path_exists(&self.wikidata_dump_path)?;
+        utils::path_exists(&self.wikidata_full_dump_path)?;
         utils::path_exists(&self.wikidata_cache_path)?;
-        utils::path_creatable(&self.wikidata_manufacturers_path)?;
+        utils::path_creatable(&self.wikidata_filtered_dump_path)?;
         Ok(())
     }
 }
@@ -147,11 +142,8 @@ impl ManufacturerFilterConfig {
 /// Configuration for the `condense` command.
 #[derive(Debug, Clone)]
 pub struct CondensationConfig {
-    /// Path touinput wikidata products.
-    pub source_products_path: std::path::PathBuf,
-
-    /// Path touinput wikidata manufacturers.
-    pub source_manufacturers_path: std::path::PathBuf,
+    /// Path to input wikidata dump.
+    pub wikidata_source_path: std::path::PathBuf,
 
     /// Path to input Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
@@ -171,13 +163,12 @@ pub struct CondensationConfig {
 
 impl CondensationConfig {
     /// Constructs a new `CondensationConfig`.
-    pub fn new(args: &CondenseArgs) -> CondensationConfig {
+    pub fn new(args: &CondensationArgs) -> CondensationConfig {
         let input_data = std::path::PathBuf::from(&args.input_data);
         let input_cache = std::path::PathBuf::from(&args.input_cache);
         let output_data = std::path::PathBuf::from(&args.output_data);
         Self {
-            source_products_path: input_cache.join("wikidata_products.jsonl"),
-            source_manufacturers_path: input_cache.join("wikidata_manufacturers.jsonl"),
+            wikidata_source_path: input_cache.join("wikidata.jsonl"),
             wikidata_cache_path: input_cache.join("wikidata_cache.json"),
             bcorp_path: input_data.join("bcorp.csv"),
             tco_path: input_data.join("tco.yaml"),
@@ -188,8 +179,7 @@ impl CondensationConfig {
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), CheckError> {
-        utils::path_exists(&self.source_products_path)?;
-        utils::path_exists(&self.source_manufacturers_path)?;
+        utils::path_exists(&self.wikidata_source_path)?;
         utils::path_exists(&self.wikidata_cache_path)?;
         utils::path_exists(&self.bcorp_path)?;
         utils::path_exists(&self.tco_path)?;
@@ -231,9 +221,9 @@ impl TranscriptionConfig {
 /// Configuration for the program.
 #[derive(Debug, Clone)]
 pub enum Config {
-    FilterProducts(ProductFilterConfig),
-    FilterManufacturers(ManufacturerFilterConfig),
-    Condense(CondensationConfig),
+    Prefiltering(PrefilteringConfig),
+    Filtering(FilteringConfig),
+    Condensation(CondensationConfig),
     Transcription(TranscriptionConfig),
 }
 
@@ -242,13 +232,9 @@ impl Config {
     pub fn new_from_args() -> Config {
         let args = Args::parse();
         match args.command {
-            Commands::FilterProducts(args) => {
-                Config::FilterProducts(ProductFilterConfig::new(&args))
-            }
-            Commands::FilterManufacturers(args) => {
-                Config::FilterManufacturers(ManufacturerFilterConfig::new(&args))
-            }
-            Commands::Condense(args) => Config::Condense(CondensationConfig::new(&args)),
+            Commands::Prefilter(args) => Config::Prefiltering(PrefilteringConfig::new(&args)),
+            Commands::Filter(args) => Config::Filtering(FilteringConfig::new(&args)),
+            Commands::Condense(args) => Config::Condensation(CondensationConfig::new(&args)),
             Commands::Transcribe(args) => Config::Transcription(TranscriptionConfig::new(&args)),
         }
     }

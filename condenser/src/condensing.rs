@@ -18,10 +18,7 @@ const LANG_EN: &str = "en";
 #[derive(Debug)]
 pub struct CondensingEssentials {
     /// Product data loader.
-    products_data: consumers_wikidata::dump::Loader,
-
-    /// Manufacturer data loader.
-    manufacturers_data: consumers_wikidata::dump::Loader,
+    data: consumers_wikidata::dump::Loader,
 }
 
 #[async_trait]
@@ -29,21 +26,14 @@ impl Essential for CondensingEssentials {
     type Config = config::CondensationConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self {
-            products_data: consumers_wikidata::dump::Loader::load(&config.source_products_path)?,
-            manufacturers_data: consumers_wikidata::dump::Loader::load(
-                &config.source_manufacturers_path,
-            )?,
-        })
+        Ok(Self { data: consumers_wikidata::dump::Loader::load(&config.wikidata_source_path)? })
     }
 
     async fn run(
         &mut self,
         tx: async_channel::Sender<String>,
     ) -> Result<usize, errors::ProcessingError> {
-        let mut number = self.products_data.run_with_channel(tx.clone()).await?;
-        number += self.manufacturers_data.run_with_channel(tx).await?;
-        Ok(number)
+        Ok(self.data.run_with_channel(tx).await?)
     }
 }
 
