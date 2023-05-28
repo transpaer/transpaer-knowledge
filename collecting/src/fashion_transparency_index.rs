@@ -2,16 +2,20 @@
 pub mod data {
     use serde::{Deserialize, Serialize};
 
-    /// Record in TCO data.
+    /// Record in Fashion Transparency Index data.
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Entry {
-        /// Company name.
-        #[serde(rename = "tco")]
-        pub company_name: String,
+        /// XXX
+        #[serde(rename = "name")]
+        pub name: String,
 
-        /// Wikidata ID of the company.
+        /// XXX
         #[serde(rename = "wiki")]
         pub wikidata_id: consumers_wikidata::data::Id,
+
+        /// XXX
+        #[serde(rename = "score")]
+        pub score: usize,
     }
 }
 
@@ -20,7 +24,7 @@ pub mod reader {
     use super::data::Entry;
     use crate::errors::IoOrSerdeError;
 
-    /// Loads the TCO data from a file.
+    /// Loads the Fashion Transparency Index data from a file.
     ///
     /// # Errors
     ///

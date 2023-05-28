@@ -154,11 +154,14 @@ pub struct CondensationConfig {
     /// Path to TCO data.
     pub tco_path: std::path::PathBuf,
 
+    /// Path to Fashion Transparency Index data.
+    pub fashion_transparency_index_path: std::path::PathBuf,
+
     /// Path to the output product file.
     pub target_products_path: std::path::PathBuf,
 
-    /// Path to the output manufacturers file.
-    pub target_manufacturers_path: std::path::PathBuf,
+    /// Path to the output organisations file.
+    pub target_organisations_path: std::path::PathBuf,
 }
 
 impl CondensationConfig {
@@ -172,8 +175,10 @@ impl CondensationConfig {
             wikidata_cache_path: input_cache.join("wikidata_cache.json"),
             bcorp_path: input_data.join("bcorp.csv"),
             tco_path: input_data.join("tco.yaml"),
+            fashion_transparency_index_path: input_data
+                .join("sustainity_fashion_transparency_index.yaml"),
             target_products_path: output_data.join("products.json"),
-            target_manufacturers_path: output_data.join("manufacturers.json"),
+            target_organisations_path: output_data.join("organisations.json"),
         }
     }
 
@@ -184,7 +189,7 @@ impl CondensationConfig {
         utils::path_exists(&self.bcorp_path)?;
         utils::path_exists(&self.tco_path)?;
         utils::path_creatable(&self.target_products_path)?;
-        utils::path_creatable(&self.target_manufacturers_path)?;
+        utils::path_creatable(&self.target_organisations_path)?;
         Ok(())
     }
 }

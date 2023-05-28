@@ -47,6 +47,9 @@ pub struct CondensingSources {
 
     /// TCO data.
     pub tco: advisors::TcoAdvisor,
+
+    /// Fashion Transparency Index data.
+    pub fti: advisors::FashionTransparencyIndexAdvisor,
 }
 
 impl Sourceable for CondensingSources {
@@ -58,8 +61,11 @@ impl Sourceable for CondensingSources {
 
         let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
         let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
+        let fti = advisors::FashionTransparencyIndexAdvisor::load(
+            &config.fashion_transparency_index_path,
+        )?;
 
-        Ok(Self { cache, bcorp, tco })
+        Ok(Self { cache, bcorp, tco, fti })
     }
 }
 
@@ -71,8 +77,8 @@ pub struct CondensingCollector {
     /// Found products.
     products: Vec<knowledge::Product>,
 
-    /// Found manufacturers.
-    manufacturers: Vec<knowledge::Manufacturer>,
+    /// Found organisations.
+    organisations: Vec<knowledge::Organisation>,
 }
 
 impl CondensingCollector {
@@ -81,16 +87,16 @@ impl CondensingCollector {
         self.products.push(product);
     }
 
-    /// Adds a new manufacturer.
-    pub fn add_manufacturer(&mut self, manufacturer: knowledge::Manufacturer) {
-        self.manufacturers.push(manufacturer);
+    /// Adds a new organisation.
+    pub fn add_organisation(&mut self, organisation: knowledge::Organisation) {
+        self.organisations.push(organisation);
     }
 }
 
 impl merge::Merge for CondensingCollector {
     fn merge(&mut self, other: Self) {
         self.products.extend_from_slice(&other.products);
-        self.manufacturers.extend(other.manufacturers);
+        self.organisations.extend(other.organisations);
     }
 }
 
@@ -99,6 +105,12 @@ impl Collectable for CondensingCollector {}
 /// Translates the filteres wikidata producern and manufacturers in to the database format.
 #[derive(Debug)]
 pub struct CondensingProcessor;
+
+impl CondensingProcessor {
+    fn is_organisation(item: &consumers_wikidata::data::Item, sources: &CondensingSources) -> bool {
+        sources.cache.has_manufacturer_id(&item.id) || item.has_official_website()
+    }
+}
 
 impl Processor for CondensingProcessor {
     type Config = config::CondensationConfig;
@@ -112,7 +124,8 @@ impl Processor for CondensingProcessor {
         entity: &Entity,
         sources: &Self::Sources,
         collector: &mut Self::Collector,
-    ) {
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
                 if let Some(name) = item.labels.get(LANG_EN).map(|label| &label.value) {
@@ -125,7 +138,7 @@ impl Processor for CondensingProcessor {
                         };
 
                         let product = knowledge::Product {
-                            id: item.id.clone().into(),
+                            id: item.id.clone(),
                             name: name.to_string(),
                             description: item
                                 .descriptions
@@ -142,8 +155,8 @@ impl Processor for CondensingProcessor {
                         collector.add_product(product);
                     }
 
-                    // Collect all manufacturers
-                    if sources.cache.has_manufacturer_id(&item.id) {
+                    // Collect all organisations
+                    if Self::is_organisation(item, sources) {
                         let websites = item.get_official_websites();
                         let domains: HashSet<String> = if let Some(websites) = &websites {
                             websites
@@ -156,8 +169,9 @@ impl Processor for CondensingProcessor {
 
                         let is_bcorp = sources.bcorp.has_domains(&domains);
                         let is_tco = sources.tco.has_company(&item.id);
-                        let manufacturer = knowledge::Manufacturer {
-                            id: item.id.clone().into(),
+                        let fti_score = sources.fti.get_score(&item.id);
+                        let organisation = knowledge::Organisation {
+                            id: item.id.clone(),
                             name: name.to_string(),
                             description: item
                                 .descriptions
@@ -168,25 +182,27 @@ impl Processor for CondensingProcessor {
                             certifications: knowledge::Certifications {
                                 bcorp: is_bcorp,
                                 tco: is_tco,
+                                fti: fti_score,
                             },
                         };
-                        collector.add_manufacturer(manufacturer);
+                        collector.add_organisation(organisation);
                     }
                 }
             }
             Entity::Property(_property) => (),
         }
+        Ok(())
     }
 
     /// Saves the result into files.
-    fn save(
-        config: &Self::Config,
+    fn finalize(
         collector: &Self::Collector,
+        config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         // Assigne certifications to products.
-        let manufacturer_certifications: HashMap<knowledge::Id, knowledge::Certifications> =
+        let organisation_certifications: HashMap<knowledge::Id, knowledge::Certifications> =
             collector
-                .manufacturers
+                .organisations
                 .iter()
                 .map(|m| (m.id.clone(), m.certifications.clone()))
                 .collect();
@@ -194,7 +210,7 @@ impl Processor for CondensingProcessor {
         for product in &mut products {
             if let Some(manufacturer_ids) = &product.manufacturer_ids {
                 for manufacturer_id in manufacturer_ids {
-                    if let Some(certifications) = manufacturer_certifications.get(manufacturer_id) {
+                    if let Some(certifications) = organisation_certifications.get(manufacturer_id) {
                         product.certifications.merge(certifications.clone());
                     }
                 }
@@ -205,9 +221,9 @@ impl Processor for CondensingProcessor {
         let contents = serde_json::to_string_pretty(&products)?;
         std::fs::write(&config.target_products_path, contents)?;
 
-        // Save manufacturers.
-        let contents = serde_json::to_string_pretty(&collector.manufacturers)?;
-        std::fs::write(&config.target_manufacturers_path, contents)?;
+        // Save organisations.
+        let contents = serde_json::to_string_pretty(&collector.organisations)?;
+        std::fs::write(&config.target_organisations_path, contents)?;
 
         Ok(())
     }

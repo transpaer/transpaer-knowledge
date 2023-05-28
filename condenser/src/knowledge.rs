@@ -23,6 +23,28 @@ pub struct Certifications {
     /// Manufacturer certifiad by TCO.
     #[merge(strategy = merge::bool::overwrite_false)]
     pub tco: bool,
+
+    /// Organisation scored by Fashion Transparency Index.
+    pub fti: Option<usize>,
+}
+
+/// Represents an organisation (e.g. manufacturer, shop).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Organisation {
+    /// Wikidata Id.
+    pub id: Id,
+
+    /// Name of the organisation.
+    pub name: String,
+
+    /// Description of the organisation.
+    pub description: String,
+
+    /// Websites.
+    pub websites: Vec<String>,
+
+    /// Known certifications.
+    pub certifications: Certifications,
 }
 
 /// Represents a product.
@@ -48,25 +70,6 @@ pub struct Product {
 
     /// Wikidata IDs older version products.
     pub followed_by: Option<Vec<Id>>,
-
-    /// Known certifications.
-    pub certifications: Certifications,
-}
-
-/// Represents a manufacturer.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Manufacturer {
-    /// Wikidata Id.
-    pub id: Id,
-
-    /// Name of the manufacturer.
-    pub name: String,
-
-    /// Description of the manufacturer.
-    pub description: String,
-
-    /// Websites.
-    pub websites: Vec<String>,
 
     /// Known certifications.
     pub certifications: Certifications,

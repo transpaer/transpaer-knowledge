@@ -63,6 +63,14 @@ impl FilteringCollector {
     pub fn add_entry(&mut self, entry: String) {
         self.entries.push(entry);
     }
+
+    pub fn is_full(&self) -> bool {
+        self.entries.len() >= 100_000
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 impl merge::Merge for FilteringCollector {
@@ -89,6 +97,24 @@ impl FilteringProcessor {
             || item.has_official_website()
             || item.has_manufacturer()
     }
+
+    /// Saves the result into files.
+    fn save(
+        collector: &FilteringCollector,
+        config: &config::FilteringConfig,
+    ) -> Result<(), errors::ProcessingError> {
+        log::info!("Saving {} entries", collector.entries.len());
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&config.wikidata_filtered_dump_path)?;
+        for line in &collector.entries {
+            file.write_all(line.as_bytes())?;
+            file.write_all(b"\n")?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Processor for FilteringProcessor {
@@ -97,35 +123,41 @@ impl Processor for FilteringProcessor {
     type Sources = FilteringSources;
     type Collector = FilteringCollector;
 
+    /// Always run using one thread to avoid need for locking during saving.
+    fn get_num_threads() -> usize {
+        1
+    }
+
     /// Handles one Wikidata entity.
     fn handle_entity(
         msg: &str,
         entity: &Entity,
         sources: &Self::Sources,
         collector: &mut Self::Collector,
-    ) {
+        config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
                 if Self::should_keep(item, sources) {
                     collector.add_entry(msg.to_string());
+
+                    // Periodically save data to file to avoid running out of memory.
+                    if collector.is_full() {
+                        Self::save(collector, config)?;
+                        collector.clear();
+                    }
                 }
             }
             Entity::Property(_property) => (),
         }
+        Ok(())
     }
 
     /// Saves the result into files.
-    fn save(
-        config: &Self::Config,
+    fn finalize(
         collector: &Self::Collector,
+        config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
-        log::info!("Found {} entries", collector.entries.len());
-        let mut file = std::fs::File::create(&config.wikidata_filtered_dump_path)?;
-        for line in &collector.entries {
-            file.write_all(line.as_bytes())?;
-            file.write_all(b"\n")?;
-        }
-
-        Ok(())
+        Self::save(collector, config)
     }
 }

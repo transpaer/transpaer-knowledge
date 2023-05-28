@@ -55,7 +55,7 @@ impl ItemExt for data::Item {
                         entity_info,
                     )) = &value.datavalue
                     {
-                        result.push(data::Id::new(entity_info.id.clone()));
+                        result.push(entity_info.id.clone());
                     }
                 }
             }
@@ -125,7 +125,7 @@ impl ItemExt for data::Item {
     /// Checks if has entities linked with "official website" property.
     #[must_use]
     fn has_official_website(&self) -> bool {
-        self.has_property(properties::MANUFACTURER)
+        self.has_property(properties::OFFICIAL_WEBSITE)
     }
 
     /// Checks if this items is linked to the passed entity with `instalce of` property.

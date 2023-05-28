@@ -44,6 +44,18 @@ impl From<String> for Id {
     }
 }
 
+impl PartialEq<&str> for Id {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str().eq(*other)
+    }
+}
+
+impl PartialEq<Id> for &str {
+    fn eq(&self, other: &Id) -> bool {
+        (*self).eq(other.as_str())
+    }
+}
+
 /// Represents a Wikidata label.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -62,7 +74,7 @@ pub struct Label {
 #[serde(deny_unknown_fields)]
 pub struct EntityIdInfo {
     /// Full ID.
-    pub id: String,
+    pub id: Id,
 
     /// Number from the ID without the prefix.
     #[serde(rename = "numeric-id")]
@@ -316,7 +328,7 @@ pub struct Sitelink {
 #[serde(deny_unknown_fields)]
 pub struct Item {
     /// Item ID.
-    pub id: String,
+    pub id: Id,
 
     pub title: Option<String>,
     pub pageid: Option<u64>,

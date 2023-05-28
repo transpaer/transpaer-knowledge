@@ -1,8 +1,10 @@
 //! Contains code ralated to parsing source data.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use consumers_collecting::{bcorp, consumers, errors::IoOrSerdeError, tco};
+use consumers_collecting::{
+    bcorp, consumers, errors::IoOrSerdeError, fashion_transparency_index, tco,
+};
 
 use crate::utils;
 
@@ -48,7 +50,7 @@ impl BCorpAdvisor {
 /// Holds the information read from the `BCorp` data.
 pub struct TcoAdvisor {
     /// Wikidata IDs of companies certifies by TCO.
-    companies: HashSet<String>,
+    companies: HashSet<consumers_wikidata::data::Id>,
 }
 
 impl TcoAdvisor {
@@ -72,8 +74,44 @@ impl TcoAdvisor {
     }
 
     /// Checks if the company was certified.
-    pub fn has_company(&self, company_id: &String) -> bool {
+    pub fn has_company(&self, company_id: &consumers_wikidata::data::Id) -> bool {
         self.companies.contains(company_id)
+    }
+}
+
+/// Holds the information read from the `Fashion Transparency Index` data.
+pub struct FashionTransparencyIndexAdvisor {
+    /// Wikidata IDs of companies certifies by TCO.
+    entries: HashMap<consumers_wikidata::data::Id, usize>,
+}
+
+impl FashionTransparencyIndexAdvisor {
+    /// Constructs a new `TcoAdvisor`.
+    pub fn new(entries: &[fashion_transparency_index::data::Entry]) -> Self {
+        Self {
+            entries: entries.iter().map(|entry| (entry.wikidata_id.clone(), entry.score)).collect(),
+        }
+    }
+
+    /// Loads a new `Tcodvisor` from a file.
+    pub fn load<P>(path: P) -> Result<Self, IoOrSerdeError>
+    where
+        P: AsRef<std::path::Path> + std::fmt::Debug,
+    {
+        if utils::is_path_ok(path.as_ref()) {
+            let data = fashion_transparency_index::reader::parse(&path)?;
+            Ok(Self::new(&data))
+        } else {
+            log::warn!(
+                "Could not access {path:?}. Fashion Transparency Index data won't be loaded!"
+            );
+            Ok(Self::new(&[]))
+        }
+    }
+
+    /// Get the score for the given company.
+    pub fn get_score(&self, company_id: &consumers_wikidata::data::Id) -> Option<usize> {
+        self.entries.get(company_id).copied()
     }
 }
 

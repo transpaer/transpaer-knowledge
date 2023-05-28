@@ -86,7 +86,8 @@ impl Processor for PrefilteringProcessor {
         entity: &Entity,
         _sources: &Self::Sources,
         collector: &mut Self::Collector,
-    ) {
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
                 if let Some(manufacturer_ids) = item.get_manufacturer_ids() {
@@ -95,21 +96,18 @@ impl Processor for PrefilteringProcessor {
             }
             Entity::Property(_property) => (),
         }
+        Ok(())
     }
 
     /// Saves the result into files.
-    fn save(
-        config: &Self::Config,
+    fn finalize(
         collector: &Self::Collector,
+        config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         log::info!("Found {} manufacturers", collector.manufacturer_ids.len());
 
         let cache = cache::Wikidata {
-            manufacturer_ids: collector
-                .manufacturer_ids
-                .iter()
-                .map(|id| id.as_string().clone())
-                .collect(),
+            manufacturer_ids: collector.manufacturer_ids.iter().cloned().collect(),
         };
 
         let contents = serde_json::to_string_pretty(&cache)?;
