@@ -5,12 +5,85 @@ use serde::{Deserialize, Serialize};
 
 pub use consumers_wikidata::data::Id;
 
-/// Defins a product category.
+/// Defines a product categories.
+#[allow(clippy::struct_excessive_bools)] // TODO: perhaps rework as an array (depends on DB query  performance)
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Category {
+pub struct Categories {
     /// Smartphone
     #[serde(rename = "smartphone")]
-    Smartphone,
+    pub smartphone: bool,
+
+    /// Smart watch
+    #[serde(rename = "smartwatch")]
+    pub smartwatch: bool,
+
+    /// Talet
+    #[serde(rename = "tablet")]
+    pub tablet: bool,
+
+    /// Laptop
+    #[serde(rename = "laptop")]
+    pub laptop: bool,
+
+    /// Computer
+    #[serde(rename = "computer")]
+    pub computer: bool,
+
+    /// Game console
+    #[serde(rename = "game_console")]
+    pub game_console: bool,
+
+    /// Game controller
+    #[serde(rename = "game_controller")]
+    pub game_controller: bool,
+
+    /// Camera
+    #[serde(rename = "camera")]
+    pub camera: bool,
+
+    /// Camera lens
+    #[serde(rename = "camera_lens")]
+    pub camera_lens: bool,
+
+    /// Microprocessor
+    #[serde(rename = "microprocessor")]
+    pub microprocessor: bool,
+
+    /// Calculator
+    #[serde(rename = "calculator")]
+    pub calculator: bool,
+
+    /// Musical instrument
+    #[serde(rename = "musical_instrument")]
+    pub musical_instrument: bool,
+
+    /// Car
+    #[serde(rename = "car")]
+    pub car: bool,
+
+    /// Motorcycle
+    #[serde(rename = "motorcycle")]
+    pub motorcycle: bool,
+
+    /// Boat
+    #[serde(rename = "boat")]
+    pub boat: bool,
+
+    /// Drone
+    #[serde(rename = "drone")]
+    pub drone: bool,
+
+    /// Drink
+    #[serde(rename = "drink")]
+    pub drink: bool,
+
+    /// Food
+    #[serde(rename = "food")]
+    pub food: bool,
+
+    /// Toy
+    #[serde(rename = "toy")]
+    pub toy: bool,
 }
 
 /// Lists known certifications.
@@ -59,8 +132,8 @@ pub struct Product {
     /// Description of the product.
     pub description: String,
 
-    /// Category of the product.
-    pub category: Option<Category>,
+    /// Categories of the product.
+    pub categories: Categories,
 
     /// Wikidata IDs of manufacturers.
     pub manufacturer_ids: Option<Vec<Id>>,

@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use consumers_wikidata::data::{Entity, Item};
 
 use crate::{
-    cache, config, errors,
-    processing::{Collectable, Essential, Processor, Sourceable},
-    wikidata::ItemExt,
+    config, errors,
+    processing::{Collectable, Essential, Processor},
+    sources,
 };
 
 /// Provides the core data for the processor.
@@ -30,23 +30,6 @@ impl Essential for FilteringEssentials {
         tx: async_channel::Sender<String>,
     ) -> Result<usize, errors::ProcessingError> {
         Ok(self.wiki.run_with_channel(tx).await?)
-    }
-}
-
-/// Holds all the supplementary source data.
-#[derive(Debug)]
-pub struct FilteringSources {
-    /// Wikidata cache.
-    cache: cache::Wikidata,
-}
-
-impl Sourceable for FilteringSources {
-    type Config = config::FilteringConfig;
-
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        let cache = cache::load(&config.wikidata_cache_path)?;
-
-        Ok(Self { cache })
     }
 }
 
@@ -81,25 +64,20 @@ impl merge::Merge for FilteringCollector {
 
 impl Collectable for FilteringCollector {}
 
-/// Filters manufacturer entries out from the wikidata dump file.
+/// Helper structure for saving the data to a file.
 #[derive(Debug)]
-pub struct FilteringProcessor;
+pub struct FilteringSaver;
 
-impl FilteringProcessor {
-    /// Decides if the passed item should be kept or filtered out.
-    ///
-    /// The item is kept if it:
-    /// - is present in the cache, or
-    /// - has a website, or
-    /// - has a manufacturer
-    fn should_keep(item: &Item, sources: &FilteringSources) -> bool {
-        sources.cache.has_manufacturer_id(&item.id)
-            || item.has_official_website()
-            || item.has_manufacturer()
+impl FilteringSaver {
+    /// Constructs a new `FilteringSaver`.
+    pub fn new() -> Self {
+        Self
     }
 
     /// Saves the result into files.
+    #[allow(clippy::unused_self)]
     fn save(
+        &self,
         collector: &FilteringCollector,
         config: &config::FilteringConfig,
     ) -> Result<(), errors::ProcessingError> {
@@ -117,19 +95,48 @@ impl FilteringProcessor {
     }
 }
 
+/// Filters manufacturer entries out from the wikidata dump file.
+#[derive(Clone, Debug)]
+pub struct FilteringProcessor {
+    /// File saver shared between thread.
+    saver: std::sync::Arc<std::sync::Mutex<FilteringSaver>>,
+}
+
+impl FilteringProcessor {
+    /// Constructs a new `FilteringProcessor`.
+    pub fn new() -> Self {
+        Self { saver: std::sync::Arc::new(std::sync::Mutex::new(FilteringSaver::new())) }
+    }
+
+    /// Decides if the passed item should be kept or filtered out.
+    ///
+    /// The item is kept if it:
+    /// - is a product or
+    /// - is a manufacturer.
+    fn should_keep(item: &Item, sources: &sources::FullSources) -> bool {
+        sources.is_product(item) || sources.is_organisation(item)
+    }
+
+    /// Saves the result into files.
+    fn save(
+        &self,
+        collector: &FilteringCollector,
+        config: &config::FilteringConfig,
+    ) -> Result<(), errors::ProcessingError> {
+        let saver = self.saver.lock()?;
+        saver.save(collector, config)
+    }
+}
+
 impl Processor for FilteringProcessor {
     type Config = config::FilteringConfig;
     type Essentials = FilteringEssentials;
-    type Sources = FilteringSources;
+    type Sources = sources::FullSources;
     type Collector = FilteringCollector;
-
-    /// Always run using one thread to avoid need for locking during saving.
-    fn get_num_threads() -> usize {
-        1
-    }
 
     /// Handles one Wikidata entity.
     fn handle_entity(
+        &self,
         msg: &str,
         entity: &Entity,
         sources: &Self::Sources,
@@ -143,7 +150,7 @@ impl Processor for FilteringProcessor {
 
                     // Periodically save data to file to avoid running out of memory.
                     if collector.is_full() {
-                        Self::save(collector, config)?;
+                        self.save(collector, config)?;
                         collector.clear();
                     }
                 }
@@ -155,9 +162,10 @@ impl Processor for FilteringProcessor {
 
     /// Saves the result into files.
     fn finalize(
+        &self,
         collector: &Self::Collector,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
-        Self::save(collector, config)
+        self.save(collector, config)
     }
 }

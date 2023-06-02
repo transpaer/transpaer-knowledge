@@ -4,6 +4,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 mod advisors;
+mod analysis;
 mod cache;
 mod categories;
 mod condensing;
@@ -14,6 +15,7 @@ mod future_pool;
 mod knowledge;
 mod prefiltering;
 mod processing;
+mod sources;
 mod transcribing;
 mod utils;
 mod wikidata;
@@ -25,22 +27,27 @@ async fn run() -> Result<(), errors::ProcessingError> {
         config::Config::Prefiltering(config) => {
             config.check()?;
             log::info!("Start pre-filtering!");
-            prefiltering::PrefilteringProcessor::process(config).await?;
+            prefiltering::PrefilteringProcessor::new().process(config).await?;
         }
         config::Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering!");
-            filtering::FilteringProcessor::process(config).await?;
+            filtering::FilteringProcessor::new().process(config).await?;
         }
         config::Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            condensing::CondensingProcessor::process(config).await?;
+            condensing::CondensingProcessor::new().process(config).await?;
         }
         config::Config::Transcription(config) => {
             config.check()?;
             log::info!("Start transcribing!");
             transcribing::Transcriptor::transcribe(&config)?;
+        }
+        config::Config::Analysis(config) => {
+            config.check()?;
+            log::info!("Start analysis!");
+            analysis::AnalysisProcessor::new().process(config).await?;
         }
     }
     Ok(())

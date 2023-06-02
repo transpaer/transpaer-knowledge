@@ -6,9 +6,9 @@ use merge::Merge;
 use consumers_wikidata::data::Entity;
 
 use crate::{
-    advisors, cache, categories, config, errors, knowledge,
-    processing::{Collectable, Essential, Processor, Sourceable},
-    utils,
+    categories, config, errors, knowledge,
+    processing::{Collectable, Essential, Processor},
+    sources, utils,
     wikidata::ItemExt,
 };
 
@@ -34,38 +34,6 @@ impl Essential for CondensingEssentials {
         tx: async_channel::Sender<String>,
     ) -> Result<usize, errors::ProcessingError> {
         Ok(self.data.run_with_channel(tx).await?)
-    }
-}
-
-/// Holds all the supplementary source data.
-pub struct CondensingSources {
-    /// Wikidata cache.
-    pub cache: cache::Wikidata,
-
-    /// BCorp data.
-    pub bcorp: advisors::BCorpAdvisor,
-
-    /// TCO data.
-    pub tco: advisors::TcoAdvisor,
-
-    /// Fashion Transparency Index data.
-    pub fti: advisors::FashionTransparencyIndexAdvisor,
-}
-
-impl Sourceable for CondensingSources {
-    type Config = config::CondensationConfig;
-
-    /// Constructs a new `CondensingSources`.
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        let cache = cache::load(&config.wikidata_cache_path)?;
-
-        let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
-        let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
-        let fti = advisors::FashionTransparencyIndexAdvisor::load(
-            &config.fashion_transparency_index_path,
-        )?;
-
-        Ok(Self { cache, bcorp, tco, fti })
     }
 }
 
@@ -103,23 +71,60 @@ impl merge::Merge for CondensingCollector {
 impl Collectable for CondensingCollector {}
 
 /// Translates the filteres wikidata producern and manufacturers in to the database format.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CondensingProcessor;
 
 impl CondensingProcessor {
-    fn is_organisation(item: &consumers_wikidata::data::Item, sources: &CondensingSources) -> bool {
-        sources.cache.has_manufacturer_id(&item.id) || item.has_official_website()
+    /// Constructs a new `CondensingProcessor`.
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Checks if the passed item is an instance of at least of one of the passed categories.
+    fn has_categories(item: &consumers_wikidata::data::Item, categories: &[&str]) -> bool {
+        for category in categories {
+            if item.is_instance_of(category) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Extracts categories from an item.
+    fn extract_categories(item: &consumers_wikidata::data::Item) -> knowledge::Categories {
+        knowledge::Categories {
+            smartphone: Self::has_categories(item, categories::SMARTPHONE),
+            smartwatch: Self::has_categories(item, categories::SMARTWATCH),
+            tablet: Self::has_categories(item, categories::TABLET),
+            laptop: Self::has_categories(item, categories::LAPTOP),
+            computer: Self::has_categories(item, categories::COMPUTER),
+            calculator: Self::has_categories(item, categories::CALCULATOR),
+            game_console: Self::has_categories(item, categories::GAME_CONSOLE),
+            game_controller: Self::has_categories(item, categories::GAME_CONTROLLER),
+            camera: Self::has_categories(item, categories::CAMERA),
+            camera_lens: Self::has_categories(item, categories::CAMERA_LENS),
+            microprocessor: Self::has_categories(item, categories::MICROPROCESSOR),
+            musical_instrument: Self::has_categories(item, categories::MUSICAL_INSTRUMENT),
+            car: Self::has_categories(item, categories::CAR),
+            motorcycle: Self::has_categories(item, categories::MOTORCYCLE),
+            boat: Self::has_categories(item, categories::BOAT),
+            drone: Self::has_categories(item, categories::DRONE),
+            drink: Self::has_categories(item, categories::DRINK),
+            food: Self::has_categories(item, categories::FOOD),
+            toy: Self::has_categories(item, categories::TOY),
+        }
     }
 }
 
 impl Processor for CondensingProcessor {
     type Config = config::CondensationConfig;
     type Essentials = CondensingEssentials;
-    type Sources = CondensingSources;
+    type Sources = sources::FullSources;
     type Collector = CondensingCollector;
 
     /// Handles one Wikidata entity.
     fn handle_entity(
+        &self,
         _msg: &str,
         entity: &Entity,
         sources: &Self::Sources,
@@ -128,15 +133,9 @@ impl Processor for CondensingProcessor {
     ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
-                if let Some(name) = item.labels.get(LANG_EN).map(|label| &label.value) {
-                    // Gather all manufacturer IDs and collect products
-                    if item.get_manufacturer_ids().is_some() {
-                        let category = if item.is_instance_of(categories::SMARTPHONE_MODEL) {
-                            Some(knowledge::Category::Smartphone)
-                        } else {
-                            None
-                        };
-
+                if let Some(name) = item.get_label(consumers_wikidata::data::Language::En) {
+                    // Gther all products
+                    if sources.is_product(item) {
                         let product = knowledge::Product {
                             id: item.id.clone(),
                             name: name.to_string(),
@@ -145,7 +144,7 @@ impl Processor for CondensingProcessor {
                                 .get(LANG_EN)
                                 .map(|desc| desc.value.clone())
                                 .unwrap_or_default(),
-                            category,
+                            categories: Self::extract_categories(item),
                             manufacturer_ids: item.get_manufacturer_ids(),
                             follows: item.get_follows(),
                             followed_by: item.get_followed_by(),
@@ -156,7 +155,7 @@ impl Processor for CondensingProcessor {
                     }
 
                     // Collect all organisations
-                    if Self::is_organisation(item, sources) {
+                    if sources.is_organisation(item) {
                         let websites = item.get_official_websites();
                         let domains: HashSet<String> = if let Some(websites) = &websites {
                             websites
@@ -196,6 +195,7 @@ impl Processor for CondensingProcessor {
 
     /// Saves the result into files.
     fn finalize(
+        &self,
         collector: &Self::Collector,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {

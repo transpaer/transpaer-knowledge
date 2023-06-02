@@ -48,6 +48,9 @@ pub enum ProcessingError {
 
     #[error("Config check: {0}")]
     Check(CheckError),
+
+    #[error("Mutex lock")]
+    MutexLock,
 }
 
 impl From<std::io::Error> for ProcessingError {
@@ -83,6 +86,12 @@ impl From<tokio::task::JoinError> for ProcessingError {
 impl From<async_channel::SendError<std::string::String>> for ProcessingError {
     fn from(error: async_channel::SendError<std::string::String>) -> Self {
         Self::Channel(error)
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for ProcessingError {
+    fn from(_error: std::sync::PoisonError<T>) -> Self {
+        Self::MutexLock
     }
 }
 

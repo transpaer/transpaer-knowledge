@@ -10,5 +10,8 @@ pub const FOLLOWED_BY: &str = "P156";
 /// "Manufacturer" property.
 pub const MANUFACTURER: &str = "P176";
 
+/// "Subclass of" property.
+pub const SUBCLASS_OF: &str = "P279";
+
 /// "Official website" property.
 pub const OFFICIAL_WEBSITE: &str = "P856";

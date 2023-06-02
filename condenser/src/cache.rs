@@ -9,13 +9,9 @@ use consumers_collecting::errors::IoOrSerdeError;
 pub struct Wikidata {
     /// Manufacturer IDs.
     pub manufacturer_ids: Vec<consumers_wikidata::data::Id>,
-}
 
-impl Wikidata {
-    /// Checks if the passed ID belongs to a known manufacturer.
-    pub fn has_manufacturer_id(&self, id: &consumers_wikidata::data::Id) -> bool {
-        self.manufacturer_ids.contains(id)
-    }
+    /// All entry classes.
+    pub classes: Vec<consumers_wikidata::data::Id>,
 }
 
 /// Reads in the cache data.

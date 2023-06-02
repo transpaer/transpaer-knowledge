@@ -2,7 +2,7 @@
 
 use crate::errors;
 
-/// Extracits domain from a URL.
+/// Extracts domain from a URL.
 pub fn extract_domain_from_url(url: &str) -> String {
     let mut domain = url;
     if domain.starts_with("http://") {
@@ -18,6 +18,18 @@ pub fn extract_domain_from_url(url: &str) -> String {
         domain = host;
     }
     domain.to_lowercase()
+}
+
+/// Extracits domains from multiple URLs.
+pub fn extract_domains_from_urls<U>(websites: &[U]) -> std::collections::HashSet<String>
+where
+    U: AsRef<str>,
+{
+    let mut result = std::collections::HashSet::<String>::new();
+    for website in websites {
+        result.insert(extract_domain_from_url(website.as_ref()));
+    }
+    result
 }
 
 /// Checks is the path exists and is a file.

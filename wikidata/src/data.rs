@@ -56,6 +56,27 @@ impl PartialEq<Id> for &str {
     }
 }
 
+/// All supported languages.
+pub enum Language {
+    En,
+}
+
+impl Language {
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::En => "en",
+        }
+    }
+}
+
+/// Represents Wikidata redirection.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Redirection {
+    from: Id,
+    to: Id,
+}
+
 /// Represents a Wikidata label.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -335,6 +356,9 @@ pub struct Item {
     pub ns: Option<u64>,
     pub lastrevid: u64,
     pub modified: Option<String>,
+
+    /// Redirection.
+    pub redirects: Option<Redirection>,
 
     /// Short names of the item in various languages.
     pub labels: HashMap<String, Label>,

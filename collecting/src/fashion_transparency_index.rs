@@ -5,15 +5,15 @@ pub mod data {
     /// Record in Fashion Transparency Index data.
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Entry {
-        /// XXX
+        /// Name of the company.
         #[serde(rename = "name")]
         pub name: String,
 
-        /// XXX
+        /// ID of the copmpany in Wikidata.
         #[serde(rename = "wiki")]
         pub wikidata_id: consumers_wikidata::data::Id,
 
-        /// XXX
+        /// Score of the company in the Fashion Transparency Index.
         #[serde(rename = "score")]
         pub score: usize,
     }

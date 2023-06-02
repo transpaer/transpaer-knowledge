@@ -6,7 +6,7 @@ use consumers_collecting::{
     bcorp, consumers, errors::IoOrSerdeError, fashion_transparency_index, tco,
 };
 
-use crate::utils;
+use crate::{cache, utils};
 
 /// Holds the information read from the `BCorp` data.
 pub struct BCorpAdvisor {
@@ -109,9 +109,65 @@ impl FashionTransparencyIndexAdvisor {
         }
     }
 
+    /// Checks if the company is known.
+    pub fn has_company(&self, company_id: &consumers_wikidata::data::Id) -> bool {
+        self.entries.contains_key(company_id)
+    }
+
     /// Get the score for the given company.
     pub fn get_score(&self, company_id: &consumers_wikidata::data::Id) -> Option<usize> {
         self.entries.get(company_id).copied()
+    }
+}
+
+/// Holds the information read from the Wikidata data.
+#[derive(Debug)]
+pub struct WikidataAdvisor {
+    /// Topic info.
+    manufacturer_ids: HashSet<consumers_wikidata::data::Id>,
+
+    /// Topic info.
+    class_ids: HashSet<consumers_wikidata::data::Id>,
+}
+
+impl WikidataAdvisor {
+    /// Constructs a new `WikidataAdvisor` with loaded data.
+    pub fn new(cache: &cache::Wikidata) -> Self {
+        Self {
+            manufacturer_ids: cache.manufacturer_ids.iter().cloned().collect(),
+            class_ids: cache.classes.iter().cloned().collect(),
+        }
+    }
+
+    /// Constructs a new `WikidataAdvisor` with no data.
+    pub fn new_empty() -> Self {
+        Self { manufacturer_ids: HashSet::new(), class_ids: HashSet::new() }
+    }
+
+    /// Loads a new `WikidataAdvisor` from a file.
+    pub fn load<P>(path: P) -> Result<Self, IoOrSerdeError>
+    where
+        P: AsRef<std::path::Path> + std::fmt::Debug,
+    {
+        if utils::is_path_ok(path.as_ref()) {
+            let data = cache::load(path.as_ref())?;
+            Ok(Self::new(&data))
+        } else {
+            log::warn!(
+                "Could not access {path:?}. Fashion Transparency Index data won't be loaded!"
+            );
+            Ok(Self::new_empty())
+        }
+    }
+
+    /// Checks if the passed ID belongs to a known manufacturer.
+    pub fn has_manufacturer_id(&self, id: &consumers_wikidata::data::Id) -> bool {
+        self.manufacturer_ids.contains(id)
+    }
+
+    /// Checks if the passed ID belongs to a known item class.
+    pub fn has_class_id(&self, id: &consumers_wikidata::data::Id) -> bool {
+        self.class_ids.contains(id)
     }
 }
 

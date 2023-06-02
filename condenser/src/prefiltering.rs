@@ -52,6 +52,9 @@ impl Sourceable for PrefilteringSources {
 pub struct PrefilteringCollector {
     /// IDs of manufacturers.
     manufacturer_ids: HashSet<knowledge::Id>,
+
+    /// IDs of product classes.
+    classes: HashSet<knowledge::Id>,
 }
 
 impl PrefilteringCollector {
@@ -60,19 +63,31 @@ impl PrefilteringCollector {
             self.manufacturer_ids.insert(id.clone());
         }
     }
+
+    pub fn add_classes(&mut self, classes: &[knowledge::Id]) {
+        self.classes.extend(classes.iter().cloned());
+    }
 }
 
 impl merge::Merge for PrefilteringCollector {
     fn merge(&mut self, other: Self) {
         self.manufacturer_ids.extend(other.manufacturer_ids);
+        self.classes.extend(other.classes);
     }
 }
 
 impl Collectable for PrefilteringCollector {}
 
 /// Filters product entries out from the wikidata dump file.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PrefilteringProcessor;
+
+impl PrefilteringProcessor {
+    /// Constructs a new `PrefilteringProcessor`.
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 impl Processor for PrefilteringProcessor {
     type Config = config::PrefilteringConfig;
@@ -82,6 +97,7 @@ impl Processor for PrefilteringProcessor {
 
     /// Handles one Wikidata entity.
     fn handle_entity(
+        &self,
         _msg: &str,
         entity: &Entity,
         _sources: &Self::Sources,
@@ -93,6 +109,12 @@ impl Processor for PrefilteringProcessor {
                 if let Some(manufacturer_ids) = item.get_manufacturer_ids() {
                     collector.add_manufacturer_ids(&manufacturer_ids);
                 }
+                if let Some(class_ids) = item.get_superclasses() {
+                    collector.add_classes(&class_ids);
+                }
+                if let Some(class_ids) = item.get_classes() {
+                    collector.add_classes(&class_ids);
+                }
             }
             Entity::Property(_property) => (),
         }
@@ -101,13 +123,16 @@ impl Processor for PrefilteringProcessor {
 
     /// Saves the result into files.
     fn finalize(
+        &self,
         collector: &Self::Collector,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         log::info!("Found {} manufacturers", collector.manufacturer_ids.len());
+        log::info!("Found {} products or classes", collector.classes.len());
 
         let cache = cache::Wikidata {
             manufacturer_ids: collector.manufacturer_ids.iter().cloned().collect(),
+            classes: collector.classes.iter().cloned().collect(),
         };
 
         let contents = serde_json::to_string_pretty(&cache)?;
