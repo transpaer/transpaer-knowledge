@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use async_trait::async_trait;
 
-use consumers_wikidata::data::Entity;
+use sustainity_wikidata::data::Entity;
 
 use crate::{errors, future_pool};
 

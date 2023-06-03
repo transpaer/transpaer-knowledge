@@ -17,11 +17,11 @@ pub struct FullSources {
 
 impl FullSources {
     #[allow(clippy::unused_self)]
-    pub fn is_product(&self, item: &consumers_wikidata::data::Item) -> bool {
+    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
         item.has_manufacturer()
     }
 
-    pub fn is_organisation(&self, item: &consumers_wikidata::data::Item) -> bool {
+    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
         if self.wikidata.has_manufacturer_id(&item.id) {
             return true;
         }

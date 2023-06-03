@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use merge::Merge;
 
-use consumers_wikidata::data::Entity;
+use sustainity_wikidata::data::{Entity, Item, Language};
 
 use crate::{
     categories, config, errors, knowledge,
@@ -18,7 +18,7 @@ const LANG_EN: &str = "en";
 #[derive(Debug)]
 pub struct CondensingEssentials {
     /// Product data loader.
-    data: consumers_wikidata::dump::Loader,
+    data: sustainity_wikidata::dump::Loader,
 }
 
 #[async_trait]
@@ -26,7 +26,7 @@ impl Essential for CondensingEssentials {
     type Config = config::CondensationConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { data: consumers_wikidata::dump::Loader::load(&config.wikidata_source_path)? })
+        Ok(Self { data: sustainity_wikidata::dump::Loader::load(&config.wikidata_source_path)? })
     }
 
     async fn run(
@@ -81,7 +81,7 @@ impl CondensingProcessor {
     }
 
     /// Checks if the passed item is an instance of at least of one of the passed categories.
-    fn has_categories(item: &consumers_wikidata::data::Item, categories: &[&str]) -> bool {
+    fn has_categories(item: &Item, categories: &[&str]) -> bool {
         for category in categories {
             if item.is_instance_of(category) {
                 return true;
@@ -91,7 +91,7 @@ impl CondensingProcessor {
     }
 
     /// Extracts categories from an item.
-    fn extract_categories(item: &consumers_wikidata::data::Item) -> knowledge::Categories {
+    fn extract_categories(item: &Item) -> knowledge::Categories {
         knowledge::Categories {
             smartphone: Self::has_categories(item, categories::SMARTPHONE),
             smartwatch: Self::has_categories(item, categories::SMARTWATCH),
@@ -133,7 +133,7 @@ impl Processor for CondensingProcessor {
     ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
-                if let Some(name) = item.get_label(consumers_wikidata::data::Language::En) {
+                if let Some(name) = item.get_label(Language::En) {
                     // Gther all products
                     if sources.is_product(item) {
                         let product = knowledge::Product {

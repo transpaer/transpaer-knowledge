@@ -1,5 +1,5 @@
 [package]
-name = "consumers-collecting"
+name = "sustainity-collecting"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,4 +11,4 @@ serde_json = { version = "1.0" }
 serde_yaml = { version = "0.9" }
 thiserror = { version = "1.0" }
 
-consumers-wikidata = { path = "../wikidata" }
+sustainity-wikidata = { path = "../wikidata" }

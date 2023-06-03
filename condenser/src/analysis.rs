@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 
-use consumers_wikidata::data::{Entity, Item};
+use sustainity_wikidata::data::{Entity, Item, Language};
 
 use crate::{
     advisors, config, errors, knowledge,
@@ -294,7 +294,7 @@ impl Class {
 #[derive(Debug)]
 pub struct AnalysisEssentials {
     /// Product data loader.
-    data: consumers_wikidata::dump::Loader,
+    data: sustainity_wikidata::dump::Loader,
 }
 
 #[async_trait]
@@ -303,7 +303,7 @@ impl Essential for AnalysisEssentials {
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         Ok(Self {
-            data: consumers_wikidata::dump::Loader::load(&config.wikidata_filtered_dump_path)?,
+            data: sustainity_wikidata::dump::Loader::load(&config.wikidata_filtered_dump_path)?,
         })
     }
 
@@ -437,7 +437,7 @@ impl Processor for AnalysisProcessor {
     ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
-                if let Some(label) = item.get_label(consumers_wikidata::data::Language::En) {
+                if let Some(label) = item.get_label(Language::En) {
                     if Self::is_class(item, sources) {
                         match Self::to_num_id(&item.id) {
                             Ok(id) => {

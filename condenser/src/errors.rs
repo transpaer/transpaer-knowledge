@@ -1,7 +1,7 @@
 use thiserror::Error;
 
-use consumers_collecting::errors::IoOrSerdeError;
-use consumers_wikidata::dump::LoaderError;
+use sustainity_collecting::errors::IoOrSerdeError;
+use sustainity_wikidata::dump::LoaderError;
 
 /// Error returned if config checking failed.
 #[derive(Error, Debug)]

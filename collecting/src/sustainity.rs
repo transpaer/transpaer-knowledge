@@ -1,8 +1,8 @@
-/// Data structures for parsing consumers data.
+/// Data structures for parsing sustainity data.
 pub mod data {
     use serde::{Deserialize, Serialize};
 
-    /// Consumers topic entry.
+    /// Sustainity topic entry.
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Info {
         #[serde(rename = "id")]
@@ -16,12 +16,12 @@ pub mod data {
     }
 }
 
-/// Reader to loading consumers data.
+/// Reader to loading sustainity data.
 pub mod reader {
     use super::data::Info;
     use crate::errors::IoOrSerdeError;
 
-    /// Loads the consumers data from a file.
+    /// Loads the sustainity data from a file.
     ///
     /// # Errors
     ///

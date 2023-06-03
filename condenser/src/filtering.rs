@@ -2,7 +2,7 @@ use std::io::Write;
 
 use async_trait::async_trait;
 
-use consumers_wikidata::data::{Entity, Item};
+use sustainity_wikidata::data::{Entity, Item};
 
 use crate::{
     config, errors,
@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug)]
 pub struct FilteringEssentials {
     /// Wikidata dump file loader.
-    wiki: consumers_wikidata::dump::Loader,
+    wiki: sustainity_wikidata::dump::Loader,
 }
 
 #[async_trait]
@@ -22,7 +22,7 @@ impl Essential for FilteringEssentials {
     type Config = config::FilteringConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: consumers_wikidata::dump::Loader::load(&config.wikidata_full_dump_path)? })
+        Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_full_dump_path)? })
     }
 
     async fn run(

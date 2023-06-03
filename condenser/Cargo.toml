@@ -1,5 +1,5 @@
 [package]
-name = "consumers-condenser"
+name = "sustainity-condenser"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,5 +20,5 @@ serde_yaml = { version = "0.9" }
 thiserror = { version = "1.0" }
 tokio = { version = "1.24", features = ["full"] }
 
-consumers-wikidata = { path = "../wikidata" }
-consumers-collecting = { path = "../collecting" }
+sustainity-wikidata = { path = "../wikidata" }
+sustainity-collecting = { path = "../collecting" }
