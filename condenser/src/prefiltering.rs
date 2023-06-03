@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 
-use consumers_wikidata::data::Entity;
+use sustainity_wikidata::data::Entity;
 
 use crate::{
     cache, config, errors, knowledge,
@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug)]
 pub struct PrefilteringEssentials {
     /// Wikidata dump file loader.
-    wiki: consumers_wikidata::dump::Loader,
+    wiki: sustainity_wikidata::dump::Loader,
 }
 
 #[async_trait]
@@ -22,7 +22,7 @@ impl Essential for PrefilteringEssentials {
     type Config = config::PrefilteringConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: consumers_wikidata::dump::Loader::load(&config.wikidata_dump_path)? })
+        Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_dump_path)? })
     }
 
     async fn run(

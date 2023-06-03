@@ -231,7 +231,7 @@ impl CondensationConfig {
 #[derive(Clone, Debug)]
 pub struct TranscriptionConfig {
     /// Path to the output info file.
-    pub consumers_path: std::path::PathBuf,
+    pub sustainity_path: std::path::PathBuf,
 
     /// Path to the output info file.
     pub target_info_path: std::path::PathBuf,
@@ -243,14 +243,14 @@ impl TranscriptionConfig {
         let input_data = std::path::PathBuf::from(&args.input_data);
         let output_data = std::path::PathBuf::from(&args.output_data);
         Self {
-            consumers_path: input_data.join("consumers.yaml"),
+            sustainity_path: input_data.join("sustainity.yaml"),
             target_info_path: output_data.join("info.json"),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), CheckError> {
-        utils::path_exists(&self.consumers_path)?;
+        utils::path_exists(&self.sustainity_path)?;
         utils::path_creatable(&self.target_info_path)?;
         Ok(())
     }

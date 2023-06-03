@@ -1,6 +1,6 @@
-//! Extensions for types from `consumers_wikidata` crate.
+//! Extensions for types from `sustainity_wikidata` crate.
 
-use consumers_wikidata::{data, properties};
+use sustainity_wikidata::{data, properties};
 
 pub mod items {
     pub const ACTION_FIGURE: &str = "Q343566";

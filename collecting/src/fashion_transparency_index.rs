@@ -11,7 +11,7 @@ pub mod data {
 
         /// ID of the copmpany in Wikidata.
         #[serde(rename = "wiki")]
-        pub wikidata_id: consumers_wikidata::data::Id,
+        pub wikidata_id: sustainity_wikidata::data::Id,
 
         /// Score of the company in the Fashion Transparency Index.
         #[serde(rename = "score")]

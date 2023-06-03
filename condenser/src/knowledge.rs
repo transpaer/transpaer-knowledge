@@ -3,7 +3,7 @@
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 
-pub use consumers_wikidata::data::Id;
+pub use sustainity_wikidata::data::Id;
 
 /// Defines a product categories.
 #[allow(clippy::struct_excessive_bools)] // TODO: perhaps rework as an array (depends on DB query  performance)

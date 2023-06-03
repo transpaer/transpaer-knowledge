@@ -2,16 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
-use consumers_collecting::errors::IoOrSerdeError;
+use sustainity_collecting::errors::IoOrSerdeError;
 
 /// Cached data from search over Wikidata data.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Wikidata {
     /// Manufacturer IDs.
-    pub manufacturer_ids: Vec<consumers_wikidata::data::Id>,
+    pub manufacturer_ids: Vec<sustainity_wikidata::data::Id>,
 
     /// All entry classes.
-    pub classes: Vec<consumers_wikidata::data::Id>,
+    pub classes: Vec<sustainity_wikidata::data::Id>,
 }
 
 /// Reads in the cache data.
