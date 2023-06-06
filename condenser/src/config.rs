@@ -1,69 +1,86 @@
 use clap::{Parser, Subcommand};
 
-use crate::{errors::CheckError, utils};
+use crate::{errors::ConfigCheckError, utils};
 
 /// Arguments of the `prefilter` command.
 #[derive(Parser, Debug)]
 pub struct PrefilteringArgs {
-    /// Input data directory.
+    /// Origin data directory.
     #[arg(long)]
-    input_data: String,
+    origin: String,
 
-    /// Output cache directory.
+    /// Cache directory.
     #[arg(long)]
-    output_cache: String,
+    cache: String,
 }
 
 /// Arguments of the `filter` command.
 #[derive(Parser, Debug)]
 pub struct FilteringArgs {
-    /// Input data directory.
+    /// Origin data directory.
     #[arg(long)]
-    input_data: String,
+    origin: String,
 
-    /// Input cache directory.
+    /// Source data directory.
     #[arg(long)]
-    input_cache: String,
+    source: String,
 
-    /// Output cache directory.
+    /// Cache directory.
     #[arg(long)]
-    output_cache: String,
+    cache: String,
 }
 
 /// Arguments of the `condense` command.
 #[derive(Parser, Debug)]
 pub struct CondensationArgs {
-    /// Input data directory.
+    /// Origin data directory.
     #[arg(long)]
-    input_data: String,
+    origin: String,
 
-    /// Output data directory.
+    /// Source data directory.
     #[arg(long)]
-    output_data: String,
+    source: String,
 
-    /// Input cache directory.
+    /// Cache directory.
     #[arg(long)]
-    input_cache: String,
+    cache: String,
+
+    /// Target data directory.
+    #[arg(long)]
+    target: String,
 }
 
 /// Arguments of the `transcribe` command.
 #[derive(Parser, Debug)]
 pub struct TranscriptionArgs {
-    /// Input data directory.
+    /// Source data directory.
     #[arg(long)]
-    input_data: String,
+    source: String,
 
-    /// Output data directory.
+    /// Target data directory.
     #[arg(long)]
-    output_data: String,
+    target: String,
 }
 
 /// Arguments of the `analyse` command.
 #[derive(Parser, Debug)]
 pub struct AnalysisArgs {
-    /// Input cache directory.
+    /// Cache directory.
     #[arg(long)]
-    input_cache: String,
+    cache: String,
+}
+
+/// Arguments of the `connect` command.
+#[derive(Parser, Debug)]
+pub struct ConnectionArgs {
+    #[arg(long)]
+    wikidata_path: String,
+
+    #[arg(long)]
+    input_path: String,
+
+    #[arg(long)]
+    output_path: String,
 }
 
 /// All arguments of the program.
@@ -74,6 +91,7 @@ pub enum Commands {
     Condense(CondensationArgs),
     Transcribe(TranscriptionArgs),
     Analyze(AnalysisArgs),
+    Connect(ConnectionArgs),
 }
 
 /// Program arguments.
@@ -94,6 +112,12 @@ pub struct SourcesConfig {
     /// Path to BCorp data.
     pub bcorp_path: std::path::PathBuf,
 
+    /// Path to original EU Ecolabel data.
+    pub eu_ecolabel_original_path: std::path::PathBuf,
+
+    /// Path to Wikidata ID map data for EU Ecolabel data.
+    pub eu_ecolabel_match_path: std::path::PathBuf,
+
     /// Path to TCO data.
     pub tco_path: std::path::PathBuf,
 
@@ -102,21 +126,23 @@ pub struct SourcesConfig {
 }
 
 impl SourcesConfig {
-    /// Constructs a new `CondensationConfig`.
-    pub fn new(input_data: &str, input_cache: &str) -> SourcesConfig {
-        let input_cache = std::path::PathBuf::from(input_cache);
-        let input_data = std::path::PathBuf::from(input_data);
+    /// Constructs a new `SourceConfig`.
+    pub fn new(origin: &str, source: &str, cache: &str) -> SourcesConfig {
+        let source = std::path::PathBuf::from(source);
+        let origin = std::path::PathBuf::from(origin);
+        let cache = std::path::PathBuf::from(cache);
         Self {
-            wikidata_cache_path: input_cache.join("wikidata_cache.json"),
-            bcorp_path: input_data.join("bcorp.csv"),
-            tco_path: input_data.join("tco.yaml"),
-            fashion_transparency_index_path: input_data
-                .join("sustainity_fashion_transparency_index.yaml"),
+            wikidata_cache_path: cache.join("wikidata_cache.json"),
+            bcorp_path: origin.join("bcorp.csv"),
+            eu_ecolabel_original_path: origin.join("eu_ecolabel_products.csv"),
+            eu_ecolabel_match_path: source.join("eu_ecolabel.yaml"),
+            tco_path: source.join("tco.yaml"),
+            fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
         utils::path_exists(&self.bcorp_path)?;
         utils::path_exists(&self.tco_path)?;
@@ -138,16 +164,16 @@ pub struct PrefilteringConfig {
 impl PrefilteringConfig {
     /// Constructs a new `Prefiltering`.
     pub fn new(args: &PrefilteringArgs) -> PrefilteringConfig {
-        let input_data = std::path::PathBuf::from(&args.input_data);
-        let output_cache = std::path::PathBuf::from(&args.output_cache);
+        let origin = std::path::PathBuf::from(&args.origin);
+        let cache = std::path::PathBuf::from(&args.cache);
         Self {
-            wikidata_dump_path: input_data.join("wikidata-20230417-all.json.gz"),
-            wikidata_cache_path: output_cache.join("wikidata_cache.json"),
+            wikidata_dump_path: origin.join("wikidata-20230417-all.json.gz"),
+            wikidata_cache_path: cache.join("wikidata_cache.json"),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_dump_path)?;
         utils::path_creatable(&self.wikidata_cache_path)?;
         Ok(())
@@ -170,17 +196,17 @@ pub struct FilteringConfig {
 impl FilteringConfig {
     /// Constructs a new `FilteringConfig`.
     pub fn new(args: &FilteringArgs) -> FilteringConfig {
-        let input_data = std::path::PathBuf::from(&args.input_data);
-        let output_cache = std::path::PathBuf::from(&args.output_cache);
+        let origin = std::path::PathBuf::from(&args.origin);
+        let cache = std::path::PathBuf::from(&args.cache);
         Self {
-            wikidata_full_dump_path: input_data.join("wikidata-20230417-all.json.gz"),
-            wikidata_filtered_dump_path: output_cache.join("wikidata.jsonl"),
-            sources: SourcesConfig::new(&args.input_data, &args.input_cache),
+            wikidata_full_dump_path: origin.join("wikidata-20230417-all.json.gz"),
+            wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
+            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_full_dump_path)?;
         utils::path_creatable(&self.wikidata_filtered_dump_path)?;
         self.sources.check()?;
@@ -207,18 +233,18 @@ pub struct CondensationConfig {
 impl CondensationConfig {
     /// Constructs a new `CondensationConfig`.
     pub fn new(args: &CondensationArgs) -> CondensationConfig {
-        let input_cache = std::path::PathBuf::from(&args.input_cache);
-        let output_data = std::path::PathBuf::from(&args.output_data);
+        let cache = std::path::PathBuf::from(&args.cache);
+        let target = std::path::PathBuf::from(&args.target);
         Self {
-            wikidata_source_path: input_cache.join("wikidata.jsonl"),
-            target_products_path: output_data.join("products.json"),
-            target_organisations_path: output_data.join("organisations.json"),
-            sources: SourcesConfig::new(&args.input_data, &args.input_cache),
+            wikidata_source_path: cache.join("wikidata.jsonl"),
+            target_products_path: target.join("products.json"),
+            target_organisations_path: target.join("organisations.json"),
+            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_source_path)?;
         utils::path_creatable(&self.target_products_path)?;
         utils::path_creatable(&self.target_organisations_path)?;
@@ -230,28 +256,28 @@ impl CondensationConfig {
 /// Configuration for the `transcribe` command.
 #[derive(Clone, Debug)]
 pub struct TranscriptionConfig {
-    /// Path to the output info file.
-    pub sustainity_path: std::path::PathBuf,
+    /// Path to the input library file.
+    pub library_source_path: std::path::PathBuf,
 
-    /// Path to the output info file.
-    pub target_info_path: std::path::PathBuf,
+    /// Path to the output library file.
+    pub library_target_path: std::path::PathBuf,
 }
 
 impl TranscriptionConfig {
     //i/ Constructs a new `TranscriptionConfig`.
     pub fn new(args: &TranscriptionArgs) -> TranscriptionConfig {
-        let input_data = std::path::PathBuf::from(&args.input_data);
-        let output_data = std::path::PathBuf::from(&args.output_data);
+        let source = std::path::PathBuf::from(&args.source);
+        let target = std::path::PathBuf::from(&args.target);
         Self {
-            sustainity_path: input_data.join("sustainity.yaml"),
-            target_info_path: output_data.join("library.json"),
+            library_source_path: source.join("sustainity_library.yaml"),
+            library_target_path: target.join("library.json"),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
-        utils::path_exists(&self.sustainity_path)?;
-        utils::path_creatable(&self.target_info_path)?;
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::path_exists(&self.library_source_path)?;
+        utils::path_creatable(&self.library_target_path)?;
         Ok(())
     }
 }
@@ -269,17 +295,49 @@ pub struct AnalysisConfig {
 impl AnalysisConfig {
     /// Constructs a new `FilteringConfig`.
     pub fn new(args: &AnalysisArgs) -> AnalysisConfig {
-        let input_cache = std::path::PathBuf::from(&args.input_cache);
+        let cache = std::path::PathBuf::from(&args.cache);
         Self {
-            wikidata_cache_path: input_cache.join("wikidata_cache.json"),
-            wikidata_filtered_dump_path: input_cache.join("wikidata.jsonl"),
+            wikidata_cache_path: cache.join("wikidata_cache.json"),
+            wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
         }
     }
 
     /// Checks validity of the configuration.
-    pub fn check(&self) -> Result<(), CheckError> {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
         utils::path_exists(&self.wikidata_filtered_dump_path)?;
+        Ok(())
+    }
+}
+
+/// Configuration for the `connect` command.
+#[derive(Clone, Debug)]
+pub struct ConnectionConfig {
+    /// Path to Wikidata data.
+    pub wikidata_path: std::path::PathBuf,
+
+    /// Path to input data file.
+    pub input_path: std::path::PathBuf,
+
+    /// Path to output mapping file.
+    pub output_path: std::path::PathBuf,
+}
+
+impl ConnectionConfig {
+    /// Constructs a new `ConnectionConfig`.
+    pub fn new(args: &ConnectionArgs) -> ConnectionConfig {
+        Self {
+            wikidata_path: std::path::PathBuf::from(&args.wikidata_path),
+            input_path: std::path::PathBuf::from(&args.input_path),
+            output_path: std::path::PathBuf::from(&args.output_path),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::path_exists(&self.wikidata_path)?;
+        utils::path_exists(&self.input_path)?;
+        utils::path_creatable(&self.output_path)?;
         Ok(())
     }
 }
@@ -308,6 +366,12 @@ impl AsRef<AnalysisConfig> for AnalysisConfig {
     }
 }
 
+impl AsRef<ConnectionConfig> for ConnectionConfig {
+    fn as_ref(&self) -> &ConnectionConfig {
+        self
+    }
+}
+
 /// Configuration for the program.
 #[derive(Debug, Clone)]
 pub enum Config {
@@ -316,6 +380,7 @@ pub enum Config {
     Condensation(CondensationConfig),
     Transcription(TranscriptionConfig),
     Analysis(AnalysisConfig),
+    Connection(ConnectionConfig),
 }
 
 impl Config {
@@ -328,6 +393,7 @@ impl Config {
             Commands::Condense(args) => Config::Condensation(CondensationConfig::new(&args)),
             Commands::Transcribe(args) => Config::Transcription(TranscriptionConfig::new(&args)),
             Commands::Analyze(args) => Config::Analysis(AnalysisConfig::new(&args)),
+            Commands::Connect(args) => Config::Connection(ConnectionConfig::new(&args)),
         }
     }
 }

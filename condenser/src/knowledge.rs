@@ -79,6 +79,10 @@ pub struct Categories {
     #[serde(rename = "musical_instrument")]
     pub musical_instrument: bool,
 
+    /// Washing mascine
+    #[serde(rename = "washing_machine")]
+    pub washing_machine: bool,
+
     /// Car
     #[serde(rename = "car")]
     pub car: bool,
@@ -108,12 +112,41 @@ pub struct Categories {
     pub toy: bool,
 }
 
+impl Categories {
+    pub fn has_category(&self) -> bool {
+        self.smartphone
+            || self.smartwatch
+            || self.tablet
+            || self.laptop
+            || self.computer
+            || self.game_console
+            || self.game_controller
+            || self.camera
+            || self.camera_lens
+            || self.microprocessor
+            || self.calculator
+            || self.musical_instrument
+            || self.washing_machine
+            || self.car
+            || self.motorcycle
+            || self.boat
+            || self.drone
+            || self.drink
+            || self.food
+            || self.toy
+    }
+}
+
 /// Lists known certifications.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Merge)]
 pub struct Certifications {
     /// Manufacturer certifiad by BCorp.
     #[merge(strategy = merge::bool::overwrite_false)]
     pub bcorp: bool,
+
+    /// Manufacturer certified by EU Ecolabel.
+    #[merge(strategy = merge::bool::overwrite_false)]
+    pub eu_ecolabel: bool,
 
     /// Manufacturer certifiad by TCO.
     #[merge(strategy = merge::bool::overwrite_false)]

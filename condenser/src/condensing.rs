@@ -9,7 +9,7 @@ use crate::{
     categories, config, errors, knowledge,
     processing::{Collectable, Essential, Processor},
     sources, utils,
-    wikidata::ItemExt,
+    wikidata::{ignored, ItemExt},
 };
 
 const LANG_EN: &str = "en";
@@ -105,6 +105,7 @@ impl CondensingProcessor {
             camera_lens: Self::has_categories(item, categories::CAMERA_LENS),
             microprocessor: Self::has_categories(item, categories::MICROPROCESSOR),
             musical_instrument: Self::has_categories(item, categories::MUSICAL_INSTRUMENT),
+            washing_machine: Self::has_categories(item, categories::WASHING_MACHINE),
             car: Self::has_categories(item, categories::CAR),
             motorcycle: Self::has_categories(item, categories::MOTORCYCLE),
             boat: Self::has_categories(item, categories::BOAT),
@@ -122,6 +123,15 @@ impl Processor for CondensingProcessor {
     type Sources = sources::FullSources;
     type Collector = CondensingCollector;
 
+    fn initialize(
+        &self,
+        _sources: &Self::Sources,
+        _collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        Ok(())
+    }
+
     /// Handles one Wikidata entity.
     fn handle_entity(
         &self,
@@ -134,33 +144,36 @@ impl Processor for CondensingProcessor {
         match entity {
             Entity::Item(item) => {
                 if let Some(name) = item.get_label(Language::En) {
-                    // Gther all products
+                    // Gather all products
                     if sources.is_product(item) {
-                        let product = knowledge::Product {
-                            id: item.id.clone(),
-                            name: name.to_string(),
-                            description: item
-                                .descriptions
-                                .get(LANG_EN)
-                                .map(|desc| desc.value.clone())
-                                .unwrap_or_default(),
-                            images: item
-                                .get_images()
-                                .unwrap_or_default()
-                                .iter()
-                                .map(|i| knowledge::Image {
-                                    image: i.clone(),
-                                    source: knowledge::Source::Wikidata,
-                                })
-                                .collect(),
-                            categories: Self::extract_categories(item),
-                            manufacturer_ids: item.get_manufacturer_ids(),
-                            follows: item.get_follows(),
-                            followed_by: item.get_followed_by(),
-                            certifications: knowledge::Certifications::default(),
-                        };
+                        let categories = Self::extract_categories(item);
+                        if categories.has_category() || !Self::has_categories(item, ignored::ALL) {
+                            let product = knowledge::Product {
+                                id: item.id.clone(),
+                                name: name.to_string(),
+                                description: item
+                                    .descriptions
+                                    .get(LANG_EN)
+                                    .map(|desc| desc.value.clone())
+                                    .unwrap_or_default(),
+                                images: item
+                                    .get_images()
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .map(|i| knowledge::Image {
+                                        image: i.clone(),
+                                        source: knowledge::Source::Wikidata,
+                                    })
+                                    .collect(),
+                                categories,
+                                manufacturer_ids: item.get_manufacturer_ids(),
+                                follows: item.get_follows(),
+                                followed_by: item.get_followed_by(),
+                                certifications: knowledge::Certifications::default(),
+                            };
 
-                        collector.add_product(product);
+                            collector.add_product(product);
+                        }
                     }
 
                     // Collect all organisations
@@ -176,6 +189,7 @@ impl Processor for CondensingProcessor {
                         };
 
                         let is_bcorp = sources.bcorp.has_domains(&domains);
+                        let is_eu_ecolabel = sources.eu_ecolabel.has_company(&item.id);
                         let is_tco = sources.tco.has_company(&item.id);
                         let fti_score = sources.fti.get_score(&item.id);
                         let organisation = knowledge::Organisation {
@@ -198,6 +212,7 @@ impl Processor for CondensingProcessor {
                             websites: websites.unwrap_or_default(),
                             certifications: knowledge::Certifications {
                                 bcorp: is_bcorp,
+                                eu_ecolabel: is_eu_ecolabel,
                                 tco: is_tco,
                                 fti: fti_score,
                             },
@@ -224,8 +239,12 @@ impl Processor for CondensingProcessor {
                 .iter()
                 .map(|m| (m.id.clone(), m.certifications.clone()))
                 .collect();
+        let mut num_categorized_products = 0;
         let mut products = collector.products.clone();
         for product in &mut products {
+            if product.categories.has_category() {
+                num_categorized_products += 1;
+            }
             if let Some(manufacturer_ids) = &product.manufacturer_ids {
                 for manufacturer_id in manufacturer_ids {
                     if let Some(certifications) = organisation_certifications.get(manufacturer_id) {
@@ -236,10 +255,16 @@ impl Processor for CondensingProcessor {
         }
 
         // Save products.
+        log::info!(
+            "Saving {} products. {} are categorized",
+            products.len(),
+            num_categorized_products
+        );
         let contents = serde_json::to_string_pretty(&products)?;
         std::fs::write(&config.target_products_path, contents)?;
 
         // Save organisations.
+        log::info!("Saving {} organisations", collector.organisations.len());
         let contents = serde_json::to_string_pretty(&collector.organisations)?;
         std::fs::write(&config.target_organisations_path, contents)?;
 

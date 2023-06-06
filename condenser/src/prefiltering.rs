@@ -95,6 +95,15 @@ impl Processor for PrefilteringProcessor {
     type Sources = PrefilteringSources;
     type Collector = PrefilteringCollector;
 
+    fn initialize(
+        &self,
+        _sources: &Self::Sources,
+        _collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        Ok(())
+    }
+
     /// Handles one Wikidata entity.
     fn handle_entity(
         &self,

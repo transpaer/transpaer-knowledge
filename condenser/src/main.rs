@@ -9,6 +9,7 @@ mod cache;
 mod categories;
 mod condensing;
 mod config;
+mod connecting;
 mod errors;
 mod filtering;
 mod future_pool;
@@ -48,6 +49,11 @@ async fn run() -> Result<(), errors::ProcessingError> {
             config.check()?;
             log::info!("Start analysis!");
             analysis::AnalysisProcessor::new().process(config).await?;
+        }
+        config::Config::Connection(config) => {
+            config.check()?;
+            log::info!("Start connecting!");
+            connecting::ConnectionProcessor::new().process(config).await?;
         }
     }
     Ok(())

@@ -426,6 +426,15 @@ impl Processor for AnalysisProcessor {
     type Sources = AnalysisSources;
     type Collector = AnalysisCollector;
 
+    fn initialize(
+        &self,
+        _sources: &Self::Sources,
+        _collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        Ok(())
+    }
+
     /// Handles one Wikidata entity.
     fn handle_entity(
         &self,

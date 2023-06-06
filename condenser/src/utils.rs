@@ -38,31 +38,31 @@ pub fn is_path_ok(path: &std::path::Path) -> bool {
 }
 
 /// Verifies that the path exists and is a file.
-pub fn path_exists(path: &std::path::Path) -> Result<(), errors::CheckError> {
+pub fn path_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
-        return Err(errors::CheckError::PathDoesNotExist(path.to_owned()));
+        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
     }
     if !path.is_file() {
-        return Err(errors::CheckError::PathIsNotAFile(path.to_owned()));
+        return Err(errors::ConfigCheckError::PathIsNotAFile(path.to_owned()));
     }
     Ok(())
 }
 
 /// Verifies that the path itself does not exist, but it's parent exists and is a directory.
-pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::CheckError> {
+pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if path.exists() {
-        return Err(errors::CheckError::PathAlreadyExists(path.to_owned()));
+        return Err(errors::ConfigCheckError::PathAlreadyExists(path.to_owned()));
     }
 
     if let Some(base) = path.parent() {
         if !base.exists() {
-            return Err(errors::CheckError::BaseDoesNotExist(path.to_owned()));
+            return Err(errors::ConfigCheckError::BaseDoesNotExist(path.to_owned()));
         }
         if !base.is_dir() {
-            return Err(errors::CheckError::BaseIsNotADirectory(path.to_owned()));
+            return Err(errors::ConfigCheckError::BaseIsNotADirectory(path.to_owned()));
         }
     } else {
-        return Err(errors::CheckError::BaseDoesNotExist(path.to_owned()));
+        return Err(errors::ConfigCheckError::BaseDoesNotExist(path.to_owned()));
     }
 
     Ok(())
