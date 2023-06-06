@@ -1,5 +1,11 @@
+/// "Image" property.
+pub const IMAGE: &str = "P18";
+
 /// "Is instance of" property.
 pub const INSTANCE_OF: &str = "P31";
+
+/// "Logo image" property.
+pub const LOGO_IMAGE: &str = "P154";
 
 /// "Follows" property
 pub const FOLLOWS: &str = "P155";

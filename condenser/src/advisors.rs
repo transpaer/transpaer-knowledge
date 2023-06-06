@@ -174,12 +174,12 @@ impl WikidataAdvisor {
 /// Holds the information read from out internal data set.
 pub struct SustainityAdvisor {
     /// Topic info.
-    info: Vec<sustainity::data::Info>,
+    info: Vec<sustainity::data::LibraryInfo>,
 }
 
 impl SustainityAdvisor {
     /// Constructs a new `SustainityAdvisor`.
-    pub fn new(info: Vec<sustainity::data::Info>) -> Self {
+    pub fn new(info: Vec<sustainity::data::LibraryInfo>) -> Self {
         Self { info }
     }
 
@@ -198,7 +198,7 @@ impl SustainityAdvisor {
     }
 
     /// Returns all info.
-    pub fn get_info(&self) -> &[sustainity::data::Info] {
+    pub fn get_info(&self) -> &[sustainity::data::LibraryInfo] {
         &self.info
     }
 }

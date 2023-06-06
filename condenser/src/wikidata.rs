@@ -184,6 +184,22 @@ pub trait ItemExt {
     #[must_use]
     fn has_official_website(&self) -> bool;
 
+    /// Returns strings associated with the "image" property.
+    #[must_use]
+    fn get_images(&self) -> Option<Vec<String>>;
+
+    /// Checks if has entities linked with "image" property.
+    #[must_use]
+    fn has_image(&self) -> bool;
+
+    /// Returns strings associated with the "logo image" property.
+    #[must_use]
+    fn get_logo_images(&self) -> Option<Vec<String>>;
+
+    /// Checks if has entities linked with "logo image" property.
+    #[must_use]
+    fn has_logo_image(&self) -> bool;
+
     /// Checks if this items is linked to the passed entity with `instalce of` property.
     ///
     /// In simpler words: chacks if this item is an instance of the passed class.
@@ -300,6 +316,26 @@ impl ItemExt for data::Item {
     #[must_use]
     fn has_official_website(&self) -> bool {
         self.has_property(properties::OFFICIAL_WEBSITE)
+    }
+
+    #[must_use]
+    fn get_images(&self) -> Option<Vec<String>> {
+        self.get_strings(properties::IMAGE)
+    }
+
+    #[must_use]
+    fn has_image(&self) -> bool {
+        self.has_property(properties::IMAGE)
+    }
+
+    #[must_use]
+    fn get_logo_images(&self) -> Option<Vec<String>> {
+        self.get_strings(properties::LOGO_IMAGE)
+    }
+
+    #[must_use]
+    fn has_logo_image(&self) -> bool {
+        self.has_property(properties::LOGO_IMAGE)
     }
 
     #[must_use]
