@@ -79,6 +79,9 @@ pub trait Processor: Clone + Sized + 'static {
         config: Self::Config,
     ) -> Self::Collector {
         let mut collector = Self::Collector::default();
+        if let Err(err) = self.initialize(sources.borrow(), &mut collector, &config) {
+            log::error!("Failed to initialize the processor: {}", err);
+        }
         while let Ok(msg) = rx.recv().await {
             let result: Result<Entity, serde_json::Error> = serde_json::from_str(&msg);
             match result {
@@ -96,6 +99,14 @@ pub trait Processor: Clone + Sized + 'static {
         }
         collector
     }
+
+    /// Initializes the processor.
+    fn initialize(
+        &self,
+        sources: &Self::Sources,
+        collector: &mut Self::Collector,
+        config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError>;
 
     /// Handles one Wikidata entity.
     fn handle_entity(

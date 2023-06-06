@@ -134,6 +134,15 @@ impl Processor for FilteringProcessor {
     type Sources = sources::FullSources;
     type Collector = FilteringCollector;
 
+    fn initialize(
+        &self,
+        _sources: &Self::Sources,
+        _collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        Ok(())
+    }
+
     /// Handles one Wikidata entity.
     fn handle_entity(
         &self,

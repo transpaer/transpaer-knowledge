@@ -1,11 +1,12 @@
 use crate::wikidata::items;
 
 pub const SMARTPHONE: &[&str] = &[
-    items::SMARTPHONE_MODEL,
-    items::MOBILE_PHONE,
-    items::SMARTPHONE,
-    items::PHABLET,
     items::CELL_PHONE_MODEL,
+    items::MOBILE_PHONE,
+    items::PHABLET,
+    items::SMARTPHONE,
+    items::SMARTPHONE_MODEL,
+    items::SMARTPHONE_MODEL_SERIES,
 ];
 
 pub const SMARTWATCH: &[&str] = &[items::SMARTWATCH_MODEL];
@@ -47,6 +48,8 @@ pub const MICROPROCESSOR: &[&str] = &[
 ];
 
 pub const CALCULATOR: &[&str] = &[items::CALCULATOR];
+
+pub const WASHING_MACHINE: &[&str] = &[items::WASHING_MACHINE, items::WASHING_MACHINE_MODEL];
 
 pub const MUSICAL_INSTRUMENT: &[&str] =
     &[items::ELECTRIC_GUITAR, items::GUITAR, items::MUSICAL_INSTRUMENT_MODEL];

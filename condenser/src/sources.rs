@@ -8,6 +8,9 @@ pub struct FullSources {
     /// BCorp data.
     pub bcorp: advisors::BCorpAdvisor,
 
+    /// EU Ecolabel data.
+    pub eu_ecolabel: advisors::EuEcolabelAdvisor,
+
     /// TCO data.
     pub tco: advisors::TcoAdvisor,
 
@@ -24,6 +27,10 @@ impl FullSources {
     pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
         if self.is_product(item) {
             return false;
+        }
+
+        if item.is_organisation() {
+            return true;
         }
 
         if self.wikidata.has_manufacturer_id(&item.id) {
@@ -52,11 +59,15 @@ impl Sourceable for FullSources {
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         let wikidata = advisors::WikidataAdvisor::load(&config.wikidata_cache_path)?;
         let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
+        let eu_ecolabel = advisors::EuEcolabelAdvisor::load(
+            &config.eu_ecolabel_original_path,
+            &config.eu_ecolabel_match_path,
+        )?;
         let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
         let fti = advisors::FashionTransparencyIndexAdvisor::load(
             &config.fashion_transparency_index_path,
         )?;
 
-        Ok(Self { wikidata, bcorp, tco, fti })
+        Ok(Self { wikidata, bcorp, eu_ecolabel, tco, fti })
     }
 }

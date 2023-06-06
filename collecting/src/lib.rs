@@ -4,6 +4,7 @@
 
 pub mod bcorp;
 pub mod errors;
+pub mod eu_ecolabel;
 pub mod fashion_transparency_index;
 pub mod sustainity;
 pub mod tco;

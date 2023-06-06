@@ -5,7 +5,7 @@ use sustainity_wikidata::dump::LoaderError;
 
 /// Error returned if config checking failed.
 #[derive(Error, Debug)]
-pub enum CheckError {
+pub enum ConfigCheckError {
     #[error("Path '{0}' does not exist")]
     PathDoesNotExist(std::path::PathBuf),
 
@@ -20,6 +20,14 @@ pub enum CheckError {
 
     #[error("Base of '{0}' is not a directory")]
     BaseIsNotADirectory(std::path::PathBuf),
+}
+
+/// Error related to validating the input data.
+#[derive(Error, Debug)]
+pub enum SourcesCheckError {
+    /// IDs were duplicated while expected to be unique.
+    #[error("Repeated IDs: {0:?}")]
+    RepeatedIds(std::collections::HashSet<sustainity_wikidata::data::Id>),
 }
 
 /// Error returned when a problem with processing.
@@ -47,7 +55,10 @@ pub enum ProcessingError {
     Channel(async_channel::SendError<std::string::String>),
 
     #[error("Config check: {0}")]
-    Check(CheckError),
+    ConfigCheck(ConfigCheckError),
+
+    #[error("Sources check: {0}")]
+    SourcesCheck(SourcesCheckError),
 
     #[error("Mutex lock")]
     MutexLock,
@@ -95,9 +106,15 @@ impl<T> From<std::sync::PoisonError<T>> for ProcessingError {
     }
 }
 
-impl From<CheckError> for ProcessingError {
-    fn from(error: CheckError) -> Self {
-        Self::Check(error)
+impl From<ConfigCheckError> for ProcessingError {
+    fn from(error: ConfigCheckError) -> Self {
+        Self::ConfigCheck(error)
+    }
+}
+
+impl From<SourcesCheckError> for ProcessingError {
+    fn from(error: SourcesCheckError) -> Self {
+        Self::SourcesCheck(error)
     }
 }
 

@@ -21,3 +21,6 @@ pub const SUBCLASS_OF: &str = "P279";
 
 /// "Official website" property.
 pub const OFFICIAL_WEBSITE: &str = "P856";
+
+/// "EU VAT number" property.
+pub const EU_VAT_NUMBER: &str = "P3608";
