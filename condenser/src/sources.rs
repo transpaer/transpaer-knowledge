@@ -21,7 +21,7 @@ pub struct FullSources {
 impl FullSources {
     #[allow(clippy::unused_self)]
     pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
-        item.has_manufacturer()
+        item.has_manufacturer() || item.has_gtin()
     }
 
     pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {

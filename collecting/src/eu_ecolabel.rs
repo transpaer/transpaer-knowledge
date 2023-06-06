@@ -2,14 +2,45 @@
 pub mod data {
     use serde::{Deserialize, Serialize};
 
+    #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+    pub enum ProductOrService {
+        #[serde(rename = "PRODUCT")]
+        Product,
+        #[serde(rename = "SERVICE")]
+        Service,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+    #[serde(untagged)]
+    pub enum StringOrNumber {
+        S(String),
+        N(usize),
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+    #[serde(tag = "code_type", content = "code_value")]
+    pub enum Code {
+        #[serde(rename = "EAN13")]
+        Ean13(usize),
+
+        #[serde(rename = "GTIN14")]
+        Gtin14(usize),
+
+        #[serde(rename = "Internal Producer ID")]
+        Internal(StringOrNumber),
+
+        #[serde(rename = "Other")]
+        Other(StringOrNumber),
+    }
+
     /// Record in a EU Ecolabel data.
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Record {
-        pub product_or_service: String,
+        pub product_or_service: ProductOrService,
         pub licence_number: String,
         pub group_name: String,
-        pub code_type: Option<String>,
-        pub code_value: Option<String>,
+        #[serde(flatten)]
+        pub code: Option<Code>,
         pub product_or_service_name: String,
         pub decision: String,
         pub expiration_date: String,
@@ -17,6 +48,26 @@ pub mod data {
         pub company_country: String,
         pub vat_number: Option<String>,
         pub extract_date: String,
+    }
+
+    impl Record {
+        /// Prepares VAT numebr for easy comparison.
+        ///
+        /// - ensures country prefix is always present
+        /// - the number does not contains special sympbols like " ", "." or "-"
+        #[must_use]
+        pub fn prepare_vat_number(&self) -> Option<String> {
+            if let Some(vat_number) = &self.vat_number {
+                let vat_number = vat_number.replace([' ', '.', '-'], "");
+                if vat_number.starts_with(&self.company_country) {
+                    Some(vat_number)
+                } else {
+                    Some(format!("{}{}", self.company_country, vat_number))
+                }
+            } else {
+                None
+            }
+        }
     }
 }
 

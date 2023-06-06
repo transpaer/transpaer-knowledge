@@ -50,7 +50,7 @@ impl Matcher {
     /// Integrates more data from the given record if that record has more detailed info.
     pub fn absorb(&mut self, record: &eu_ecolabel::data::Record) {
         if record.vat_number.is_some() && self.vat_number.is_none() {
-            self.vat_number = Self::prepare_vat_number(record);
+            self.vat_number = record.prepare_vat_number();
         }
     }
 
@@ -74,25 +74,11 @@ impl Matcher {
     fn prepare_name(name: &str) -> String {
         name.trim().to_lowercase()
     }
-
-    /// Prepares name for easy comparison.
-    fn prepare_vat_number(data: &eu_ecolabel::data::Record) -> Option<String> {
-        if let Some(vat_number) = &data.vat_number {
-            let vat_number = vat_number.replace([' ', '.', '-'], "");
-            if vat_number.starts_with(&data.company_country) {
-                Some(vat_number)
-            } else {
-                Some(format!("{}{}", data.company_country, vat_number))
-            }
-        } else {
-            None
-        }
-    }
 }
 
 impl From<eu_ecolabel::data::Record> for Matcher {
     fn from(r: eu_ecolabel::data::Record) -> Self {
-        Self { name: Self::prepare_name(&r.company_name), vat_number: Self::prepare_vat_number(&r) }
+        Self { name: Self::prepare_name(&r.company_name), vat_number: r.prepare_vat_number() }
     }
 }
 
@@ -106,7 +92,7 @@ struct Entry {
     name: String,
 
     /// IDs with the highest similarity score.
-    ids: HashSet<knowledge::Id>,
+    ids: HashSet<knowledge::WikiStrId>,
 
     /// The value of the similarity score.
     similarity: f64,
@@ -145,7 +131,7 @@ impl From<&Entry> for sustainity::data::NameMatching {
     fn from(entry: &Entry) -> Self {
         Self {
             name: entry.name.clone(),
-            ids: entry.ids.iter().map(|id| id.as_str().to_string()).collect(),
+            ids: entry.ids.iter().cloned().collect(),
             similarity: entry.similarity,
         }
     }
@@ -177,8 +163,12 @@ impl Sourceable for ConnectionSources {
     type Config = config::ConnectionConfig;
 
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
+        let mut categories = HashSet::<String>::new();
         let mut data = HashMap::<String, Entry>::new();
         for record in eu_ecolabel::reader::parse(&config.input_path)? {
+            if record.product_or_service == eu_ecolabel::data::ProductOrService::Product {
+                categories.insert(record.group_name.clone());
+            }
             data.entry(record.company_name.clone())
                 .and_modify(|e| e.matcher.absorb(&record))
                 .or_insert_with(|| record.clone().into());
@@ -269,11 +259,12 @@ impl Processor for ConnectionProcessor {
     fn finalize(
         &self,
         collector: &Self::Collector,
+        _sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         let data: Vec<sustainity::data::NameMatching> =
             collector.data.values().map(Into::into).collect();
-        let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.found()));
+        let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.matched().is_some()));
         log::info!("Matched {} / {} companies", matched, collector.data.len());
 
         let contents = serde_yaml::to_string(&data)?;

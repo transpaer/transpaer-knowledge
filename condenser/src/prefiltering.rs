@@ -51,20 +51,20 @@ impl Sourceable for PrefilteringSources {
 #[derive(Default, Debug)]
 pub struct PrefilteringCollector {
     /// IDs of manufacturers.
-    manufacturer_ids: HashSet<knowledge::Id>,
+    manufacturer_ids: HashSet<knowledge::WikiStrId>,
 
     /// IDs of product classes.
-    classes: HashSet<knowledge::Id>,
+    classes: HashSet<knowledge::WikiStrId>,
 }
 
 impl PrefilteringCollector {
-    pub fn add_manufacturer_ids(&mut self, ids: &[knowledge::Id]) {
+    pub fn add_manufacturer_ids(&mut self, ids: &[knowledge::WikiStrId]) {
         for id in ids {
             self.manufacturer_ids.insert(id.clone());
         }
     }
 
-    pub fn add_classes(&mut self, classes: &[knowledge::Id]) {
+    pub fn add_classes(&mut self, classes: &[knowledge::WikiStrId]) {
         self.classes.extend(classes.iter().cloned());
     }
 }
@@ -134,6 +134,7 @@ impl Processor for PrefilteringProcessor {
     fn finalize(
         &self,
         collector: &Self::Collector,
+        _sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         log::info!("Found {} manufacturers", collector.manufacturer_ids.len());

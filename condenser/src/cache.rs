@@ -8,10 +8,10 @@ use sustainity_collecting::errors::IoOrSerdeError;
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Wikidata {
     /// Manufacturer IDs.
-    pub manufacturer_ids: Vec<sustainity_wikidata::data::Id>,
+    pub manufacturer_ids: Vec<sustainity_wikidata::data::StrId>,
 
     /// All entry classes.
-    pub classes: Vec<sustainity_wikidata::data::Id>,
+    pub classes: Vec<sustainity_wikidata::data::StrId>,
 }
 
 /// Reads in the cache data.

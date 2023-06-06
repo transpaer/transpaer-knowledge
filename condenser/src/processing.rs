@@ -66,7 +66,7 @@ pub trait Processor: Clone + Sized + 'static {
 
         let collector = pool.join().await?;
 
-        self.finalize(&collector, &config)?;
+        self.finalize(&collector, &sources, &config)?;
 
         Ok(())
     }
@@ -124,6 +124,7 @@ pub trait Processor: Clone + Sized + 'static {
     fn finalize(
         &self,
         collector: &Self::Collector,
+        sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError>;
 }

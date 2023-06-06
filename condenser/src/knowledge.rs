@@ -3,7 +3,7 @@
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 
-pub use sustainity_wikidata::data::Id;
+pub use sustainity_collecting::data::{Gtin, OrganisationId, ProductId, VatId, WikiId, WikiStrId};
 
 /// Points to a source of some data.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -113,6 +113,31 @@ pub struct Categories {
 }
 
 impl Categories {
+    pub fn none() -> Self {
+        Self {
+            smartphone: false,
+            smartwatch: false,
+            tablet: false,
+            laptop: false,
+            computer: false,
+            game_console: false,
+            game_controller: false,
+            camera: false,
+            camera_lens: false,
+            microprocessor: false,
+            calculator: false,
+            musical_instrument: false,
+            washing_machine: false,
+            car: false,
+            motorcycle: false,
+            boat: false,
+            drone: false,
+            drink: false,
+            food: false,
+            toy: false,
+        }
+    }
+
     pub fn has_category(&self) -> bool {
         self.smartphone
             || self.smartwatch
@@ -156,17 +181,41 @@ pub struct Certifications {
     pub fti: Option<usize>,
 }
 
+impl Certifications {
+    pub fn new_with_eu_ecolabel() -> Self {
+        Self { bcorp: false, eu_ecolabel: true, tco: false, fti: None }
+    }
+
+    pub fn inherit(&mut self, other: &Self) {
+        if other.bcorp {
+            self.bcorp = true;
+        }
+        if other.eu_ecolabel {
+            self.eu_ecolabel = true;
+        }
+        if other.tco {
+            self.tco = true;
+        }
+        if other.fti.is_some() {
+            self.fti = other.fti;
+        }
+    }
+}
+
 /// Represents an organisation (e.g. manufacturer, shop).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Organisation {
-    /// Wikidata Id.
-    pub id: Id,
+    /// Organisation ID.
+    pub id: OrganisationId,
+
+    /// VAT IDs.
+    pub vat_ids: Vec<VatId>,
 
     /// Name of the organisation.
     pub name: String,
 
     /// Description of the organisation.
-    pub description: String,
+    pub description: Option<String>,
 
     /// Logo images.
     pub images: Vec<Image>,
@@ -181,14 +230,17 @@ pub struct Organisation {
 /// Represents a product.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Product {
-    /// Wikidata ID.
-    pub id: Id,
+    /// Product ID.
+    pub id: ProductId,
+
+    /// GTIN or the product.
+    pub gtins: Vec<Gtin>,
 
     /// Name of the product.
     pub name: String,
 
     /// Description of the product.
-    pub description: String,
+    pub description: Option<String>,
 
     /// Product images.
     pub images: Vec<Image>,
@@ -197,13 +249,13 @@ pub struct Product {
     pub categories: Categories,
 
     /// Wikidata IDs of manufacturers.
-    pub manufacturer_ids: Option<Vec<Id>>,
+    pub manufacturer_ids: Option<Vec<OrganisationId>>,
 
     /// Wikidata IDs newer version products.
-    pub follows: Option<Vec<Id>>,
+    pub follows: Option<Vec<ProductId>>,
 
     /// Wikidata IDs older version products.
-    pub followed_by: Option<Vec<Id>>,
+    pub followed_by: Option<Vec<ProductId>>,
 
     /// Known certifications.
     pub certifications: Certifications,

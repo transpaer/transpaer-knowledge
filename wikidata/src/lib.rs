@@ -4,4 +4,5 @@
 
 pub mod data;
 pub mod dump;
+pub mod errors;
 pub mod properties;

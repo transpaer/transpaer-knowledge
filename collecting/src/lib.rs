@@ -3,6 +3,7 @@
 #![deny(clippy::expect_used)]
 
 pub mod bcorp;
+pub mod data;
 pub mod errors;
 pub mod eu_ecolabel;
 pub mod fashion_transparency_index;
