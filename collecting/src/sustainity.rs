@@ -4,7 +4,7 @@ pub mod data {
 
     /// Sustainity topic entry.
     #[derive(Serialize, Deserialize, Debug)]
-    pub struct Info {
+    pub struct LibraryInfo {
         #[serde(rename = "id")]
         pub id: String,
 
@@ -18,7 +18,7 @@ pub mod data {
 
 /// Reader to loading sustainity data.
 pub mod reader {
-    use super::data::Info;
+    use super::data::LibraryInfo;
     use crate::errors::IoOrSerdeError;
 
     /// Loads the sustainity data from a file.
@@ -26,9 +26,9 @@ pub mod reader {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Info>, IoOrSerdeError> {
+    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<LibraryInfo>, IoOrSerdeError> {
         let contents = std::fs::read_to_string(path)?;
-        let parsed: Vec<Info> = serde_yaml::from_str(&contents)?;
+        let parsed: Vec<LibraryInfo> = serde_yaml::from_str(&contents)?;
         Ok(parsed)
     }
 }

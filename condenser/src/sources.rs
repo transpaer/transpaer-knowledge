@@ -1,6 +1,6 @@
 use crate::{advisors, config, errors, processing::Sourceable, utils, wikidata::ItemExt};
 
-/// Holds all the supplementary source data. XXX
+/// Holds all the supplementary source data.
 pub struct FullSources {
     /// Wikidata data.
     pub wikidata: advisors::WikidataAdvisor,
@@ -22,6 +22,10 @@ impl FullSources {
     }
 
     pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        if self.is_product(item) {
+            return false;
+        }
+
         if self.wikidata.has_manufacturer_id(&item.id) {
             return true;
         }

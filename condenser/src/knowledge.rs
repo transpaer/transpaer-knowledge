@@ -5,6 +5,28 @@ use serde::{Deserialize, Serialize};
 
 pub use sustainity_wikidata::data::Id;
 
+/// Points to a source of some data.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Source {
+    /// Wikidata.
+    #[serde(rename = "wikidata")]
+    Wikidata,
+}
+
+/// Image together with it's source.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Image {
+    /// Name of the images.
+    ///
+    /// Together with the source it's possible to reconstruct images URL.
+    #[serde(rename = "image")]
+    pub image: String,
+
+    /// Source of the image.
+    #[serde(rename = "source")]
+    pub source: Source,
+}
+
 /// Defines a product categories.
 #[allow(clippy::struct_excessive_bools)] // TODO: perhaps rework as an array (depends on DB query  performance)
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -113,6 +135,9 @@ pub struct Organisation {
     /// Description of the organisation.
     pub description: String,
 
+    /// Logo images.
+    pub images: Vec<Image>,
+
     /// Websites.
     pub websites: Vec<String>,
 
@@ -132,6 +157,9 @@ pub struct Product {
     /// Description of the product.
     pub description: String,
 
+    /// Product images.
+    pub images: Vec<Image>,
+
     /// Categories of the product.
     pub categories: Categories,
 
@@ -150,7 +178,7 @@ pub struct Product {
 
 /// Represents a topic info.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Info {
+pub struct LibraryInfo {
     /// Topic ID.
     pub id: String,
 

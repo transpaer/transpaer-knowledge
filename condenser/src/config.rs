@@ -244,7 +244,7 @@ impl TranscriptionConfig {
         let output_data = std::path::PathBuf::from(&args.output_data);
         Self {
             sustainity_path: input_data.join("sustainity.yaml"),
-            target_info_path: output_data.join("info.json"),
+            target_info_path: output_data.join("library.json"),
         }
     }
 

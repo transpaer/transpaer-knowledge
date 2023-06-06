@@ -144,6 +144,15 @@ impl Processor for CondensingProcessor {
                                 .get(LANG_EN)
                                 .map(|desc| desc.value.clone())
                                 .unwrap_or_default(),
+                            images: item
+                                .get_images()
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|i| knowledge::Image {
+                                    image: i.clone(),
+                                    source: knowledge::Source::Wikidata,
+                                })
+                                .collect(),
                             categories: Self::extract_categories(item),
                             manufacturer_ids: item.get_manufacturer_ids(),
                             follows: item.get_follows(),
@@ -177,6 +186,15 @@ impl Processor for CondensingProcessor {
                                 .get(LANG_EN)
                                 .map(|desc| desc.value.clone())
                                 .unwrap_or_default(),
+                            images: item
+                                .get_logo_images()
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|i| knowledge::Image {
+                                    image: i.clone(),
+                                    source: knowledge::Source::Wikidata,
+                                })
+                                .collect(),
                             websites: websites.unwrap_or_default(),
                             certifications: knowledge::Certifications {
                                 bcorp: is_bcorp,
