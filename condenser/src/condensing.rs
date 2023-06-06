@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use merge::Merge;
 
 use sustainity_wikidata::data::{Entity, Item, Language};
 
@@ -90,6 +89,23 @@ impl CondensingProcessor {
         false
     }
 
+    /// Gathers VAT IDs from the item and EU Ecolabel.
+    fn prepare_vat_ids(
+        item: &Item,
+        sources: &sources::FullSources,
+    ) -> Result<Vec<knowledge::VatId>, errors::ParseIdError> {
+        let mut result = HashSet::<knowledge::VatId>::new();
+        if let Some(ids) = item.get_eu_vat_numbers() {
+            for id in ids {
+                result.insert(knowledge::VatId::try_from(id.as_str())?);
+            }
+        }
+        if let Some(company) = sources.eu_ecolabel.get_company(&item.id) {
+            result.insert(company.vat_id.clone());
+        }
+        Ok(result.into_iter().collect())
+    }
+
     /// Extracts categories from an item.
     fn extract_categories(item: &Item) -> knowledge::Categories {
         knowledge::Categories {
@@ -148,14 +164,16 @@ impl Processor for CondensingProcessor {
                     if sources.is_product(item) {
                         let categories = Self::extract_categories(item);
                         if categories.has_category() || !Self::has_categories(item, ignored::ALL) {
+                            let gtins = knowledge::Gtin::convert(item.get_gtins())?;
+                            let is_eu_ecolabel = sources.eu_ecolabel.has_product(&gtins);
                             let product = knowledge::Product {
-                                id: item.id.clone(),
+                                id: item.id.to_num_id()?.into(),
+                                gtins,
                                 name: name.to_string(),
                                 description: item
                                     .descriptions
                                     .get(LANG_EN)
-                                    .map(|desc| desc.value.clone())
-                                    .unwrap_or_default(),
+                                    .map(|desc| desc.value.clone()),
                                 images: item
                                     .get_images()
                                     .unwrap_or_default()
@@ -166,10 +184,17 @@ impl Processor for CondensingProcessor {
                                     })
                                     .collect(),
                                 categories,
-                                manufacturer_ids: item.get_manufacturer_ids(),
-                                follows: item.get_follows(),
-                                followed_by: item.get_followed_by(),
-                                certifications: knowledge::Certifications::default(),
+                                manufacturer_ids: knowledge::OrganisationId::convert(
+                                    item.get_manufacturer_ids(),
+                                )?,
+                                follows: knowledge::ProductId::convert(item.get_follows())?,
+                                followed_by: knowledge::ProductId::convert(item.get_followed_by())?,
+                                certifications: knowledge::Certifications {
+                                    bcorp: false,
+                                    eu_ecolabel: is_eu_ecolabel,
+                                    tco: false,
+                                    fti: None,
+                                },
                             };
 
                             collector.add_product(product);
@@ -193,13 +218,13 @@ impl Processor for CondensingProcessor {
                         let is_tco = sources.tco.has_company(&item.id);
                         let fti_score = sources.fti.get_score(&item.id);
                         let organisation = knowledge::Organisation {
-                            id: item.id.clone(),
+                            id: item.id.clone().try_into()?,
+                            vat_ids: Self::prepare_vat_ids(item, sources)?,
                             name: name.to_string(),
                             description: item
                                 .descriptions
                                 .get(LANG_EN)
-                                .map(|desc| desc.value.clone())
-                                .unwrap_or_default(),
+                                .map(|desc| desc.value.clone()),
                             images: item
                                 .get_logo_images()
                                 .unwrap_or_default()
@@ -230,42 +255,113 @@ impl Processor for CondensingProcessor {
     fn finalize(
         &self,
         collector: &Self::Collector,
+        sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
-        // Assigne certifications to products.
-        let organisation_certifications: HashMap<knowledge::Id, knowledge::Certifications> =
-            collector
-                .organisations
-                .iter()
-                .map(|m| (m.id.clone(), m.certifications.clone()))
-                .collect();
+        // Find organisations with VAT ()
+        let mut vat_to_organisation = HashMap::<knowledge::VatId, knowledge::OrganisationId>::new();
+        for o in &collector.organisations {
+            for id in &o.vat_ids {
+                vat_to_organisation.insert(id.clone(), o.id.clone());
+            }
+        }
+
+        // Find products with GTIN
+        let mut gtin_to_product = HashMap::<knowledge::Gtin, knowledge::ProductId>::new();
+        for p in &collector.products {
+            for gtin in &p.gtins {
+                gtin_to_product.insert(gtin.clone(), p.id.clone());
+            }
+        }
+
+        // Collect organisations and products
+        let mut organisations: HashMap<knowledge::OrganisationId, knowledge::Organisation> =
+            collector.organisations.iter().map(|o| (o.id.clone(), o.clone())).collect();
+        let mut products: HashMap<knowledge::ProductId, knowledge::Product> =
+            collector.products.iter().map(|p| (p.id.clone(), p.clone())).collect();
+        let num_wiki_organisations = organisations.len();
+
+        // Add EU Ecolabel companies
+        for company in sources.eu_ecolabel.get_other_companies() {
+            // Add companies only if organisation with such VAT ID does not exists.
+            // Note: We suplement Wikidata organisations with VAT ID if they matched in `handle_entity`,
+            // so the organiations are not duplicated.
+            if !vat_to_organisation.contains_key(&company.vat_id) {
+                organisations.insert(
+                    company.vat_id.clone().into(),
+                    knowledge::Organisation {
+                        id: company.vat_id.clone().into(),
+                        vat_ids: vec![company.vat_id.clone()],
+                        name: company.name.clone(),
+                        description: None,
+                        images: Vec::default(),
+                        websites: Vec::default(),
+                        certifications: knowledge::Certifications::new_with_eu_ecolabel(),
+                    },
+                );
+            }
+        }
+
+        // Add EU Ecolabel products
+        for product in sources.eu_ecolabel.get_products() {
+            // Add products only if product with such GTIN does not exists.
+            // Note: We don't try to match products. If the same product exists in EU Ecolabel and
+            // in Wikidata and Wikidata one does not have GTIN, we simply create two products.
+            if !gtin_to_product.contains_key(&product.gtin) {
+                products.insert(
+                    product.gtin.clone().into(),
+                    knowledge::Product {
+                        id: product.gtin.clone().into(),
+                        gtins: vec![product.gtin.clone()],
+                        name: product.name.clone(),
+                        description: None,
+                        images: Vec::default(),
+                        categories: knowledge::Categories::none(),
+                        manufacturer_ids: Some(vec![product.company_id.clone()]),
+                        follows: None,
+                        followed_by: None,
+                        certifications: knowledge::Certifications::new_with_eu_ecolabel(),
+                    },
+                );
+            }
+        }
+
+        // Assign certifications to products.
+        let mut products: Vec<knowledge::Product> = products.into_values().collect();
         let mut num_categorized_products = 0;
-        let mut products = collector.products.clone();
         for product in &mut products {
             if product.categories.has_category() {
                 num_categorized_products += 1;
             }
             if let Some(manufacturer_ids) = &product.manufacturer_ids {
                 for manufacturer_id in manufacturer_ids {
-                    if let Some(certifications) = organisation_certifications.get(manufacturer_id) {
-                        product.certifications.merge(certifications.clone());
+                    if let Some(organisation) = organisations.get(manufacturer_id) {
+                        product.certifications.inherit(&organisation.certifications);
                     }
                 }
             }
         }
 
+        let mut organisations: Vec<knowledge::Organisation> = organisations.into_values().collect();
+
         // Save products.
         log::info!(
-            "Saving {} products. {} are categorized",
+            "Saving {} products. ({} are categorized)",
             products.len(),
             num_categorized_products
         );
+        products.sort_by(|a, b| a.id.cmp(&b.id));
         let contents = serde_json::to_string_pretty(&products)?;
         std::fs::write(&config.target_products_path, contents)?;
 
         // Save organisations.
-        log::info!("Saving {} organisations", collector.organisations.len());
-        let contents = serde_json::to_string_pretty(&collector.organisations)?;
+        log::info!(
+            "Saving {} organisations ({} come from Wikidata)",
+            organisations.len(),
+            num_wiki_organisations
+        );
+        organisations.sort_by(|a, b| a.id.cmp(&b.id));
+        let contents = serde_json::to_string_pretty(&organisations)?;
         std::fs::write(&config.target_organisations_path, contents)?;
 
         Ok(())

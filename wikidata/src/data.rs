@@ -4,15 +4,18 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 
-/// Represents a Wikidata ID.
+use crate::errors::ParseIdError;
+
+/// Represents a Wikidata ID in a string form.
 ///
-/// Internally the ID is representad as a `String`.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, Hash, PartialEq)]
-pub struct Id(String);
+/// Compare to `Id`. Numenric ID takes less memory and is easier to compare, but string form is
+/// sometimes easier to handle.
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct StrId(String);
 
-impl Id {
+impl StrId {
     /// Constructs a new `Id`.
     #[must_use]
     pub fn new(string: String) -> Self {
@@ -36,23 +39,91 @@ impl Id {
     pub fn into_string(self) -> String {
         self.0
     }
+
+    /// Parses the string ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the parsing failed.
+    pub fn to_num_id(&self) -> Result<Id, ParseIdError> {
+        Id::try_from(self.0.as_ref())
+    }
 }
 
-impl From<String> for Id {
+impl From<String> for StrId {
     fn from(string: String) -> Self {
         Self(string)
     }
 }
 
-impl PartialEq<&str> for Id {
+impl PartialEq<&str> for StrId {
     fn eq(&self, other: &&str) -> bool {
         self.as_str().eq(*other)
     }
 }
 
-impl PartialEq<Id> for &str {
-    fn eq(&self, other: &Id) -> bool {
+impl PartialEq<StrId> for &str {
+    fn eq(&self, other: &StrId) -> bool {
         (*self).eq(other.as_str())
+    }
+}
+
+/// Represents a Wikidata ID in a numeric form.
+///
+/// Compare to `StrId`. Numenric ID takes less memory and is easier to compare, but string form is
+/// sometimes easier to handle.
+#[derive(Debug, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
+pub struct Id(usize);
+
+impl Id {
+    /// Constructs a new `Id`.
+    #[must_use]
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    /// Returns the `Id` in the "string" form.
+    #[must_use]
+    pub fn to_str_id(&self) -> StrId {
+        StrId(format!("Q{}", self.0))
+    }
+}
+
+impl TryFrom<&str> for Id {
+    type Error = ParseIdError;
+
+    fn try_from(string: &str) -> Result<Self, ParseIdError> {
+        match string.chars().next() {
+            Some(char) => {
+                if char != 'Q' {
+                    return Err(ParseIdError::Prefix(string.to_string()));
+                }
+            }
+            None => {
+                return Err(ParseIdError::Length(string.to_string()));
+            }
+        }
+
+        match string[1..].parse::<usize>() {
+            Ok(num) => Ok(Self(num)),
+            Err(err) => Err(ParseIdError::Num(string.to_string(), err)),
+        }
+    }
+}
+
+impl Serialize for Id {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.to_str_id().as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -73,8 +144,8 @@ impl Language {
 /// Represents Wikidata redirection.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Redirection {
-    from: Id,
-    to: Id,
+    from: StrId,
+    to: StrId,
 }
 
 /// Represents a Wikidata label.
@@ -95,7 +166,7 @@ pub struct Label {
 #[serde(deny_unknown_fields)]
 pub struct EntityIdInfo {
     /// Full ID.
-    pub id: Id,
+    pub id: StrId,
 
     /// Number from the ID without the prefix.
     #[serde(rename = "numeric-id")]
@@ -301,10 +372,10 @@ pub struct Reference {
     hash: String,
 
     #[serde(rename = "snaks")]
-    snaks: HashMap<Id, Vec<Snak>>,
+    snaks: HashMap<StrId, Vec<Snak>>,
 
     #[serde(rename = "snaks-order")]
-    snaks_order: Vec<Id>,
+    snaks_order: Vec<StrId>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -320,10 +391,10 @@ pub struct Statement {
     pub rank: Rank,
 
     #[serde(rename = "qualifiers")]
-    pub qualifiers: Option<HashMap<Id, Vec<Snak>>>,
+    pub qualifiers: Option<HashMap<StrId, Vec<Snak>>>,
 
     #[serde(rename = "qualifiers-order")]
-    pub qualifiers_order: Option<Vec<Id>>,
+    pub qualifiers_order: Option<Vec<StrId>>,
 
     #[serde(rename = "references")]
     pub references: Option<Vec<Reference>>,
@@ -341,7 +412,7 @@ pub enum Claim {
 pub struct Sitelink {
     pub site: String,
     pub title: String,
-    pub badges: Vec<Id>,
+    pub badges: Vec<StrId>,
 }
 
 /// Represents an item ("Q") entry.
@@ -349,7 +420,7 @@ pub struct Sitelink {
 #[serde(deny_unknown_fields)]
 pub struct Item {
     /// Item ID.
-    pub id: Id,
+    pub id: StrId,
 
     pub title: Option<String>,
     pub pageid: Option<u64>,

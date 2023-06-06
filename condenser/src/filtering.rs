@@ -173,6 +173,7 @@ impl Processor for FilteringProcessor {
     fn finalize(
         &self,
         collector: &Self::Collector,
+        _sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         self.save(collector, config)

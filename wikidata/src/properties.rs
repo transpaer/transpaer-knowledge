@@ -22,5 +22,8 @@ pub const SUBCLASS_OF: &str = "P279";
 /// "Official website" property.
 pub const OFFICIAL_WEBSITE: &str = "P856";
 
+/// "Global Trade Item Number" property.
+pub const GTIN: &str = "P3962";
+
 /// "EU VAT number" property.
 pub const EU_VAT_NUMBER: &str = "P3608";

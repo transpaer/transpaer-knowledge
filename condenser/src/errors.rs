@@ -1,7 +1,8 @@
 use thiserror::Error;
 
-use sustainity_collecting::errors::IoOrSerdeError;
-use sustainity_wikidata::dump::LoaderError;
+pub use sustainity_collecting::errors::IoOrSerdeError;
+pub use sustainity_wikidata::dump::LoaderError;
+pub use sustainity_wikidata::errors::ParseIdError;
 
 /// Error returned if config checking failed.
 #[derive(Error, Debug)]
@@ -27,7 +28,7 @@ pub enum ConfigCheckError {
 pub enum SourcesCheckError {
     /// IDs were duplicated while expected to be unique.
     #[error("Repeated IDs: {0:?}")]
-    RepeatedIds(std::collections::HashSet<sustainity_wikidata::data::Id>),
+    RepeatedIds(std::collections::HashSet<sustainity_wikidata::data::StrId>),
 }
 
 /// Error returned when a problem with processing.
@@ -59,6 +60,9 @@ pub enum ProcessingError {
 
     #[error("Sources check: {0}")]
     SourcesCheck(SourcesCheckError),
+
+    #[error("ID parsing: {0}")]
+    IdParsing(ParseIdError),
 
     #[error("Mutex lock")]
     MutexLock,
@@ -115,6 +119,12 @@ impl From<ConfigCheckError> for ProcessingError {
 impl From<SourcesCheckError> for ProcessingError {
     fn from(error: SourcesCheckError) -> Self {
         Self::SourcesCheck(error)
+    }
+}
+
+impl From<ParseIdError> for ProcessingError {
+    fn from(error: ParseIdError) -> Self {
+        Self::IdParsing(error)
     }
 }
 

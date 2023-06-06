@@ -24,7 +24,7 @@ pub mod data {
 
         /// Wikidata IDs.
         #[serde(rename = "ids")]
-        pub ids: Vec<String>,
+        pub ids: Vec<sustainity_wikidata::data::StrId>,
 
         /// Measure of certainty that the matched IDs really belong to the correct entry.
         #[serde(rename = "similarity")]
@@ -34,8 +34,12 @@ pub mod data {
     impl NameMatching {
         /// Check if match has high enough similarity.
         #[must_use]
-        pub fn found(&self) -> bool {
-            self.similarity > 0.85 && self.ids.len() == 1
+        pub fn matched(&self) -> Option<sustainity_wikidata::data::StrId> {
+            if self.similarity > 0.85 && self.ids.len() == 1 {
+                self.ids.first().cloned()
+            } else {
+                None
+            }
         }
     }
 }

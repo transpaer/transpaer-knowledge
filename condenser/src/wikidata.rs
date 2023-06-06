@@ -628,7 +628,7 @@ pub trait ItemExt {
     fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str>;
 
     /// Returns ID associated with the passed property.
-    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::Id>>;
+    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::StrId>>;
 
     /// Returns strings associated with the passed property.
     fn get_strings(&self, property_id: &str) -> Option<Vec<String>>;
@@ -641,15 +641,15 @@ pub trait ItemExt {
 
     /// Returns IDs of entities linked with "follows" property.
     #[must_use]
-    fn get_follows(&self) -> Option<Vec<data::Id>>;
+    fn get_follows(&self) -> Option<Vec<data::StrId>>;
 
     /// Returns IDs of entities linked with "followed by" property.
     #[must_use]
-    fn get_followed_by(&self) -> Option<Vec<data::Id>>;
+    fn get_followed_by(&self) -> Option<Vec<data::StrId>>;
 
     /// Returns IDs of entities linked with "manufacturer" property.
     #[must_use]
-    fn get_manufacturer_ids(&self) -> Option<Vec<data::Id>>;
+    fn get_manufacturer_ids(&self) -> Option<Vec<data::StrId>>;
 
     /// Checks if has any entities linked with "manufacturer" property.
     #[must_use]
@@ -687,7 +687,7 @@ pub trait ItemExt {
 
     /// Returns IDs of classes this item is an instance of.
     #[must_use]
-    fn get_classes(&self) -> Option<Vec<data::Id>>;
+    fn get_classes(&self) -> Option<Vec<data::StrId>>;
 
     /// Checks if this item is a subclass of the given class.
     #[must_use]
@@ -695,7 +695,15 @@ pub trait ItemExt {
 
     /// Returns all superclasses of this item.
     #[must_use]
-    fn get_superclasses(&self) -> Option<Vec<data::Id>>;
+    fn get_superclasses(&self) -> Option<Vec<data::StrId>>;
+
+    /// Returns strings associated with the "GTIN" property.
+    #[must_use]
+    fn get_gtins(&self) -> Option<Vec<String>>;
+
+    /// Checks if has associated "GTIN" values.
+    #[must_use]
+    fn has_gtin(&self) -> bool;
 
     /// Returns strings associated with the "EU VAT" property.
     #[must_use]
@@ -728,9 +736,9 @@ impl ItemExt for data::Item {
         result
     }
 
-    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::Id>> {
+    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::StrId>> {
         if let Some(claims) = self.claims.get(property_id) {
-            let mut result = Vec::<data::Id>::new();
+            let mut result = Vec::<data::StrId>::new();
             for claim in claims {
                 let data::Claim::Statement(statement) = claim;
                 if let data::Snak::Value(value) = &statement.mainsnak {
@@ -775,6 +783,13 @@ impl ItemExt for data::Item {
                 if let data::Snak::Value(value) = &statement.mainsnak {
                     if let data::DataValue::String(website) = &value.datavalue {
                         result.push(website.clone());
+                    } else {
+                        log::warn!(
+                            "Item {:?} has properties {} which are not strings: {:?}",
+                            self.id,
+                            property_id,
+                            value
+                        );
                     }
                 }
             }
@@ -793,17 +808,17 @@ impl ItemExt for data::Item {
     }
 
     #[must_use]
-    fn get_follows(&self) -> Option<Vec<data::Id>> {
+    fn get_follows(&self) -> Option<Vec<data::StrId>> {
         self.get_entity_ids(properties::FOLLOWS)
     }
 
     #[must_use]
-    fn get_followed_by(&self) -> Option<Vec<data::Id>> {
+    fn get_followed_by(&self) -> Option<Vec<data::StrId>> {
         self.get_entity_ids(properties::FOLLOWED_BY)
     }
 
     #[must_use]
-    fn get_manufacturer_ids(&self) -> Option<Vec<data::Id>> {
+    fn get_manufacturer_ids(&self) -> Option<Vec<data::StrId>> {
         self.get_entity_ids(properties::MANUFACTURER)
     }
 
@@ -848,7 +863,7 @@ impl ItemExt for data::Item {
     }
 
     #[must_use]
-    fn get_classes(&self) -> Option<Vec<data::Id>> {
+    fn get_classes(&self) -> Option<Vec<data::StrId>> {
         self.get_entity_ids(properties::INSTANCE_OF)
     }
 
@@ -858,8 +873,18 @@ impl ItemExt for data::Item {
     }
 
     #[must_use]
-    fn get_superclasses(&self) -> Option<Vec<data::Id>> {
+    fn get_superclasses(&self) -> Option<Vec<data::StrId>> {
         self.get_entity_ids(properties::SUBCLASS_OF)
+    }
+
+    #[must_use]
+    fn get_gtins(&self) -> Option<Vec<String>> {
+        self.get_strings(properties::GTIN)
+    }
+
+    #[must_use]
+    fn has_gtin(&self) -> bool {
+        self.has_property(properties::GTIN)
     }
 
     #[must_use]
