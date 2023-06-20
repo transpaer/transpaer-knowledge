@@ -103,6 +103,73 @@ pub struct Args {
     pub command: Commands,
 }
 
+/// Configuration for `WikidataRunner`.
+#[derive(Debug, Clone)]
+pub struct WikidataRunnerConfig {
+    /// Path to Wikidata data.
+    pub wikidata_path: std::path::PathBuf,
+}
+
+impl WikidataRunnerConfig {
+    /// Constructs a new `WikidataRunnerConfig` with filteresd Wikidata dump.
+    pub fn new_filtered(cache: &str) -> WikidataRunnerConfig {
+        let cache = std::path::PathBuf::from(&cache);
+        Self { wikidata_path: cache.join("wikidata.jsonl") }
+    }
+
+    /// Constructs a new `WikidataRunnerConfig` with full Wikidata dump.
+    pub fn new_full(origin: &str) -> WikidataRunnerConfig {
+        let origin = std::path::PathBuf::from(&origin);
+        Self { wikidata_path: origin.join("wikidata-20230417-all.json.gz") }
+    }
+
+    /// Constructs a new `WikidataRunnerConfig`.
+    pub fn new_with_path(path: &str) -> WikidataRunnerConfig {
+        let wikidata_path = std::path::PathBuf::from(&path);
+        Self { wikidata_path }
+    }
+
+    /// Checks validity of the configuration.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::path_exists(&self.wikidata_path)?;
+        Ok(())
+    }
+}
+
+/// Configuration for `WikidataRunner`.
+#[derive(Debug, Clone)]
+pub struct FullRunnerConfig {
+    /// Path to Wikidata data.
+    pub wikidata_path: std::path::PathBuf,
+
+    /// Path to Open Food Facts data.
+    pub open_food_facts_path: std::path::PathBuf,
+
+    /// Path to EU Ecolabel data.
+    pub eu_ecolabel_path: std::path::PathBuf,
+}
+
+impl FullRunnerConfig {
+    /// Constructs a new `WikidataRunnerConfig`.
+    pub fn new(origin: &str, cache: &str) -> FullRunnerConfig {
+        let origin = std::path::PathBuf::from(origin);
+        let cache = std::path::PathBuf::from(cache);
+        Self {
+            wikidata_path: cache.join("wikidata.jsonl"),
+            open_food_facts_path: origin.join("en.openfoodfacts.org.products.csv"),
+            eu_ecolabel_path: origin.join("eu_ecolabel_products.csv"),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::path_exists(&self.wikidata_path)?;
+        utils::path_exists(&self.open_food_facts_path)?;
+        utils::path_exists(&self.eu_ecolabel_path)?;
+        Ok(())
+    }
+}
+
 /// Subconfiguration related to source files used by several other configs.
 #[derive(Debug, Clone)]
 pub struct SourcesConfig {
@@ -154,28 +221,27 @@ impl SourcesConfig {
 /// Configuration for the `filter-products` command.
 #[derive(Debug, Clone)]
 pub struct PrefilteringConfig {
-    /// Path to input Wikidata data.
-    pub wikidata_dump_path: std::path::PathBuf,
-
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
+
+    /// `WikidataRunner` config.
+    pub wikidata_runner: WikidataRunnerConfig,
 }
 
 impl PrefilteringConfig {
     /// Constructs a new `Prefiltering`.
     pub fn new(args: &PrefilteringArgs) -> PrefilteringConfig {
-        let origin = std::path::PathBuf::from(&args.origin);
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
-            wikidata_dump_path: origin.join("wikidata-20230417-all.json.gz"),
             wikidata_cache_path: cache.join("wikidata_cache.json"),
+            wikidata_runner: WikidataRunnerConfig::new_full(&args.origin),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_dump_path)?;
         utils::path_creatable(&self.wikidata_cache_path)?;
+        self.wikidata_runner.check()?;
         Ok(())
     }
 }
@@ -183,33 +249,32 @@ impl PrefilteringConfig {
 /// Configuration for the `filter-manufacturers` command.
 #[derive(Debug, Clone)]
 pub struct FilteringConfig {
-    /// Path to input Wikidata data.
-    pub wikidata_full_dump_path: std::path::PathBuf,
-
     /// Path to output filtered .
     pub wikidata_filtered_dump_path: std::path::PathBuf,
 
     /// Data sources.
     pub sources: SourcesConfig,
+
+    /// `WikidataRunner` config.
+    pub wikidata_runner: WikidataRunnerConfig,
 }
 
 impl FilteringConfig {
     /// Constructs a new `FilteringConfig`.
     pub fn new(args: &FilteringArgs) -> FilteringConfig {
-        let origin = std::path::PathBuf::from(&args.origin);
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
-            wikidata_full_dump_path: origin.join("wikidata-20230417-all.json.gz"),
             wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
+            wikidata_runner: WikidataRunnerConfig::new_full(&args.cache),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_full_dump_path)?;
         utils::path_creatable(&self.wikidata_filtered_dump_path)?;
         self.sources.check()?;
+        self.wikidata_runner.check()?;
         Ok(())
     }
 }
@@ -217,9 +282,6 @@ impl FilteringConfig {
 /// Configuration for the `condense` command.
 #[derive(Debug, Clone)]
 pub struct CondensationConfig {
-    /// Path to input wikidata dump.
-    pub wikidata_source_path: std::path::PathBuf,
-
     /// Path to the output product file.
     pub target_products_path: std::path::PathBuf,
 
@@ -228,27 +290,29 @@ pub struct CondensationConfig {
 
     /// Data sources.
     pub sources: SourcesConfig,
+
+    /// `FullRunner` config.
+    pub full_runner: FullRunnerConfig,
 }
 
 impl CondensationConfig {
     /// Constructs a new `CondensationConfig`.
     pub fn new(args: &CondensationArgs) -> CondensationConfig {
-        let cache = std::path::PathBuf::from(&args.cache);
         let target = std::path::PathBuf::from(&args.target);
         Self {
-            wikidata_source_path: cache.join("wikidata.jsonl"),
-            target_products_path: target.join("products.json"),
-            target_organisations_path: target.join("organisations.json"),
+            target_products_path: target.join("products.jsonl"),
+            target_organisations_path: target.join("organisations.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
+            full_runner: FullRunnerConfig::new(&args.origin, &args.cache),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_source_path)?;
         utils::path_creatable(&self.target_products_path)?;
         utils::path_creatable(&self.target_organisations_path)?;
         self.sources.check()?;
+        self.full_runner.check()?;
         Ok(())
     }
 }
@@ -270,7 +334,7 @@ impl TranscriptionConfig {
         let target = std::path::PathBuf::from(&args.target);
         Self {
             library_source_path: source.join("sustainity_library.yaml"),
-            library_target_path: target.join("library.json"),
+            library_target_path: target.join("library.jsonl"),
         }
     }
 
@@ -288,8 +352,8 @@ pub struct AnalysisConfig {
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
-    /// Path to output filtered .
-    pub wikidata_filtered_dump_path: std::path::PathBuf,
+    /// `WikidataRunner` config.
+    pub wikidata_runner: WikidataRunnerConfig,
 }
 
 impl AnalysisConfig {
@@ -298,14 +362,14 @@ impl AnalysisConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
-            wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
+            wikidata_runner: WikidataRunnerConfig::new_filtered(&args.cache),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
-        utils::path_exists(&self.wikidata_filtered_dump_path)?;
+        self.wikidata_runner.check()?;
         Ok(())
     }
 }
@@ -313,62 +377,92 @@ impl AnalysisConfig {
 /// Configuration for the `connect` command.
 #[derive(Clone, Debug)]
 pub struct ConnectionConfig {
-    /// Path to Wikidata data.
-    pub wikidata_path: std::path::PathBuf,
-
     /// Path to input data file.
     pub input_path: std::path::PathBuf,
 
     /// Path to output mapping file.
     pub output_path: std::path::PathBuf,
+
+    /// `WikidataRunner` config.
+    pub wikidata_runner: WikidataRunnerConfig,
 }
 
 impl ConnectionConfig {
     /// Constructs a new `ConnectionConfig`.
     pub fn new(args: &ConnectionArgs) -> ConnectionConfig {
         Self {
-            wikidata_path: std::path::PathBuf::from(&args.wikidata_path),
             input_path: std::path::PathBuf::from(&args.input_path),
             output_path: std::path::PathBuf::from(&args.output_path),
+            wikidata_runner: WikidataRunnerConfig::new_with_path(&args.wikidata_path),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_path)?;
         utils::path_exists(&self.input_path)?;
         utils::path_creatable(&self.output_path)?;
+        self.wikidata_runner.check()?;
         Ok(())
     }
 }
 
-impl AsRef<SourcesConfig> for CondensationConfig {
-    fn as_ref(&self) -> &SourcesConfig {
-        &self.sources
+impl From<&CondensationConfig> for FullRunnerConfig {
+    fn from(config: &CondensationConfig) -> FullRunnerConfig {
+        config.full_runner.clone()
     }
 }
 
-impl AsRef<SourcesConfig> for FilteringConfig {
-    fn as_ref(&self) -> &SourcesConfig {
-        &self.sources
+impl From<&FilteringConfig> for WikidataRunnerConfig {
+    fn from(config: &FilteringConfig) -> WikidataRunnerConfig {
+        config.wikidata_runner.clone()
     }
 }
 
-impl AsRef<PrefilteringConfig> for PrefilteringConfig {
-    fn as_ref(&self) -> &PrefilteringConfig {
-        self
+impl From<&PrefilteringConfig> for WikidataRunnerConfig {
+    fn from(config: &PrefilteringConfig) -> WikidataRunnerConfig {
+        config.wikidata_runner.clone()
     }
 }
 
-impl AsRef<AnalysisConfig> for AnalysisConfig {
-    fn as_ref(&self) -> &AnalysisConfig {
-        self
+impl From<&AnalysisConfig> for WikidataRunnerConfig {
+    fn from(config: &AnalysisConfig) -> WikidataRunnerConfig {
+        config.wikidata_runner.clone()
     }
 }
 
-impl AsRef<ConnectionConfig> for ConnectionConfig {
-    fn as_ref(&self) -> &ConnectionConfig {
-        self
+impl From<&ConnectionConfig> for WikidataRunnerConfig {
+    fn from(config: &ConnectionConfig) -> WikidataRunnerConfig {
+        config.wikidata_runner.clone()
+    }
+}
+
+impl From<&CondensationConfig> for SourcesConfig {
+    fn from(config: &CondensationConfig) -> SourcesConfig {
+        config.sources.clone()
+    }
+}
+
+impl From<&FilteringConfig> for SourcesConfig {
+    fn from(config: &FilteringConfig) -> SourcesConfig {
+        config.sources.clone()
+    }
+}
+
+impl From<&PrefilteringConfig> for PrefilteringConfig {
+    fn from(config: &PrefilteringConfig) -> PrefilteringConfig {
+        config.clone()
+    }
+}
+
+impl From<&AnalysisConfig> for AnalysisConfig {
+    fn from(config: &AnalysisConfig) -> AnalysisConfig {
+        config.clone()
+    }
+}
+
+impl From<&ConnectionConfig> for ConnectionConfig {
+    fn from(config: &ConnectionConfig) -> ConnectionConfig {
+        config.clone()
     }
 }
 

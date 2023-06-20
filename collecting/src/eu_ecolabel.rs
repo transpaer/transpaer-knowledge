@@ -76,7 +76,7 @@ pub mod reader {
     use super::data::Record;
     use crate::errors::IoOrSerdeError;
 
-    /// Loads the EU Ecolabel data from a file.
+    /// Loads the EU Ecolabel data from a file synchroneusly.
     ///
     /// # Errors
     ///
@@ -88,5 +88,25 @@ pub mod reader {
             parsed.push(result?);
         }
         Ok(parsed)
+    }
+
+    /// Loads the EU Ecolabel data from a file asynchroneusly.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub async fn load<C, F>(path: std::path::PathBuf, callback: C) -> Result<usize, IoOrSerdeError>
+    where
+        C: Fn(csv::StringRecord, csv::StringRecord) -> F,
+        F: std::future::Future<Output = ()>,
+    {
+        let mut result: usize = 0;
+        let mut reader = csv::ReaderBuilder::new().delimiter(b';').from_path(path)?;
+        let headers = reader.headers()?.clone();
+        for record in reader.into_records() {
+            callback(headers.clone(), record?).await;
+            result += 1;
+        }
+        Ok(result)
     }
 }

@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use async_trait::async_trait;
-
 use sustainity_wikidata::data::{Entity, Item, Language};
 
 use crate::{
     advisors, config, errors, knowledge,
-    processing::{Collectable, Essential, Processor, Sourceable},
+    processing::{Collectable, Processor, Sourceable},
+    runners,
     wikidata::{self, ItemExt},
 };
 
@@ -287,31 +286,6 @@ impl Class {
     }
 }
 
-/// Provides the core data for the processor.
-#[derive(Debug)]
-pub struct AnalysisEssentials {
-    /// Product data loader.
-    data: sustainity_wikidata::dump::Loader,
-}
-
-#[async_trait]
-impl Essential for AnalysisEssentials {
-    type Config = config::AnalysisConfig;
-
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self {
-            data: sustainity_wikidata::dump::Loader::load(&config.wikidata_filtered_dump_path)?,
-        })
-    }
-
-    async fn run(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, errors::ProcessingError> {
-        Ok(self.data.run_with_channel(tx).await?)
-    }
-}
-
 /// Holds all the supplementary source data.
 pub struct AnalysisSources {
     /// Wikidata data.
@@ -366,11 +340,6 @@ impl Collectable for AnalysisCollector {}
 pub struct AnalysisProcessor;
 
 impl AnalysisProcessor {
-    /// Constructs a new `AnalysisProcessor`.
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn get_classes(item: &Item) -> HashSet<knowledge::WikiId> {
         let mut classes = HashSet::<knowledge::WikiId>::new();
         if let Some(superclasses) = item.get_superclasses() {
@@ -407,62 +376,30 @@ impl AnalysisProcessor {
     }
 }
 
+impl Default for AnalysisProcessor {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl Processor for AnalysisProcessor {
     type Config = config::AnalysisConfig;
-    type Essentials = AnalysisEssentials;
     type Sources = AnalysisSources;
     type Collector = AnalysisCollector;
 
     fn initialize(
         &self,
-        _sources: &Self::Sources,
         _collector: &mut Self::Collector,
+        _sources: &Self::Sources,
         _config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
-        Ok(())
-    }
-
-    /// Handles one Wikidata entity.
-    fn handle_entity(
-        &self,
-        _msg: &str,
-        entity: &Entity,
-        sources: &Self::Sources,
-        collector: &mut Self::Collector,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        match entity {
-            Entity::Item(item) => {
-                if let Some(label) = item.get_label(Language::En) {
-                    if Self::is_class(item, sources) {
-                        match item.id.to_num_id() {
-                            Ok(id) => {
-                                collector.add_class(Class {
-                                    id,
-                                    label: label.to_string(),
-                                    amount: 1,
-                                });
-                            }
-                            Err(err) => log::error!("Failed to parse ID: {err}"),
-                        }
-                    }
-                    if Self::is_product(item) {
-                        let classes = Self::get_classes(item);
-                        if !classes.is_empty() {
-                            collector.add_product(Product { classes });
-                        }
-                    }
-                }
-            }
-            Entity::Property(_property) => (),
-        }
         Ok(())
     }
 
     /// Saves the result into files.
     fn finalize(
         &self,
-        collector: &Self::Collector,
+        collector: Self::Collector,
         _sources: &Self::Sources,
         _config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
@@ -505,3 +442,44 @@ impl Processor for AnalysisProcessor {
         Ok(())
     }
 }
+
+impl runners::WikidataProcessor for AnalysisProcessor {
+    /// Handles one Wikidata entity.
+    fn handle_wikidata_entity(
+        &self,
+        _msg: &str,
+        entity: Entity,
+        sources: &Self::Sources,
+        collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        match entity {
+            Entity::Item(item) => {
+                if let Some(label) = item.get_label(Language::En) {
+                    if Self::is_class(&item, sources) {
+                        match item.id.to_num_id() {
+                            Ok(id) => {
+                                collector.add_class(Class {
+                                    id,
+                                    label: label.to_string(),
+                                    amount: 1,
+                                });
+                            }
+                            Err(err) => log::error!("Failed to parse ID: {err}"),
+                        }
+                    }
+                    if Self::is_product(&item) {
+                        let classes = Self::get_classes(&item);
+                        if !classes.is_empty() {
+                            collector.add_product(Product { classes });
+                        }
+                    }
+                }
+            }
+            Entity::Property(_property) => (),
+        }
+        Ok(())
+    }
+}
+
+pub type AnalysisRunner = runners::WikidataRunner<AnalysisProcessor>;
