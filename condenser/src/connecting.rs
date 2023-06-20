@@ -2,39 +2,15 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use async_trait::async_trait;
-
 use sustainity_collecting::{eu_ecolabel, sustainity};
 use sustainity_wikidata::data::{Entity, Item};
 
 use crate::{
     config, errors, knowledge,
-    processing::{Collectable, Essential, Processor, Sourceable},
+    processing::{Collectable, Processor, Sourceable},
+    runners, utils,
     wikidata::ItemExt,
 };
-
-/// Provides the core data for the processor.
-#[derive(Debug)]
-pub struct ConnectionEssentials {
-    /// Wikidata dump file loader.
-    wiki: sustainity_wikidata::dump::Loader,
-}
-
-#[async_trait]
-impl Essential for ConnectionEssentials {
-    type Config = config::ConnectionConfig;
-
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_path)? })
-    }
-
-    async fn run(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, errors::ProcessingError> {
-        Ok(self.wiki.run_with_channel(tx).await?)
-    }
-}
 
 /// Calculates similarity of entry in some data to entry in Wikidata.
 #[derive(Serialize, Clone, Debug, Hash, PartialEq, Eq)]
@@ -188,17 +164,8 @@ pub struct ConnectionCollector {
 }
 
 impl merge::Merge for ConnectionCollector {
-    fn merge(&mut self, mut other: Self) {
-        for (key, entry) in &mut self.data {
-            if let Some(e) = other.data.remove(key) {
-                entry.merge(e);
-            }
-        }
-        for (key, entry) in &other.data {
-            if !self.data.contains_key(key) {
-                self.data.insert(key.clone(), entry.clone());
-            }
-        }
+    fn merge(&mut self, other: Self) {
+        utils::merge_hashmaps(&mut self.data, other.data);
     }
 }
 
@@ -208,23 +175,21 @@ impl Collectable for ConnectionCollector {}
 #[derive(Clone, Debug)]
 pub struct ConnectionProcessor;
 
-impl ConnectionProcessor {
-    /// Constructs a new `ConnectionProcessor`.
-    pub fn new() -> Self {
+impl Default for ConnectionProcessor {
+    fn default() -> Self {
         Self
     }
 }
 
 impl Processor for ConnectionProcessor {
     type Config = config::ConnectionConfig;
-    type Essentials = ConnectionEssentials;
     type Sources = ConnectionSources;
     type Collector = ConnectionCollector;
 
     fn initialize(
         &self,
-        sources: &Self::Sources,
         collector: &mut Self::Collector,
+        sources: &Self::Sources,
         _config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         for e in &sources.data {
@@ -233,32 +198,10 @@ impl Processor for ConnectionProcessor {
         Ok(())
     }
 
-    /// Handles one Wikidata entity.
-    fn handle_entity(
-        &self,
-        _msg: &str,
-        entity: &Entity,
-        _sources: &Self::Sources,
-        collector: &mut Self::Collector,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        match entity {
-            Entity::Item(item) => {
-                if item.is_organisation() {
-                    for entry in collector.data.values_mut() {
-                        entry.process(item);
-                    }
-                }
-            }
-            Entity::Property(_property) => (),
-        }
-        Ok(())
-    }
-
     /// Saves the result into files.
     fn finalize(
         &self,
-        collector: &Self::Collector,
+        collector: Self::Collector,
         _sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
@@ -273,3 +216,29 @@ impl Processor for ConnectionProcessor {
         Ok(())
     }
 }
+
+impl runners::WikidataProcessor for ConnectionProcessor {
+    /// Handles one Wikidata entity.
+    fn handle_wikidata_entity(
+        &self,
+        _msg: &str,
+        entity: Entity,
+        _sources: &Self::Sources,
+        collector: &mut Self::Collector,
+        _config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        match entity {
+            Entity::Item(item) => {
+                if item.is_organisation() {
+                    for entry in collector.data.values_mut() {
+                        entry.process(&item);
+                    }
+                }
+            }
+            Entity::Property(_property) => (),
+        }
+        Ok(())
+    }
+}
+
+pub type ConnectionRunner = runners::WikidataRunner<ConnectionProcessor>;

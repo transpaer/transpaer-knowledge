@@ -9,8 +9,12 @@ fn gtin_to_string() {
 fn gtin_from_string() {
     use sustainity_collecting::{data::Gtin, errors::ParseIdError};
 
-    assert_eq!(Gtin::try_from("12345678"), Ok(Gtin::new(12345678)));
-    assert_eq!(Gtin::try_from("123456789"), Err(ParseIdError::Length("123456789".to_string())));
+    assert_eq!(Gtin::try_from("012345678"), Ok(Gtin::new(12345678)));
+    assert_eq!(Gtin::try_from("123456789"), Ok(Gtin::new(123456789)));
+    assert_eq!(
+        Gtin::try_from("123456789012345"),
+        Err(ParseIdError::Length("123456789012345".to_string()))
+    );
     assert_eq!(
         Gtin::try_from("123A5678"),
         Err(ParseIdError::Num("123A5678".to_string(), "123A5678".parse::<usize>().err().unwrap()))
@@ -24,8 +28,8 @@ fn vat_id_from_string() {
     assert_eq!(VatId::try_from("NL12345678"), Ok(VatId::new("NL12345678".to_string())));
     assert_eq!(VatId::try_from("NL123-45 67.8"), Ok(VatId::new("NL12345678".to_string())));
     assert_eq!(
-        VatId::try_from("123"),
-        Result::<VatId, ParseIdError>::Err(ParseIdError::Length("123".to_string()))
+        VatId::try_from("1"),
+        Result::<VatId, ParseIdError>::Err(ParseIdError::Length("1".to_string()))
     );
 }
 

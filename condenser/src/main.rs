@@ -16,29 +16,30 @@ mod future_pool;
 mod knowledge;
 mod prefiltering;
 mod processing;
+mod runners;
 mod sources;
 mod transcribing;
 mod utils;
 mod wikidata;
 
-use processing::Processor;
+use processing::Runnable;
 
 async fn run() -> Result<(), errors::ProcessingError> {
     match config::Config::new_from_args() {
         config::Config::Prefiltering(config) => {
             config.check()?;
             log::info!("Start pre-filtering!");
-            prefiltering::PrefilteringProcessor::new().process(config).await?;
+            prefiltering::PrefilteringRunner::run(config).await?;
         }
         config::Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering!");
-            filtering::FilteringProcessor::new().process(config).await?;
+            filtering::FilteringRunner::run(config).await?;
         }
         config::Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            condensing::CondensingProcessor::new().process(config).await?;
+            condensing::CondensingRunner::run(config).await?;
         }
         config::Config::Transcription(config) => {
             config.check()?;
@@ -48,12 +49,12 @@ async fn run() -> Result<(), errors::ProcessingError> {
         config::Config::Analysis(config) => {
             config.check()?;
             log::info!("Start analysis!");
-            analysis::AnalysisProcessor::new().process(config).await?;
+            analysis::AnalysisRunner::run(config).await?;
         }
         config::Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
-            connecting::ConnectionProcessor::new().process(config).await?;
+            connecting::ConnectionRunner::run(config).await?;
         }
     }
     Ok(())

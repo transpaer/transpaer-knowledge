@@ -1,5 +1,7 @@
 //! This module contains definitions of some commonly used data types.
 
+use std::collections::HashSet;
+
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 
 pub use sustainity_wikidata::{
@@ -26,16 +28,16 @@ impl Gtin {
     /// # Errors
     ///
     /// Returns an error if at least one of the strings could not be parsed as a VAT ID.
-    pub fn convert(data: Option<Vec<String>>) -> Result<Vec<Self>, ParseIdError> {
+    pub fn convert(data: Option<Vec<String>>) -> Result<HashSet<Self>, ParseIdError> {
         match data {
             Some(ids) => {
-                let mut result = Vec::with_capacity(ids.len());
+                let mut result = HashSet::with_capacity(ids.len());
                 for id in ids {
-                    result.push(Self::try_from(id.as_str())?);
+                    result.insert(Self::try_from(id.as_str())?);
                 }
                 Ok(result)
             }
-            None => Ok(Vec::default()),
+            None => Ok(HashSet::default()),
         }
     }
 }
@@ -50,14 +52,14 @@ impl TryFrom<&str> for Gtin {
     type Error = ParseIdError;
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let string = string.replace([' ', '-', '.'], "");
+        let string = string.replace([' ', '-', '.'], "").trim_start_matches('0').to_string();
         let len = string.len();
-        if len != 8 && len != 12 && len != 13 && len != 14 {
+        if len > 14 {
             return Err(ParseIdError::Length(string));
         }
         match string.parse::<usize>() {
             Ok(num) => Ok(Gtin(num)),
-            Err(err) => Err(ParseIdError::Num(string.to_string(), err)),
+            Err(err) => Err(ParseIdError::Num(string, err)),
         }
     }
 }
@@ -119,16 +121,16 @@ impl VatId {
     /// # Errors
     ///
     /// Returns an error if at least one of the strings could not be parsed as a VAT ID.
-    pub fn convert(data: Option<Vec<String>>) -> Result<Vec<Self>, ParseIdError> {
+    pub fn convert(data: Option<Vec<String>>) -> Result<HashSet<Self>, ParseIdError> {
         match data {
             Some(ids) => {
-                let mut result = Vec::with_capacity(ids.len());
+                let mut result = HashSet::with_capacity(ids.len());
                 for id in ids {
-                    result.push(Self::try_from(id.as_str())?);
+                    result.insert(Self::try_from(id.as_str())?);
                 }
                 Ok(result)
             }
-            None => Ok(Vec::default()),
+            None => Ok(HashSet::default()),
         }
     }
 }
@@ -139,7 +141,7 @@ impl TryFrom<&str> for VatId {
     fn try_from(id: &str) -> Result<Self, Self::Error> {
         let id = id.replace([' ', '-', '.'], "");
 
-        if id.len() < 4 {
+        if id.len() < 2 {
             return Err(ParseIdError::Length(id));
         }
 
@@ -187,17 +189,15 @@ impl OrganisationId {
     /// # Errors
     ///
     /// Returns an error if at least one of the strings could not be parsed as an ID.
-    pub fn convert(
-        data: Option<Vec<WikiStrId>>,
-    ) -> Result<Option<Vec<OrganisationId>>, ParseIdError> {
+    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<HashSet<OrganisationId>, ParseIdError> {
         if let Some(ids) = data {
-            let mut result = Vec::with_capacity(ids.len());
+            let mut result = HashSet::with_capacity(ids.len());
             for id in ids {
-                result.push(Self::Wiki(id.to_num_id()?));
+                result.insert(Self::Wiki(id.to_num_id()?));
             }
-            Ok(Some(result))
+            Ok(result)
         } else {
-            Ok(None)
+            Ok(HashSet::default())
         }
     }
 }
@@ -276,15 +276,15 @@ impl ProductId {
     /// # Errors
     ///
     /// Returns an error if at least one of the strings could not be parsed as an ID.
-    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<Option<Vec<ProductId>>, ParseIdError> {
+    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<HashSet<ProductId>, ParseIdError> {
         if let Some(ids) = data {
-            let mut result = Vec::with_capacity(ids.len());
+            let mut result = HashSet::with_capacity(ids.len());
             for id in ids {
-                result.push(Self::Wiki(id.to_num_id()?));
+                result.insert(Self::Wiki(id.to_num_id()?));
             }
-            Ok(Some(result))
+            Ok(result)
         } else {
-            Ok(None)
+            Ok(HashSet::default())
         }
     }
 }

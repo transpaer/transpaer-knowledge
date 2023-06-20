@@ -144,7 +144,6 @@ impl From<LoaderError> for ProcessingError {
         match error {
             LoaderError::Io(error) => Self::Io(error),
             LoaderError::CompressionMethod => Self::CompressionMethod,
-            LoaderError::Channel(error) => Self::Channel(error),
         }
     }
 }

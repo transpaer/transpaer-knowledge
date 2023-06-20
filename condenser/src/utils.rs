@@ -1,5 +1,7 @@
 //! Miscellaneous utilities.
 
+use std::collections::HashMap;
+
 use crate::errors;
 
 /// Extracts domain from a URL.
@@ -20,9 +22,10 @@ pub fn extract_domain_from_url(url: &str) -> String {
     domain.to_lowercase()
 }
 
-/// Extracits domains from multiple URLs.
-pub fn extract_domains_from_urls<U>(websites: &[U]) -> std::collections::HashSet<String>
+/// Extracts domains from multiple URLs.
+pub fn extract_domains_from_urls<'a, C, U>(websites: &'a C) -> std::collections::HashSet<String>
 where
+    &'a C: std::iter::IntoIterator<Item = U>,
     U: AsRef<str>,
 {
     let mut result = std::collections::HashSet::<String>::new();
@@ -77,8 +80,21 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
+/// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
+pub fn merge_hashmaps<K, V>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>)
+where
+    K: Eq + std::hash::Hash,
+    V: Clone + merge::Merge,
+{
+    for (key, value2) in m2 {
+        m1.entry(key).and_modify(|value1| value1.merge(value2.clone())).or_insert(value2);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashMap, HashSet};
+
     use super::*;
 
     #[test]
@@ -93,6 +109,21 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_domains_from_urls_vec() {
+        let input = vec!["www.example.com", "http://www.example.com", "example2.com"];
+        let output: HashSet<String> = ["example.com".into(), "example2.com".into()].into();
+        assert_eq!(extract_domains_from_urls(&input), output);
+    }
+
+    #[test]
+    fn test_extract_domains_from_urls_hashmap() {
+        let input: HashSet<String> =
+            ["www.example.com".into(), "http://example.com".into(), "example2.com".into()].into();
+        let output: HashSet<String> = ["example.com".into(), "example2.com".into()].into();
+        assert_eq!(extract_domains_from_urls(&input), output);
+    }
+
+    #[test]
     fn test_format_elapsed_time() {
         use std::time::Duration;
 
@@ -103,5 +134,18 @@ mod tests {
         assert_eq!(format_elapsed_time(Duration::new(3600, 0)), "1h 0m 0s");
         assert_eq!(format_elapsed_time(Duration::new(3720, 0)), "1h 2m 0s");
         assert_eq!(format_elapsed_time(Duration::new(3724, 0)), "1h 2m 4s");
+    }
+
+    #[test]
+    fn test_merge_hashmaps() {
+        #[derive(Clone, Debug, PartialEq, Eq, merge::Merge)]
+        struct M(#[merge(strategy = merge::num::saturating_add)] usize);
+
+        let mut input1: HashMap<&str, M> = [("1", M(1)), ("2", M(2))].into();
+        let input2: HashMap<&str, M> = [("3", M(3)), ("2", M(2))].into();
+        let output: HashMap<&str, M> = [("1", M(1)), ("2", M(4)), ("3", M(3))].into();
+
+        merge_hashmaps(&mut input1, input2);
+        assert_eq!(input1, output);
     }
 }

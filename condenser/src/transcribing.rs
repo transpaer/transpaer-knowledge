@@ -17,8 +17,7 @@ impl Transcriptor {
         let sustainity = advisors::SustainityAdvisor::load(&config.library_source_path)?;
         let library: Vec<knowledge::LibraryInfo> =
             sustainity.get_info().iter().map(convert_info).collect();
-        let contents = serde_json::to_string_pretty(&library)?;
-        std::fs::write(&config.library_target_path, contents)?;
+        serde_jsonlines::write_json_lines(&config.library_target_path, library)?;
         Ok(())
     }
 }

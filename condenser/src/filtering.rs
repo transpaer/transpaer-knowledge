@@ -1,37 +1,12 @@
 use std::io::Write;
 
-use async_trait::async_trait;
-
 use sustainity_wikidata::data::{Entity, Item};
 
 use crate::{
     config, errors,
-    processing::{Collectable, Essential, Processor},
-    sources,
+    processing::{Collectable, Processor},
+    runners, sources,
 };
-
-/// Provides the core data for the processor.
-#[derive(Debug)]
-pub struct FilteringEssentials {
-    /// Wikidata dump file loader.
-    wiki: sustainity_wikidata::dump::Loader,
-}
-
-#[async_trait]
-impl Essential for FilteringEssentials {
-    type Config = config::FilteringConfig;
-
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_full_dump_path)? })
-    }
-
-    async fn run(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, errors::ProcessingError> {
-        Ok(self.wiki.run_with_channel(tx).await?)
-    }
-}
 
 /// Data storage for gathered data.
 ///
@@ -103,11 +78,6 @@ pub struct FilteringProcessor {
 }
 
 impl FilteringProcessor {
-    /// Constructs a new `FilteringProcessor`.
-    pub fn new() -> Self {
-        Self { saver: std::sync::Arc::new(std::sync::Mutex::new(FilteringSaver::new())) }
-    }
-
     /// Decides if the passed item should be kept or filtered out.
     ///
     /// The item is kept if it:
@@ -128,33 +98,48 @@ impl FilteringProcessor {
     }
 }
 
+impl Default for FilteringProcessor {
+    fn default() -> Self {
+        Self { saver: std::sync::Arc::new(std::sync::Mutex::new(FilteringSaver::new())) }
+    }
+}
+
 impl Processor for FilteringProcessor {
     type Config = config::FilteringConfig;
-    type Essentials = FilteringEssentials;
     type Sources = sources::FullSources;
     type Collector = FilteringCollector;
 
     fn initialize(
         &self,
-        _sources: &Self::Sources,
         _collector: &mut Self::Collector,
+        _sources: &Self::Sources,
         _config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         Ok(())
     }
 
-    /// Handles one Wikidata entity.
-    fn handle_entity(
+    fn finalize(
+        &self,
+        collector: Self::Collector,
+        _sources: &Self::Sources,
+        config: &Self::Config,
+    ) -> Result<(), errors::ProcessingError> {
+        self.save(&collector, config)
+    }
+}
+
+impl runners::WikidataProcessor for FilteringProcessor {
+    fn handle_wikidata_entity(
         &self,
         msg: &str,
-        entity: &Entity,
+        entity: Entity,
         sources: &Self::Sources,
         collector: &mut Self::Collector,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
-                if Self::should_keep(item, sources) {
+                if Self::should_keep(&item, sources) {
                     collector.add_entry(msg.to_string());
 
                     // Periodically save data to file to avoid running out of memory.
@@ -168,14 +153,6 @@ impl Processor for FilteringProcessor {
         }
         Ok(())
     }
-
-    /// Saves the result into files.
-    fn finalize(
-        &self,
-        collector: &Self::Collector,
-        _sources: &Self::Sources,
-        config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        self.save(collector, config)
-    }
 }
+
+pub type FilteringRunner = runners::WikidataRunner<FilteringProcessor>;

@@ -70,17 +70,8 @@ pub struct EuEcolabelProduct {
 
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
-    /// Wikidata IDs of the companies, that could be found on Wikidata.
-    wiki_companies: HashMap<knowledge::WikiStrId, EuEcolabelCompany>,
-
-    /// Other companies that could not be found on Wikidata.
-    other_companies: Vec<EuEcolabelCompany>,
-
-    /// All products with GTIN.
-    products: Vec<EuEcolabelProduct>,
-
-    /// GTINs of the prodcuts.
-    product_gtins: HashSet<knowledge::Gtin>,
+    /// Map from companies Vat ID to their WIkidata IDs.
+    vat_to_wiki: HashMap<knowledge::VatId, knowledge::WikiId>,
 }
 
 impl EuEcolabelAdvisor {
@@ -89,68 +80,25 @@ impl EuEcolabelAdvisor {
         records: &[eu_ecolabel::data::Record],
         map: &[sustainity::data::NameMatching],
     ) -> Result<Self, sustainity_wikidata::errors::ParseIdError> {
-        let mut name_to_wiki = HashMap::<String, knowledge::WikiStrId>::new();
+        let mut name_to_wiki = HashMap::<String, knowledge::WikiId>::new();
         for entry in map {
-            if let Some(id) = entry.matched() {
-                name_to_wiki.insert(entry.name.clone(), id);
+            if let Some(wiki_id) = entry.matched() {
+                name_to_wiki.insert(entry.name.clone(), wiki_id.to_num_id()?);
             }
         }
 
-        let mut name_to_vat = HashMap::<String, knowledge::VatId>::new();
-        let mut wiki_companies = HashMap::<knowledge::WikiStrId, EuEcolabelCompany>::new();
-        let mut other_companies = HashMap::<String, EuEcolabelCompany>::new();
+        let mut vat_to_wiki = HashMap::<knowledge::VatId, knowledge::WikiId>::new();
         for r in records {
             // We assume each company has only one VAT number.
             if let Some(vat_number) = &r.prepare_vat_number() {
                 let vat_id: knowledge::VatId = vat_number.try_into()?;
-                name_to_vat.insert(r.company_name.clone(), vat_id.clone());
-
-                let company =
-                    EuEcolabelCompany { name: r.company_name.clone(), vat_id: vat_id.clone() };
                 if let Some(wiki_id) = name_to_wiki.get(&r.product_or_service_name) {
-                    wiki_companies.insert(wiki_id.clone(), company);
-                } else {
-                    other_companies.insert(r.company_name.clone(), company);
+                    vat_to_wiki.insert(vat_id, wiki_id.clone());
                 }
             }
         }
 
-        let other_companies: Vec<EuEcolabelCompany> = other_companies.values().cloned().collect();
-
-        let mut products = Vec::<EuEcolabelProduct>::new();
-        let mut product_gtins = HashSet::<knowledge::Gtin>::new();
-        for r in records {
-            if r.product_or_service == eu_ecolabel::data::ProductOrService::Product {
-                let company_id: knowledge::OrganisationId = {
-                    if let Some(wiki) = name_to_wiki.get(&r.company_name) {
-                        wiki.clone().try_into()?
-                    } else if let Some(vat_id) = name_to_vat.get(&r.company_name) {
-                        vat_id.clone().into()
-                    } else {
-                        continue;
-                    }
-                };
-                match r.code {
-                    Some(
-                        eu_ecolabel::data::Code::Ean13(ean) | eu_ecolabel::data::Code::Gtin14(ean),
-                    ) => {
-                        let gtin: knowledge::Gtin = ean.try_into()?;
-                        product_gtins.insert(gtin.clone());
-                        products.push(EuEcolabelProduct {
-                            name: r.product_or_service_name.clone(),
-                            gtin,
-                            company_id,
-                        });
-                    }
-                    Some(
-                        eu_ecolabel::data::Code::Internal(_) | eu_ecolabel::data::Code::Other(_),
-                    )
-                    | None => {} // No GTIN or EAN? Then ignore.
-                }
-            }
-        }
-
-        Ok(Self { wiki_companies, other_companies, products, product_gtins })
+        Ok(Self { vat_to_wiki })
     }
 
     /// Loads a new `EuEcolabelAdvisor` from a file.
@@ -173,34 +121,9 @@ impl EuEcolabelAdvisor {
         }
     }
 
-    /// Checks if the company that can be identified with a Wikidata ID was certified.
-    pub fn has_company(&self, company_id: &knowledge::WikiStrId) -> bool {
-        self.wiki_companies.contains_key(company_id)
-    }
-
-    /// Returns the company that can be identified with a Wikidata ID.
-    pub fn get_company(&self, company_id: &knowledge::WikiStrId) -> Option<&EuEcolabelCompany> {
-        self.wiki_companies.get(company_id)
-    }
-
-    /// Returns the companies that were not found on Wikidata, and have VAT ID.
-    pub fn get_other_companies(&self) -> &[EuEcolabelCompany] {
-        &self.other_companies
-    }
-
-    /// Checks if at least one of the passed GTINs belongs to a certified product.
-    pub fn has_product(&self, gtins: &[knowledge::Gtin]) -> bool {
-        for gtin in gtins {
-            if self.product_gtins.contains(gtin) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Returns all the products that have GTIN.
-    pub fn get_products(&self) -> &[EuEcolabelProduct] {
-        &self.products
+    /// Returns Companies Wikidata ID given it VAT ID if availabel.
+    pub fn vat_to_wiki(&self, vat_id: &knowledge::VatId) -> Option<&knowledge::WikiId> {
+        self.vat_to_wiki.get(vat_id)
     }
 }
 

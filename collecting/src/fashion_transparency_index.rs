@@ -1,4 +1,4 @@
-/// Data structures for parsing TCO data.
+/// Data structures for parsing Fashion Transparency Index data.
 pub mod data {
     use serde::{Deserialize, Serialize};
 

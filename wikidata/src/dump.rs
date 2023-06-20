@@ -1,4 +1,7 @@
-use std::io::{BufRead, Seek};
+use std::{
+    future::Future,
+    io::{BufRead, Seek},
+};
 
 use thiserror::Error;
 
@@ -11,20 +14,11 @@ pub enum LoaderError {
 
     #[error("Unknown compression method")]
     CompressionMethod,
-
-    #[error("Channel sending error: {0}")]
-    Channel(async_channel::SendError<std::string::String>),
 }
 
 impl From<std::io::Error> for LoaderError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
-    }
-}
-
-impl From<async_channel::SendError<std::string::String>> for LoaderError {
-    fn from(error: async_channel::SendError<std::string::String>) -> Self {
-        Self::Channel(error)
     }
 }
 
@@ -90,21 +84,23 @@ impl Loader {
     /// - unzip the file
     /// - seek position in the file
     /// - send a message over channel
-    pub async fn run_with_channel(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, LoaderError> {
+    pub async fn run<C, F>(mut self, callback: C) -> Result<usize, LoaderError>
+    where
+        C: Fn(String) -> F,
+        F: Future<Output = ()>,
+    {
         match self.compression_method {
-            CompressionMethod::Gz => self.run_gz_with_channel(tx).await,
-            CompressionMethod::Bz2 => self.run_bz2_with_channel(tx).await,
-            CompressionMethod::None => self.run_none_with_channel(tx).await,
+            CompressionMethod::Gz => self.run_gz(callback).await,
+            CompressionMethod::Bz2 => self.run_bz2(callback).await,
+            CompressionMethod::None => self.run_none(callback).await,
         }
     }
 
-    async fn run_gz_with_channel(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, LoaderError> {
+    async fn run_gz<C, F>(&mut self, mut callback: C) -> Result<usize, LoaderError>
+    where
+        C: Fn(String) -> F,
+        F: Future<Output = ()>,
+    {
         let mut entries: usize = 0;
 
         self.reader.seek(std::io::SeekFrom::End(0))?;
@@ -114,7 +110,7 @@ impl Loader {
         loop {
             let decoder = flate2::bufread::GzDecoder::new(&mut self.reader);
             for line in std::io::BufReader::new(decoder).lines() {
-                entries += Self::handle_line(&tx, &line?).await?;
+                entries += Self::handle_line(&mut callback, &line?).await?;
             }
 
             if self.reader.stream_position()? == file_size {
@@ -124,28 +120,30 @@ impl Loader {
         Ok(entries)
     }
 
-    async fn run_bz2_with_channel(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, LoaderError> {
+    async fn run_bz2<C, F>(&mut self, mut callback: C) -> Result<usize, LoaderError>
+    where
+        C: Fn(String) -> F,
+        F: Future<Output = ()>,
+    {
         let mut entries: usize = 0;
 
         let decoder = bzip2::bufread::MultiBzDecoder::new(&mut self.reader);
         for line in std::io::BufReader::new(decoder).lines() {
-            entries += Self::handle_line(&tx, &line?).await?;
+            entries += Self::handle_line(&mut callback, &line?).await?;
         }
 
         Ok(entries)
     }
 
-    async fn run_none_with_channel(
-        &mut self,
-        tx: async_channel::Sender<String>,
-    ) -> Result<usize, LoaderError> {
+    async fn run_none<C, F>(&mut self, mut callback: C) -> Result<usize, LoaderError>
+    where
+        C: Fn(String) -> F,
+        F: Future<Output = ()>,
+    {
         let mut entries: usize = 0;
 
         for line in std::io::BufReader::new(&mut self.reader).lines() {
-            entries += Self::handle_line(&tx, &line?).await?;
+            entries += Self::handle_line(&mut callback, &line?).await?;
         }
 
         Ok(entries)
@@ -155,10 +153,11 @@ impl Loader {
         line == "," || line == "[" || line == "]" || line.is_empty()
     }
 
-    async fn handle_line(
-        tx: &async_channel::Sender<String>,
-        line: &str,
-    ) -> Result<usize, LoaderError> {
+    async fn handle_line<C, F>(callback: &mut C, line: &str) -> Result<usize, LoaderError>
+    where
+        C: Fn(String) -> F,
+        F: Future<Output = ()>,
+    {
         if Self::should_ignore_line(line) {
             return Ok(0);
         }
@@ -166,7 +165,7 @@ impl Loader {
         let json_str =
             if line.ends_with(',') { line.strip_suffix(',').unwrap_or("") } else { line };
 
-        tx.send(json_str.to_string()).await?;
+        callback(json_str.to_string()).await;
         Ok(1)
     }
 }
