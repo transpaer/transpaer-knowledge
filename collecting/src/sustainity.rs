@@ -2,11 +2,33 @@
 pub mod data {
     use serde::{Deserialize, Serialize};
 
+    /// Enumerates all library topics.
+    #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+    pub enum LibraryTopic {
+        #[serde(rename = "info:main")]
+        InfoMain,
+
+        #[serde(rename = "info:for_producers")]
+        InfoForProducers,
+
+        #[serde(rename = "cert:bcorp")]
+        CertBcorp,
+
+        #[serde(rename = "cert:eu_ecolabel")]
+        CertEuEcolabel,
+
+        #[serde(rename = "cert:tco")]
+        CertTco,
+
+        #[serde(rename = "cert:fti")]
+        CertFti,
+    }
+
     /// Sustainity topic entry.
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct LibraryInfo {
         #[serde(rename = "id")]
-        pub id: String,
+        pub id: LibraryTopic,
 
         #[serde(rename = "title")]
         pub title: String,
@@ -16,7 +38,7 @@ pub mod data {
     }
 
     /// Mapping connecting company or product name to curresponding Wikidata ID.
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct NameMatching {
         /// Company or product name.
         #[serde(rename = "name")]

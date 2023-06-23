@@ -161,8 +161,7 @@ impl TcoAdvisor {
 
 /// Holds the information read from the `Fashion Transparency Index` data.
 pub struct FashionTransparencyIndexAdvisor {
-    /// Wikidata IDs of companies certifies by TCO.
-    entries: HashMap<knowledge::WikiStrId, usize>,
+    entries: HashMap<knowledge::WikiStrId, fashion_transparency_index::data::Entry>,
 }
 
 impl FashionTransparencyIndexAdvisor {
@@ -170,14 +169,16 @@ impl FashionTransparencyIndexAdvisor {
     pub fn new(
         source: &[fashion_transparency_index::data::Entry],
     ) -> Result<Self, errors::SourcesCheckError> {
-        let mut repeated_ids = HashSet::<knowledge::WikiStrId>::new();
-        let mut entries = HashMap::<knowledge::WikiStrId, usize>::new();
-        for e in source {
-            if let Some(id) = &e.wikidata_id {
-                if entries.contains_key(id) {
-                    repeated_ids.insert(id.clone());
+        let mut repeated_ids = HashSet::<knowledge::WikiId>::new();
+        let mut entries =
+            HashMap::<knowledge::WikiStrId, fashion_transparency_index::data::Entry>::new();
+        for entry in source {
+            if let Some(id) = &entry.wikidata_id {
+                let str_id = id.to_str_id();
+                if let std::collections::hash_map::Entry::Vacant(e) = entries.entry(str_id) {
+                    e.insert(entry.clone());
                 } else {
-                    entries.insert(id.clone(), e.score);
+                    repeated_ids.insert(id.clone());
                 }
             }
         }
@@ -214,7 +215,25 @@ impl FashionTransparencyIndexAdvisor {
 
     /// Get the score for the given company.
     pub fn get_score(&self, company_id: &knowledge::WikiStrId) -> Option<usize> {
-        self.entries.get(company_id).copied()
+        self.entries.get(company_id).map(|e| e.score)
+    }
+
+    /// Prepares Fashion Transparency Index to be presented on the Library page.
+    pub fn prepare_presentation(&self) -> knowledge::Presentation {
+        let mut data = Vec::with_capacity(self.entries.len());
+        for entry in self.entries.values() {
+            if let Some(wikidata_id) = &entry.wikidata_id {
+                data.push(knowledge::ScoredPresentationEntry {
+                    id: wikidata_id.clone().into(),
+                    name: entry.name.clone(),
+                    score: entry.score,
+                });
+            }
+        }
+        knowledge::Presentation {
+            id: sustainity::data::LibraryTopic::CertFti,
+            data: knowledge::PresentationData::Scored(data),
+        }
     }
 }
 

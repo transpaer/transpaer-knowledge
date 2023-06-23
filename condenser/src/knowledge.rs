@@ -5,7 +5,10 @@ use std::collections::HashSet;
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 
-pub use sustainity_collecting::data::{Gtin, OrganisationId, ProductId, VatId, WikiId, WikiStrId};
+pub use sustainity_collecting::{
+    data::{Gtin, OrganisationId, ProductId, VatId, WikiId, WikiStrId},
+    sustainity,
+};
 
 /// Points to a source of some data.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -372,11 +375,42 @@ impl merge::Merge for Product {
     }
 }
 
+/// One enttry in `PresentationData::Scored`.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ScoredPresentationEntry {
+    /// Organisation ID.
+    #[serde(rename = "id")]
+    pub id: OrganisationId,
+
+    /// Name of the organisation (as originally listed by the certifier).
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Score from the certifier.
+    #[serde(rename = "score")]
+    pub score: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum PresentationData {
+    Scored(Vec<ScoredPresentationEntry>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Presentation {
+    /// Topic ID.
+    pub id: sustainity::data::LibraryTopic,
+
+    /// Data to be presented.
+    pub data: PresentationData,
+}
+
 /// Represents a topic info.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LibraryInfo {
     /// Topic ID.
-    pub id: String,
+    pub id: sustainity::data::LibraryTopic,
 
     /// Article title.
     pub title: String,

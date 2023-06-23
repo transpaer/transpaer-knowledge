@@ -28,7 +28,7 @@ pub enum ConfigCheckError {
 pub enum SourcesCheckError {
     /// IDs were duplicated while expected to be unique.
     #[error("Repeated IDs: {0:?}")]
-    RepeatedIds(std::collections::HashSet<sustainity_wikidata::data::StrId>),
+    RepeatedIds(std::collections::HashSet<sustainity_wikidata::data::Id>),
 }
 
 /// Error returned when a problem with processing.
