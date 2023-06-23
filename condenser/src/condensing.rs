@@ -179,6 +179,10 @@ impl Processor for CondensingProcessor {
             product.keywords = Self::extract_keywords(&product.names);
         }
 
+        // Prepare presentations for the Library paths.
+        let mut presentations: Vec<knowledge::Presentation> =
+            vec![sources.fti.prepare_presentation()];
+
         // Convert to vectors
         let mut products: Vec<knowledge::Product> = collector.products.into_values().collect();
         let mut organisations: Vec<knowledge::Organisation> =
@@ -201,6 +205,11 @@ impl Processor for CondensingProcessor {
         );
         organisations.sort_by(|a, b| a.id.cmp(&b.id));
         serde_jsonlines::write_json_lines(&config.target_organisations_path, &organisations)?;
+
+        // Save presentations
+        log::info!("Saving {} presentations", presentations.len(),);
+        presentations.sort_by(|a, b| a.id.cmp(&b.id));
+        serde_jsonlines::write_json_lines(&config.target_presentations_path, &presentations)?;
 
         Ok(())
     }

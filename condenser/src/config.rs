@@ -288,6 +288,9 @@ pub struct CondensationConfig {
     /// Path to the output organisations file.
     pub target_organisations_path: std::path::PathBuf,
 
+    /// Path to the output presentations file.
+    pub target_presentations_path: std::path::PathBuf,
+
     /// Data sources.
     pub sources: SourcesConfig,
 
@@ -302,6 +305,7 @@ impl CondensationConfig {
         Self {
             target_products_path: target.join("products.jsonl"),
             target_organisations_path: target.join("organisations.jsonl"),
+            target_presentations_path: target.join("presentations.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
             full_runner: FullRunnerConfig::new(&args.origin, &args.cache),
         }
