@@ -624,6 +624,9 @@ pub trait ItemExt {
     /// Returns items label in the speified language.
     fn get_label(&self, lang: data::Language) -> Option<&str>;
 
+    /// Returns all labels proritizing English.
+    fn get_labels(&self) -> Vec<&str>;
+
     /// Returns all labels and aliases.
     fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str>;
 
@@ -721,6 +724,20 @@ pub trait ItemExt {
 impl ItemExt for data::Item {
     fn get_label(&self, lang: data::Language) -> Option<&str> {
         self.labels.get(lang.as_str()).map(|label| label.value.as_str())
+    }
+
+    fn get_labels(&self) -> Vec<&str> {
+        if let Some(en_label) = self.labels.get(data::Language::En.as_str()) {
+            vec![en_label.value.as_str()]
+        } else {
+            let mut labels = Vec::new();
+            for (lang, label) in &self.labels {
+                if lang != data::Language::En.as_str() {
+                    labels.push(label.value.as_str());
+                }
+            }
+            labels
+        }
     }
 
     fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str> {

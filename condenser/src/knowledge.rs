@@ -277,31 +277,69 @@ impl Certifications {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct IdEntry {
+    /// DB entry ID.
+    #[serde(rename = "_id")]
+    pub db_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Keyword {
+    /// DB entry ID.
+    #[serde(rename = "_id")]
+    pub db_id: String,
+
+    /// The keyword value.
+    #[serde(rename = "keyword")]
+    pub keyword: String,
+}
+
+/// Represents an edge in a graph database.
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Edge {
+    /// The "from" vertex ID.
+    #[serde(rename = "_from")]
+    pub from: String,
+
+    /// The "to" vertex ID.
+    #[serde(rename = "_to")]
+    pub to: String,
+}
+
 /// Represents an organisation (e.g. manufacturer, shop).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Organisation {
+    /// DB entry ID.
+    #[serde(rename = "_id")]
+    pub db_id: String,
+
     /// Organisation ID.
+    #[serde(rename = "id")]
     pub id: OrganisationId,
 
-    /// Keywords for database text search.
-    pub keywords: HashSet<String>,
-
     /// VAT IDs.
+    #[serde(rename = "vat_ids")]
     pub vat_ids: HashSet<VatId>,
 
     /// Names of the organisation.
+    #[serde(rename = "names")]
     pub names: Vec<Text>,
 
     /// Descriptions of the organisation.
+    #[serde(rename = "descriptions")]
     pub descriptions: Vec<Text>,
 
     /// Logo images.
+    #[serde(rename = "images")]
     pub images: Vec<Image>,
 
     /// Websites.
+    #[serde(rename = "websites")]
     pub websites: HashSet<String>,
 
     /// Known certifications.
+    #[serde(rename = "certifications")]
     pub certifications: Certifications,
 }
 
@@ -311,7 +349,6 @@ impl merge::Merge for Organisation {
             return;
         }
         self.vat_ids.extend(other.vat_ids.into_iter());
-        self.keywords.extend(other.keywords.into_iter());
         self.names.extend_from_slice(&other.names);
         self.descriptions.extend_from_slice(&other.descriptions);
         self.images.extend_from_slice(&other.images);
@@ -323,37 +360,44 @@ impl merge::Merge for Organisation {
 /// Represents a product.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Product {
+    /// DB entry ID.
+    #[serde(rename = "_id")]
+    pub db_id: String,
+
     /// Product ID.
+    #[serde(rename = "id")]
     pub id: ProductId,
 
-    /// Keywords for database text search.
-    pub keywords: HashSet<String>,
-
     /// GTIN or the product.
+    #[serde(rename = "gtins")]
     pub gtins: HashSet<Gtin>,
 
     /// Names of the product.
+    #[serde(rename = "names")]
     pub names: Vec<Text>,
 
     /// Descriptions of the product.
+    #[serde(rename = "descriptions")]
     pub descriptions: Vec<Text>,
 
     /// Product images.
+    #[serde(rename = "images")]
     pub images: Vec<Image>,
 
     /// Categories of the product.
+    #[serde(rename = "categories")]
     pub categories: Categories,
 
     /// Known certifications.
+    #[serde(rename = "certifications")]
     pub certifications: Certifications,
 
-    /// Wikidata IDs of manufacturers.
-    pub manufacturer_ids: HashSet<OrganisationId>,
-
     /// Wikidata IDs newer version products.
+    #[serde(rename = "follows")]
     pub follows: HashSet<ProductId>,
 
     /// Wikidata IDs older version products.
+    #[serde(rename = "followed_by")]
     pub followed_by: HashSet<ProductId>,
 }
 
@@ -363,13 +407,11 @@ impl merge::Merge for Product {
             return;
         }
         self.gtins.extend(other.gtins.into_iter());
-        self.keywords.extend(other.keywords.into_iter());
         self.names.extend_from_slice(&other.names);
         self.descriptions.extend_from_slice(&other.descriptions);
         self.images.extend_from_slice(&other.images);
         self.categories.merge(other.categories);
         self.certifications.merge(other.certifications);
-        self.manufacturer_ids.extend(other.manufacturer_ids.into_iter());
         self.follows.extend(other.follows.into_iter());
         self.followed_by.extend(other.followed_by.into_iter());
     }

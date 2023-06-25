@@ -81,13 +81,27 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
 }
 
 /// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
+/// The mergind funtionality is provided via `merge::MErge` trait.
 pub fn merge_hashmaps<K, V>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>)
 where
     K: Eq + std::hash::Hash,
     V: Clone + merge::Merge,
 {
     for (key, value2) in m2 {
-        m1.entry(key).and_modify(|value1| value1.merge(value2.clone())).or_insert(value2);
+        m1.entry(key).and_modify(|value1| value1.merge(value2.clone())).or_insert_with(|| value2);
+    }
+}
+
+/// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
+/// The mergind funtionality is provided via a closure.
+pub fn merge_hashmaps_with<K, V, M>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>, m: M)
+where
+    K: Eq + std::hash::Hash,
+    V: Clone,
+    M: Fn(&mut V, V),
+{
+    for (key, value2) in m2 {
+        m1.entry(key).and_modify(|value1| m(value1, value2.clone())).or_insert_with(|| value2);
     }
 }
 
@@ -146,6 +160,16 @@ mod tests {
         let output: HashMap<&str, M> = [("1", M(1)), ("2", M(4)), ("3", M(3))].into();
 
         merge_hashmaps(&mut input1, input2);
+        assert_eq!(input1, output);
+    }
+
+    #[test]
+    fn test_merge_hashmaps_with() {
+        let mut input1: HashMap<&str, usize> = [("1", 1), ("2", 2)].into();
+        let input2: HashMap<&str, usize> = [("3", 3), ("2", 2)].into();
+        let output: HashMap<&str, usize> = [("1", 1), ("2", 4), ("3", 3)].into();
+
+        merge_hashmaps_with(&mut input1, input2, |a, b| *a += b);
         assert_eq!(input1, output);
     }
 }

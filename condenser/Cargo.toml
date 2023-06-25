@@ -11,6 +11,7 @@ clap = { version = "4.1", features = ["derive"] }
 csv = { version = "1.1" }
 fern = { version = "0.6" }
 log = { version = "0.4" }
+md5 = { version = "0.7.0" }
 merge = { version = "0.1.0" }
 num_cpus = { version = "1.0" }
 num = { version = "0.4.0" }
