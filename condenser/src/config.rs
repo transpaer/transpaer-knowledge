@@ -279,17 +279,28 @@ impl FilteringConfig {
     }
 }
 
+/// Part of the configuration for the `condense` command.
+///
+/// Extracted to keep size of all configuration structures similar.
+#[derive(Debug, Clone)]
+pub struct CondensationInnerConfig {
+    pub organisations_path: std::path::PathBuf,
+    pub organisation_keywords_path: std::path::PathBuf,
+    pub organisation_keyword_edges_path: std::path::PathBuf,
+    pub products_path: std::path::PathBuf,
+    pub product_keywords_path: std::path::PathBuf,
+    pub product_keyword_edges_path: std::path::PathBuf,
+    pub gtins_path: std::path::PathBuf,
+    pub gtin_edges_path: std::path::PathBuf,
+    pub manufacturing_edges_path: std::path::PathBuf,
+    pub presentations_path: std::path::PathBuf,
+}
+
 /// Configuration for the `condense` command.
 #[derive(Debug, Clone)]
 pub struct CondensationConfig {
-    /// Path to the output product file.
-    pub target_products_path: std::path::PathBuf,
-
-    /// Path to the output organisations file.
-    pub target_organisations_path: std::path::PathBuf,
-
-    /// Path to the output presentations file.
-    pub target_presentations_path: std::path::PathBuf,
+    /// Output file paths.
+    pub target: Box<CondensationInnerConfig>,
 
     /// Data sources.
     pub sources: SourcesConfig,
@@ -303,9 +314,18 @@ impl CondensationConfig {
     pub fn new(args: &CondensationArgs) -> CondensationConfig {
         let target = std::path::PathBuf::from(&args.target);
         Self {
-            target_products_path: target.join("products.jsonl"),
-            target_organisations_path: target.join("organisations.jsonl"),
-            target_presentations_path: target.join("presentations.jsonl"),
+            target: Box::new(CondensationInnerConfig {
+                organisations_path: target.join("organisations.jsonl"),
+                organisation_keywords_path: target.join("organisation_keywords.jsonl"),
+                organisation_keyword_edges_path: target.join("organisation_keyword_edges.jsonl"),
+                products_path: target.join("products.jsonl"),
+                product_keywords_path: target.join("product_keywords.jsonl"),
+                product_keyword_edges_path: target.join("product_keyword_edges.jsonl"),
+                gtins_path: target.join("gtins.jsonl"),
+                gtin_edges_path: target.join("gtin_edges.jsonl"),
+                manufacturing_edges_path: target.join("manufacturing_edges.jsonl"),
+                presentations_path: target.join("presentations.jsonl"),
+            }),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
             full_runner: FullRunnerConfig::new(&args.origin, &args.cache),
         }
@@ -313,8 +333,14 @@ impl CondensationConfig {
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_creatable(&self.target_products_path)?;
-        utils::path_creatable(&self.target_organisations_path)?;
+        utils::path_creatable(&self.target.products_path)?;
+        utils::path_creatable(&self.target.organisations_path)?;
+        utils::path_creatable(&self.target.manufacturing_edges_path)?;
+        utils::path_creatable(&self.target.product_keywords_path)?;
+        utils::path_creatable(&self.target.product_keyword_edges_path)?;
+        utils::path_creatable(&self.target.organisation_keywords_path)?;
+        utils::path_creatable(&self.target.organisation_keyword_edges_path)?;
+        utils::path_creatable(&self.target.presentations_path)?;
         self.sources.check()?;
         self.full_runner.check()?;
         Ok(())

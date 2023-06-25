@@ -23,6 +23,11 @@ impl Gtin {
         Self(number)
     }
 
+    #[must_use]
+    pub fn as_number(&self) -> usize {
+        self.0
+    }
+
     /// Converts optional vector of strings to a vector of VAT IDs.
     ///
     /// # Errors
@@ -40,6 +45,12 @@ impl Gtin {
             None => Ok(HashSet::default()),
         }
     }
+
+    /// Converts the ID into `ArangoDB` ID in `gtins` collection.
+    #[must_use]
+    pub fn to_db_id(&self) -> String {
+        format!("gtins/{}", self.to_string())
+    }
 }
 
 impl ToString for Gtin {
@@ -54,7 +65,7 @@ impl TryFrom<&str> for Gtin {
     fn try_from(string: &str) -> Result<Self, Self::Error> {
         let string = string.replace([' ', '-', '.'], "").trim_start_matches('0').to_string();
         let len = string.len();
-        if len > 14 {
+        if !(8..=14).contains(&len) {
             return Err(ParseIdError::Length(string));
         }
         match string.parse::<usize>() {
@@ -189,16 +200,22 @@ impl OrganisationId {
     /// # Errors
     ///
     /// Returns an error if at least one of the strings could not be parsed as an ID.
-    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<HashSet<OrganisationId>, ParseIdError> {
+    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<Vec<OrganisationId>, ParseIdError> {
         if let Some(ids) = data {
             let mut result = HashSet::with_capacity(ids.len());
             for id in ids {
                 result.insert(Self::Wiki(id.to_num_id()?));
             }
-            Ok(result)
+            Ok(result.into_iter().collect())
         } else {
-            Ok(HashSet::default())
+            Ok(Vec::default())
         }
+    }
+
+    /// Converts the ID into `ArangoDB` ID in `organisations` collection.
+    #[must_use]
+    pub fn to_db_id(&self) -> String {
+        format!("organisations/{}", self.to_string())
     }
 }
 
@@ -286,6 +303,12 @@ impl ProductId {
         } else {
             Ok(HashSet::default())
         }
+    }
+
+    /// Converts the ID into `ArangoDB` ID in `products` collection.
+    #[must_use]
+    pub fn to_db_id(&self) -> String {
+        format!("products/{}", self.to_string())
     }
 }
 
