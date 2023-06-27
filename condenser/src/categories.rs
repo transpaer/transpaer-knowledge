@@ -87,3 +87,26 @@ pub const DRINK: &[&str] = &[items::DRINK, items::SOFT_DRINK];
 pub const FOOD: &[&str] = &[items::FOOD_BRAND];
 
 pub const TOY: &[&str] = &[items::TOY, items::ACTION_FIGURE];
+
+pub const CATEGORIES: &[(&str, &[&str])] = &[
+    ("smartphone", SMARTPHONE),
+    ("smartwatch", SMARTWATCH),
+    ("tablet", TABLET),
+    ("laptop", LAPTOP),
+    ("computer", COMPUTER),
+    ("game_console", GAME_CONSOLE),
+    ("game_controller", GAME_CONTROLLER),
+    ("camera", CAMERA),
+    ("camera_lens", CAMERA_LENS),
+    ("microprocessor", MICROPROCESSOR),
+    ("calculator", CALCULATOR),
+    ("washing_machine", WASHING_MACHINE),
+    ("musical_instrument", MUSICAL_INSTRUMENT),
+    ("car", CAR),
+    ("motorcycle", MOTORCYCLE),
+    ("boat", BOAT),
+    ("drone", DRONE),
+    ("drink", DRINK),
+    ("food", FOOD),
+    ("toy", TOY),
+];

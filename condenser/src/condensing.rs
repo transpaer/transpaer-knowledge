@@ -27,6 +27,9 @@ pub struct CondensingCollector {
 
     /// Map from prodcuts to their manufacturers.
     product_to_organisations: HashMap<knowledge::ProductId, HashSet<knowledge::OrganisationId>>,
+
+    /// Map from categories to products.
+    category_to_products: HashMap<String, HashSet<knowledge::ProductId>>,
 }
 
 impl CondensingCollector {
@@ -47,16 +50,32 @@ impl CondensingCollector {
             .or_insert(organisation);
     }
 
-    /// Links the given product to it's manufacturer.n
+    /// Links the given product to it's manufacturer.
     pub fn link_product_to_organisations(
         &mut self,
-        product: knowledge::ProductId,
+        product_id: knowledge::ProductId,
         organisations: &[knowledge::OrganisationId],
     ) {
         self.product_to_organisations
-            .entry(product)
+            .entry(product_id)
             .and_modify(|o| o.extend(organisations.iter().cloned()))
             .or_insert_with(|| organisations.iter().cloned().collect());
+    }
+
+    /// Links the given product to categories.
+    pub fn link_product_to_categories(
+        &mut self,
+        product_id: &knowledge::ProductId,
+        categories: &[String],
+    ) {
+        for category in categories {
+            self.category_to_products
+                .entry(category.to_string())
+                .and_modify(|products| {
+                    products.insert(product_id.clone());
+                })
+                .or_insert_with(|| [product_id.clone()].into());
+        }
     }
 }
 
@@ -67,7 +86,12 @@ impl merge::Merge for CondensingCollector {
         utils::merge_hashmaps_with(
             &mut self.product_to_organisations,
             other.product_to_organisations,
-            |a, b| a.extend(b.iter().cloned()),
+            |a, b| a.extend(b.into_iter()),
+        );
+        utils::merge_hashmaps_with(
+            &mut self.category_to_products,
+            other.category_to_products,
+            |a, b| a.extend(b.into_iter()),
         );
     }
 }
@@ -90,29 +114,14 @@ impl CondensingProcessor {
     }
 
     /// Extracts categories from an item.
-    fn extract_categories(item: &Item) -> knowledge::Categories {
-        knowledge::Categories {
-            smartphone: Self::has_categories(item, categories::SMARTPHONE),
-            smartwatch: Self::has_categories(item, categories::SMARTWATCH),
-            tablet: Self::has_categories(item, categories::TABLET),
-            laptop: Self::has_categories(item, categories::LAPTOP),
-            computer: Self::has_categories(item, categories::COMPUTER),
-            calculator: Self::has_categories(item, categories::CALCULATOR),
-            game_console: Self::has_categories(item, categories::GAME_CONSOLE),
-            game_controller: Self::has_categories(item, categories::GAME_CONTROLLER),
-            camera: Self::has_categories(item, categories::CAMERA),
-            camera_lens: Self::has_categories(item, categories::CAMERA_LENS),
-            microprocessor: Self::has_categories(item, categories::MICROPROCESSOR),
-            musical_instrument: Self::has_categories(item, categories::MUSICAL_INSTRUMENT),
-            washing_machine: Self::has_categories(item, categories::WASHING_MACHINE),
-            car: Self::has_categories(item, categories::CAR),
-            motorcycle: Self::has_categories(item, categories::MOTORCYCLE),
-            boat: Self::has_categories(item, categories::BOAT),
-            drone: Self::has_categories(item, categories::DRONE),
-            drink: Self::has_categories(item, categories::DRINK),
-            food: Self::has_categories(item, categories::FOOD),
-            toy: Self::has_categories(item, categories::TOY),
+    fn extract_categories(item: &Item) -> Vec<String> {
+        let mut result = Vec::new();
+        for (name, wiki_categories) in categories::CATEGORIES {
+            if Self::has_categories(item, wiki_categories) {
+                result.push((*name).to_string());
+            }
         }
+        result
     }
 
     /// Extraxts keywords for DB text search from passed texts.
@@ -202,14 +211,9 @@ impl CondensingProcessor {
     ///
     /// - fills left-over certifications
     /// - converts into a vector
-    fn prepare_products(collector: &mut CondensingCollector) -> (Vec<knowledge::Product>, usize) {
+    fn prepare_products(collector: &mut CondensingCollector) -> Vec<knowledge::Product> {
         // Assign certifications to products
-        let mut num_categorized_products = 0;
         for product in collector.products.values_mut() {
-            if product.categories.has_category() {
-                num_categorized_products += 1;
-            }
-
             if let Some(manufacturer_ids) = collector.product_to_organisations.get(&product.id) {
                 for manufacturer_id in manufacturer_ids {
                     if let Some(organisation) = collector.organisations.get(manufacturer_id) {
@@ -222,12 +226,12 @@ impl CondensingProcessor {
             }
         }
 
-        (collector.products.values().cloned().collect(), num_categorized_products)
+        collector.products.values().cloned().collect()
     }
 
     /// Prepares product keywords data.
     ///
-    /// This data is needed to implement and efficient text search index.
+    /// This data is needed to implement an efficient text search index.
     /// Data is composed from keyword vertex collection and edge collection connecting them to products.
     fn prepare_product_keywords(
         collector: &CondensingCollector,
@@ -262,7 +266,7 @@ impl CondensingProcessor {
 
     /// Prepares GTIN data.
     ///
-    /// This data is needed to implement and efficient GTIN search index.
+    /// This data is needed to implement an efficient GTIN search index.
     /// Data is composed from GTIN vertex collection and edge collection connecting them to products.
     fn prepare_gtins(
         collector: &CondensingCollector,
@@ -280,7 +284,28 @@ impl CondensingProcessor {
         (gtins, gtin_edges)
     }
 
-    /// Prepares GTIN data.
+    /// Prepares category data.
+    ///
+    /// This data is needed to implement an efficient alternative product search index.
+    /// Data is composed from category vertex collection and edge collection connecting them to products.
+    fn prepare_categories(
+        collector: &CondensingCollector,
+    ) -> (Vec<knowledge::IdEntry>, Vec<knowledge::Edge>) {
+        let mut categories = Vec::<knowledge::IdEntry>::new();
+        let mut category_edges = Vec::<knowledge::Edge>::new();
+        for (category, product_ids) in &collector.category_to_products {
+            let db_id = format!("categories/{category}");
+            categories.push(knowledge::IdEntry { db_id: db_id.clone() });
+            for product_id in product_ids {
+                category_edges
+                    .push(knowledge::Edge { from: db_id.clone(), to: product_id.to_db_id() });
+            }
+        }
+
+        (categories, category_edges)
+    }
+
+    /// Prepares manufacturing data.
     ///
     /// Data is domeposed from edges connecting produects to their manufacturers.
     fn prepare_manufacturing(collector: &CondensingCollector) -> Vec<knowledge::Edge> {
@@ -344,15 +369,10 @@ impl CondensingProcessor {
 
     /// Saves products.
     fn save_products(
-        products: (Vec<knowledge::Product>, usize),
+        mut products: Vec<knowledge::Product>,
         config: &config::CondensationConfig,
     ) -> Result<(), errors::ProcessingError> {
-        let (mut products, num_categorized_products) = products;
-        log::info!(
-            "Saving {} products. ({} are categorized)",
-            products.len(),
-            num_categorized_products
-        );
+        log::info!("Saving {} products.", products.len());
         products.sort_by(|a, b| a.id.cmp(&b.id));
         serde_jsonlines::write_json_lines(&config.target.products_path, &products)?;
         Ok(())
@@ -393,6 +413,24 @@ impl CondensingProcessor {
         log::info!("Saving {} product GTIN edges", gtin_edges.len());
         gtin_edges.sort();
         serde_jsonlines::write_json_lines(&config.target.gtin_edges_path, &gtin_edges)?;
+
+        Ok(())
+    }
+
+    /// Saves categories.
+    fn save_categories(
+        categories: (Vec<knowledge::IdEntry>, Vec<knowledge::Edge>),
+        config: &config::CondensationConfig,
+    ) -> Result<(), errors::ProcessingError> {
+        let (mut categories, mut category_edges) = categories;
+
+        log::info!("Saving {} product categories", categories.len());
+        categories.sort();
+        serde_jsonlines::write_json_lines(&config.target.categories_path, &categories)?;
+
+        log::info!("Saving {} product category edges", category_edges.len());
+        category_edges.sort();
+        serde_jsonlines::write_json_lines(&config.target.category_edges_path, &category_edges)?;
 
         Ok(())
     }
@@ -456,6 +494,7 @@ impl Processor for CondensingProcessor {
         let products = Self::prepare_products(&mut collector);
         let product_keywords = Self::prepare_product_keywords(&collector);
         let gtins = Self::prepare_gtins(&collector);
+        let categories = Self::prepare_categories(&collector);
         let manufacturing_edges = Self::prepare_manufacturing(&collector);
         let presentations = Self::prepare_presentations(sources);
 
@@ -464,6 +503,7 @@ impl Processor for CondensingProcessor {
         Self::save_products(products, config)?;
         Self::save_product_keywords(product_keywords, config)?;
         Self::save_gtins(gtins, config)?;
+        Self::save_categories(categories, config)?;
         Self::save_manufacturing(manufacturing_edges, config)?;
         Self::save_presentations(presentations, config)?;
 
@@ -485,7 +525,7 @@ impl runners::FullProcessor for CondensingProcessor {
                 // Gather all products
                 if sources.is_product(&item) {
                     let categories = Self::extract_categories(&item);
-                    if categories.has_category() || !Self::has_categories(&item, ignored::ALL) {
+                    if !categories.is_empty() || !Self::has_categories(&item, ignored::ALL) {
                         let product_id: knowledge::ProductId = item.id.to_num_id()?.into();
                         let product = knowledge::Product {
                             db_id: product_id.to_db_id(),
@@ -507,7 +547,6 @@ impl runners::FullProcessor for CondensingProcessor {
                                 .iter()
                                 .map(|i| knowledge::Image::new_wikidata(i.clone()))
                                 .collect(),
-                            categories,
                             follows: knowledge::ProductId::convert(item.get_follows())?,
                             followed_by: knowledge::ProductId::convert(item.get_followed_by())?,
                             certifications: knowledge::Certifications::default(),
@@ -515,9 +554,10 @@ impl runners::FullProcessor for CondensingProcessor {
 
                         collector.add_product(product_id.clone(), product);
                         collector.link_product_to_organisations(
-                            product_id,
+                            product_id.clone(),
                             &knowledge::OrganisationId::convert(item.get_manufacturer_ids())?,
                         );
+                        collector.link_product_to_categories(&product_id, &categories);
                     }
                 }
 
@@ -578,7 +618,6 @@ impl runners::FullProcessor for CondensingProcessor {
                 names: vec![knowledge::Text::new_open_food_facts(record.product_name)],
                 descriptions: Vec::default(),
                 images: [knowledge::Image::new_open_food_facts(record.image_small_url)].into(),
-                categories: knowledge::Categories::none(),
                 follows: HashSet::default(),
                 followed_by: HashSet::default(),
                 certifications: knowledge::Certifications::default(),
@@ -632,7 +671,6 @@ impl runners::FullProcessor for CondensingProcessor {
                     names: vec![knowledge::Text::new_eu_ecolabel(record.product_or_service_name)],
                     descriptions: Vec::default(),
                     images: Vec::default(),
-                    categories: knowledge::Categories::none(),
                     follows: HashSet::default(),
                     followed_by: HashSet::default(),
                     certifications: knowledge::Certifications::new_with_eu_ecolabel(),

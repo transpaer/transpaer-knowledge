@@ -292,6 +292,8 @@ pub struct CondensationInnerConfig {
     pub product_keyword_edges_path: std::path::PathBuf,
     pub gtins_path: std::path::PathBuf,
     pub gtin_edges_path: std::path::PathBuf,
+    pub categories_path: std::path::PathBuf,
+    pub category_edges_path: std::path::PathBuf,
     pub manufacturing_edges_path: std::path::PathBuf,
     pub presentations_path: std::path::PathBuf,
 }
@@ -323,6 +325,8 @@ impl CondensationConfig {
                 product_keyword_edges_path: target.join("product_keyword_edges.jsonl"),
                 gtins_path: target.join("gtins.jsonl"),
                 gtin_edges_path: target.join("gtin_edges.jsonl"),
+                categories_path: target.join("categories.jsonl"),
+                category_edges_path: target.join("category_edges.jsonl"),
                 manufacturing_edges_path: target.join("manufacturing_edges.jsonl"),
                 presentations_path: target.join("presentations.jsonl"),
             }),
@@ -333,13 +337,17 @@ impl CondensationConfig {
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_creatable(&self.target.products_path)?;
         utils::path_creatable(&self.target.organisations_path)?;
-        utils::path_creatable(&self.target.manufacturing_edges_path)?;
-        utils::path_creatable(&self.target.product_keywords_path)?;
-        utils::path_creatable(&self.target.product_keyword_edges_path)?;
         utils::path_creatable(&self.target.organisation_keywords_path)?;
         utils::path_creatable(&self.target.organisation_keyword_edges_path)?;
+        utils::path_creatable(&self.target.products_path)?;
+        utils::path_creatable(&self.target.product_keywords_path)?;
+        utils::path_creatable(&self.target.product_keyword_edges_path)?;
+        utils::path_creatable(&self.target.gtins_path)?;
+        utils::path_creatable(&self.target.gtin_edges_path)?;
+        utils::path_creatable(&self.target.categories_path)?;
+        utils::path_creatable(&self.target.category_edges_path)?;
+        utils::path_creatable(&self.target.manufacturing_edges_path)?;
         utils::path_creatable(&self.target.presentations_path)?;
         self.sources.check()?;
         self.full_runner.check()?;
