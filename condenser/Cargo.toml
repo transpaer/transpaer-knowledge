@@ -17,6 +17,7 @@ num_cpus = { version = "1.0" }
 num = { version = "0.4.0" }
 serde-jsonlines = { version = "0.4" }
 serde_json = { version = "1.0" }
+serde_variant = { version = "0.1.2" }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = { version = "0.9" }
 strsim = { version = "0.10.0" }

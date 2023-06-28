@@ -296,6 +296,9 @@ pub struct LibraryInfo {
     /// Article title.
     pub title: String,
 
+    /// Short one line summary of the article.
+    pub summary: String,
+
     /// Contents of the article in markdown format.
     pub article: String,
 }

@@ -13,6 +13,9 @@ pub enum ConfigCheckError {
     #[error("Path '{0}' is not a file")]
     PathIsNotAFile(std::path::PathBuf),
 
+    #[error("Path '{0}' is not a directory")]
+    PathIsNotADir(std::path::PathBuf),
+
     #[error("Path '{0}' already exists")]
     PathAlreadyExists(std::path::PathBuf),
 
@@ -45,6 +48,9 @@ pub enum ProcessingError {
 
     #[error("YAML parsing error: {0}")]
     Yaml(serde_yaml::Error),
+
+    #[error("Variant parsing error: {0}")]
+    Variant(serde_variant::UnsupportedType),
 
     #[error("Task joining error: {0}")]
     Join(tokio::task::JoinError),
@@ -89,6 +95,12 @@ impl From<serde_json::Error> for ProcessingError {
 impl From<serde_yaml::Error> for ProcessingError {
     fn from(error: serde_yaml::Error) -> Self {
         Self::Yaml(error)
+    }
+}
+
+impl From<serde_variant::UnsupportedType> for ProcessingError {
+    fn from(error: serde_variant::UnsupportedType) -> Self {
+        Self::Variant(error)
     }
 }
 
