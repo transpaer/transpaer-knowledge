@@ -57,6 +57,10 @@ pub struct TranscriptionArgs {
     #[arg(long)]
     source: String,
 
+    /// Library data directory.
+    #[arg(long)]
+    library: String,
+
     /// Target data directory.
     #[arg(long)]
     target: String,
@@ -359,7 +363,10 @@ impl CondensationConfig {
 #[derive(Clone, Debug)]
 pub struct TranscriptionConfig {
     /// Path to the input library file.
-    pub library_source_path: std::path::PathBuf,
+    pub library_file_path: std::path::PathBuf,
+
+    /// Path to the input library directory.
+    pub library_dir_path: std::path::PathBuf,
 
     /// Path to the output library file.
     pub library_target_path: std::path::PathBuf,
@@ -369,16 +376,19 @@ impl TranscriptionConfig {
     //i/ Constructs a new `TranscriptionConfig`.
     pub fn new(args: &TranscriptionArgs) -> TranscriptionConfig {
         let source = std::path::PathBuf::from(&args.source);
+        let library = std::path::PathBuf::from(&args.library);
         let target = std::path::PathBuf::from(&args.target);
         Self {
-            library_source_path: source.join("sustainity_library.yaml"),
+            library_file_path: source.join("sustainity_library.yaml"),
+            library_dir_path: library,
             library_target_path: target.join("library.jsonl"),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.library_source_path)?;
+        utils::path_exists(&self.library_file_path)?;
+        utils::dir_exists(&self.library_dir_path)?;
         utils::path_creatable(&self.library_target_path)?;
         Ok(())
     }

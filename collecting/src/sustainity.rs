@@ -11,6 +11,9 @@ pub mod data {
         #[serde(rename = "info:for_producers")]
         InfoForProducers,
 
+        #[serde(rename = "info:faq")]
+        InfoFaq,
+
         #[serde(rename = "cert:bcorp")]
         CertBcorp,
 
@@ -22,6 +25,9 @@ pub mod data {
 
         #[serde(rename = "cert:fti")]
         CertFti,
+
+        #[serde(rename = "other:not_found")]
+        OtherNotFound,
     }
 
     /// Sustainity topic entry.
@@ -33,8 +39,8 @@ pub mod data {
         #[serde(rename = "title")]
         pub title: String,
 
-        #[serde(rename = "article")]
-        pub article: String,
+        #[serde(rename = "summary")]
+        pub summary: String,
     }
 
     /// Mapping connecting company or product name to curresponding Wikidata ID.

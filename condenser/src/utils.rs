@@ -51,6 +51,17 @@ pub fn path_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckErro
     Ok(())
 }
 
+/// Verifies that the path exists and is a directory.
+pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+    if !path.exists() {
+        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
+    }
+    if !path.is_dir() {
+        return Err(errors::ConfigCheckError::PathIsNotADir(path.to_owned()));
+    }
+    Ok(())
+}
+
 /// Verifies that the path itself does not exist, but it's parent exists and is a directory.
 pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if path.exists() {
