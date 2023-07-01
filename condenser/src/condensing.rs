@@ -13,6 +13,7 @@ use crate::{
 };
 
 const LANG_EN: &str = "en";
+const MAX_CATEGORY_PRODUCT_NUM: usize = 40_000;
 
 /// Data storage for gathered data.
 ///
@@ -113,12 +114,23 @@ impl CondensingProcessor {
         false
     }
 
-    /// Extracts categories from an item.
-    fn extract_categories(item: &Item) -> Vec<String> {
+    /// Extracts categories from a Wikidata item.
+    fn extract_wikidata_categories(item: &Item) -> Vec<String> {
         let mut result = Vec::new();
         for (name, wiki_categories) in categories::CATEGORIES {
             if Self::has_categories(item, wiki_categories) {
                 result.push((*name).to_string());
+            }
+        }
+        result
+    }
+
+    /// Extracts categories from a Wikidata item.
+    fn extract_open_food_facts_categories(record: &open_food_facts::data::Record) -> Vec<String> {
+        let mut result = Vec::<String>::new();
+        for tag in record.food_groups_tags.split(',') {
+            if tag.len() > 3 && tag.starts_with("en:") {
+                result.push(tag[3..].to_string());
             }
         }
         result
@@ -294,11 +306,19 @@ impl CondensingProcessor {
         let mut categories = Vec::<knowledge::IdEntry>::new();
         let mut category_edges = Vec::<knowledge::Edge>::new();
         for (category, product_ids) in &collector.category_to_products {
-            let db_id = format!("categories/{category}");
-            categories.push(knowledge::IdEntry { db_id: db_id.clone() });
-            for product_id in product_ids {
-                category_edges
-                    .push(knowledge::Edge { from: db_id.clone(), to: product_id.to_db_id() });
+            if product_ids.len() < MAX_CATEGORY_PRODUCT_NUM {
+                let db_id = format!("categories/{category}");
+                categories.push(knowledge::IdEntry { db_id: db_id.clone() });
+                for product_id in product_ids {
+                    category_edges
+                        .push(knowledge::Edge { from: db_id.clone(), to: product_id.to_db_id() });
+                }
+            } else {
+                log::info!(
+                    " - skipping category `{}` with {} products",
+                    category,
+                    product_ids.len()
+                );
             }
         }
 
@@ -524,7 +544,7 @@ impl runners::FullProcessor for CondensingProcessor {
             Entity::Item(item) => {
                 // Gather all products
                 if sources.is_product(&item) {
-                    let categories = Self::extract_categories(&item);
+                    let categories = Self::extract_wikidata_categories(&item);
                     if !categories.is_empty() || !Self::has_categories(&item, ignored::ALL) {
                         let product_id: knowledge::ProductId = item.id.to_num_id()?.into();
                         let product = knowledge::Product {
@@ -602,7 +622,7 @@ impl runners::FullProcessor for CondensingProcessor {
     fn handle_open_food_facts_record(
         &self,
         record: open_food_facts::data::Record,
-        _sources: &Self::Sources,
+        sources: &Self::Sources,
         collector: &mut Self::Collector,
         _config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
@@ -610,20 +630,41 @@ impl runners::FullProcessor for CondensingProcessor {
         // Those are probably some internal bar codes, not GTINs.
         // Let's ignore them for now.
         if let Ok(gtin) = knowledge::Gtin::try_from(&record.code) {
+            let categories = Self::extract_open_food_facts_categories(&record);
             let product_id = knowledge::ProductId::from(gtin.clone());
             let product = knowledge::Product {
                 db_id: product_id.to_db_id(),
                 id: product_id.clone(),
                 gtins: [gtin].into(),
-                names: vec![knowledge::Text::new_open_food_facts(record.product_name)],
+                names: vec![knowledge::Text::new_open_food_facts(record.product_name.clone())],
                 descriptions: Vec::default(),
-                images: [knowledge::Image::new_open_food_facts(record.image_small_url)].into(),
+                images: [knowledge::Image::new_open_food_facts(record.image_small_url.clone())]
+                    .into(),
                 follows: HashSet::default(),
                 followed_by: HashSet::default(),
                 certifications: knowledge::Certifications::default(),
             };
 
-            collector.add_product(product_id, product);
+            collector.add_product(product_id.clone(), product);
+            collector.link_product_to_categories(&product_id, &categories);
+
+            let name = utils::disambiguate_name(&record.brand_owner);
+            if let Some(wiki_id) = sources.matches.name_to_wiki(&name) {
+                collector.link_product_to_organisations(product_id, &[wiki_id.clone().into()]);
+            } else {
+                let mut matches = HashSet::<knowledge::WikiId>::new();
+                for name in record.extract_labels() {
+                    let name = utils::disambiguate_name(&name);
+                    if let Some(id) = sources.matches.name_to_wiki(&name) {
+                        matches.insert(id.clone());
+                    }
+                }
+                if matches.len() == 1 {
+                    if let Some(wiki_id) = matches.iter().next() {
+                        collector.link_product_to_organisations(product_id, &[wiki_id.into()]);
+                    }
+                }
+            }
         }
         Ok(())
     }

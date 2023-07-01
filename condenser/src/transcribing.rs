@@ -4,7 +4,7 @@ pub struct Transcriptor;
 
 impl Transcriptor {
     pub fn transcribe(config: &config::TranscriptionConfig) -> Result<(), errors::ProcessingError> {
-        let sustainity = advisors::SustainityAdvisor::load(&config.library_file_path)?;
+        let sustainity = advisors::SustainityLibraryAdvisor::load(&config.library_file_path)?;
         let mut library = Vec::<knowledge::LibraryInfo>::new();
         for info in sustainity.get_info() {
             let id: &str = serde_variant::to_variant_name(&info.id)?;

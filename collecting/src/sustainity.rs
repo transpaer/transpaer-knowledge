@@ -14,6 +14,12 @@ pub mod data {
         #[serde(rename = "info:faq")]
         InfoFaq,
 
+        #[serde(rename = "data:wiki")]
+        DataWiki,
+
+        #[serde(rename = "data:open_food_facts")]
+        DataOpenFoodFacts,
+
         #[serde(rename = "cert:bcorp")]
         CertBcorp,
 

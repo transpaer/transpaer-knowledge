@@ -600,6 +600,7 @@ pub mod organisations {
     pub const SUBSIDIARY: &str = "Q658255";
     pub const DEPARTMENT_STORE_CHAIN: &str = "Q2549179";
     pub const DEPARTMENT_STORE: &str = "Q216107";
+    pub const FOOD_MANUFACTURER: &str = "Q1252971";
 
     pub const ALL: &[&str] = &[
         BUSSINESS,
@@ -617,6 +618,7 @@ pub mod organisations {
         SUBSIDIARY,
         DEPARTMENT_STORE_CHAIN,
         DEPARTMENT_STORE,
+        FOOD_MANUFACTURER,
     ];
 }
 
