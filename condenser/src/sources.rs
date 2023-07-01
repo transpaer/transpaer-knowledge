@@ -5,6 +5,9 @@ pub struct FullSources {
     /// Wikidata data.
     pub wikidata: advisors::WikidataAdvisor,
 
+    /// Names (company, brand, etc...) matched to Wikidata items representing them.
+    pub matches: advisors::SustainityMatchesAdvisor,
+
     /// BCorp data.
     pub bcorp: advisors::BCorpAdvisor,
 
@@ -58,16 +61,17 @@ impl Sourceable for FullSources {
     /// Constructs a new `FullSources`.
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         let wikidata = advisors::WikidataAdvisor::load(&config.wikidata_cache_path)?;
+        let matches = advisors::SustainityMatchesAdvisor::load(&config.match_path)?;
         let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
         let eu_ecolabel = advisors::EuEcolabelAdvisor::load(
             &config.eu_ecolabel_original_path,
-            &config.eu_ecolabel_match_path,
+            &config.match_path,
         )?;
         let tco = advisors::TcoAdvisor::load(&config.tco_path)?;
         let fti = advisors::FashionTransparencyIndexAdvisor::load(
             &config.fashion_transparency_index_path,
         )?;
 
-        Ok(Self { wikidata, bcorp, eu_ecolabel, tco, fti })
+        Ok(Self { wikidata, matches, bcorp, eu_ecolabel, tco, fti })
     }
 }

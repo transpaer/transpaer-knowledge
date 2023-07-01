@@ -81,10 +81,10 @@ pub struct ConnectionArgs {
     wikidata_path: String,
 
     #[arg(long)]
-    input_path: String,
+    origin: String,
 
     #[arg(long)]
-    output_path: String,
+    source: String,
 }
 
 /// All arguments of the program.
@@ -186,8 +186,8 @@ pub struct SourcesConfig {
     /// Path to original EU Ecolabel data.
     pub eu_ecolabel_original_path: std::path::PathBuf,
 
-    /// Path to Wikidata ID map data for EU Ecolabel data.
-    pub eu_ecolabel_match_path: std::path::PathBuf,
+    /// Path to mapping from names to Wikidata IDs.
+    pub match_path: std::path::PathBuf,
 
     /// Path to TCO data.
     pub tco_path: std::path::PathBuf,
@@ -206,7 +206,7 @@ impl SourcesConfig {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
             bcorp_path: origin.join("bcorp.csv"),
             eu_ecolabel_original_path: origin.join("eu_ecolabel_products.csv"),
-            eu_ecolabel_match_path: source.join("eu_ecolabel.yaml"),
+            match_path: source.join("matches.yaml"),
             tco_path: source.join("tco.yaml"),
             fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
         }
@@ -425,10 +425,13 @@ impl AnalysisConfig {
 /// Configuration for the `connect` command.
 #[derive(Clone, Debug)]
 pub struct ConnectionConfig {
-    /// Path to input data file.
-    pub input_path: std::path::PathBuf,
+    /// Path to input EU Ecolabel data file.
+    pub eu_ecolabel_input_path: std::path::PathBuf,
 
-    /// Path to output mapping file.
+    /// Path to input Open Food Facts data file.
+    pub open_food_facts_input_path: std::path::PathBuf,
+
+    /// Path to output data file.
     pub output_path: std::path::PathBuf,
 
     /// `WikidataRunner` config.
@@ -438,16 +441,20 @@ pub struct ConnectionConfig {
 impl ConnectionConfig {
     /// Constructs a new `ConnectionConfig`.
     pub fn new(args: &ConnectionArgs) -> ConnectionConfig {
+        let origin = std::path::PathBuf::from(&args.origin);
+        let source = std::path::PathBuf::from(&args.source);
         Self {
-            input_path: std::path::PathBuf::from(&args.input_path),
-            output_path: std::path::PathBuf::from(&args.output_path),
+            eu_ecolabel_input_path: origin.join("eu_ecolabel_products.csv"),
+            open_food_facts_input_path: origin.join("en.openfoodfacts.org.products.csv"),
+            output_path: source.join("matches.yaml"),
             wikidata_runner: WikidataRunnerConfig::new_with_path(&args.wikidata_path),
         }
     }
 
     /// Checks validity of the configuration.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.input_path)?;
+        utils::path_exists(&self.eu_ecolabel_input_path)?;
+        utils::path_exists(&self.open_food_facts_input_path)?;
         utils::path_creatable(&self.output_path)?;
         self.wikidata_runner.check()?;
         Ok(())

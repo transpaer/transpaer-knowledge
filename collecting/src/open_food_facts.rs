@@ -1,5 +1,7 @@
 /// Data structures for parsing Open Food Facts data.
 pub mod data {
+    use std::collections::HashSet;
+
     use serde::{Deserialize, Serialize};
 
     /// Record in Open Food Facts data.
@@ -35,6 +37,23 @@ pub mod data {
         pub image_nutrition_url: String,
         pub image_nutrition_small_url: String,
     }
+
+    impl Record {
+        /// Extracts brand owner names and brand names.
+        #[must_use]
+        pub fn extract_labels(&self) -> Vec<String> {
+            let mut labels = HashSet::<String>::new();
+            if !self.brand_owner.is_empty() {
+                labels.insert(self.brand_owner.clone());
+            }
+            for brand in self.brands.split(',') {
+                if !brand.is_empty() {
+                    labels.insert(brand.trim().to_owned());
+                }
+            }
+            labels.into_iter().collect()
+        }
+    }
 }
 
 /// Reader for loading Open Food Facts data.
@@ -42,18 +61,28 @@ pub mod reader {
     use super::data::Record;
     use crate::errors::IoOrSerdeError;
 
+    /// Iterator over Open Food Facts CSV file records.
+    pub struct Iter {
+        reader: csv::DeserializeRecordsIntoIter<std::fs::File, Record>,
+    }
+
+    impl Iterator for Iter {
+        type Item = Result<Record, IoOrSerdeError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.reader.next().map(|e| e.map_err(Into::into))
+        }
+    }
+
     /// Loads the Open Food Facts data from a file synchroneusly.
     ///
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Record>, IoOrSerdeError> {
-        let mut parsed = Vec::<Record>::new();
-        let mut reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(path)?;
-        for result in reader.deserialize() {
-            parsed.push(result?);
-        }
-        Ok(parsed)
+    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Iter, IoOrSerdeError> {
+        Ok(Iter {
+            reader: csv::ReaderBuilder::new().delimiter(b'\t').from_path(path)?.into_deserialize(),
+        })
     }
 
     /// Loads the Open Food Facts data from a file asynchroneusly.

@@ -234,6 +234,12 @@ impl From<WikiId> for OrganisationId {
     }
 }
 
+impl From<&WikiId> for OrganisationId {
+    fn from(id: &WikiId) -> Self {
+        Self::Wiki(id.clone())
+    }
+}
+
 impl TryFrom<WikiStrId> for OrganisationId {
     type Error = ParseIdError;
 

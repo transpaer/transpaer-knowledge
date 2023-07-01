@@ -104,15 +104,17 @@ impl EuEcolabelAdvisor {
     /// Loads a new `EuEcolabelAdvisor` from a file.
     pub fn load(
         original_path: &std::path::Path,
-        id_match_path: &std::path::Path,
+        match_path: &std::path::Path,
     ) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(original_path) {
             let data = eu_ecolabel::reader::parse(original_path)?;
-            if utils::is_path_ok(id_match_path) {
-                let map = sustainity::reader::parse_id_map(id_match_path)?;
+            if utils::is_path_ok(match_path) {
+                let map = sustainity::reader::parse_id_map(match_path)?;
                 Ok(Self::new(&data, &map)?)
             } else {
-                log::warn!("Could not access {id_match_path:?}. EU Ecolabel data won't be loaded!");
+                log::warn!(
+                    "Could not access {match_path:?}. Sustainity match data won't be loaded!"
+                );
                 Ok(Self::new(&[], &[])?)
             }
         } else {
@@ -270,9 +272,7 @@ impl WikidataAdvisor {
             let data = cache::load(path.as_ref())?;
             Ok(Self::new(&data))
         } else {
-            log::warn!(
-                "Could not access {path:?}. Fashion Transparency Index data won't be loaded!"
-            );
+            log::warn!("Could not access {path:?}. Wikidata cache won't be loaded!");
             Ok(Self::new_empty())
         }
     }
@@ -289,18 +289,18 @@ impl WikidataAdvisor {
 }
 
 /// Holds the information read from out internal data set.
-pub struct SustainityAdvisor {
+pub struct SustainityLibraryAdvisor {
     /// Topic info.
     info: Vec<sustainity::data::LibraryInfo>,
 }
 
-impl SustainityAdvisor {
-    /// Constructs a new `SustainityAdvisor`.
+impl SustainityLibraryAdvisor {
+    /// Constructs a new `SustainityLibraryAdvisor`.
     pub fn new(info: Vec<sustainity::data::LibraryInfo>) -> Self {
         Self { info }
     }
 
-    /// Loads a new `SustainityAdvisor` from a file.
+    /// Loads a new `SustainityLibraryAdvisor` from a file.
     pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
@@ -309,7 +309,7 @@ impl SustainityAdvisor {
             let data = sustainity::reader::parse_library(&path)?;
             Ok(Self::new(data))
         } else {
-            log::warn!("Could not access {path:?}. sustainity data won't be loaded!");
+            log::warn!("Could not access {path:?}. Sustainity library data won't be loaded!");
             Ok(Self::new(Vec::new()))
         }
     }
@@ -317,5 +317,42 @@ impl SustainityAdvisor {
     /// Returns all info.
     pub fn get_info(&self) -> &[sustainity::data::LibraryInfo] {
         &self.info
+    }
+}
+
+/// Holds the informatiion about mapping from (company, brand, etc.) name to their Wikidata ID.
+pub struct SustainityMatchesAdvisor {
+    name_to_wiki: HashMap<String, knowledge::WikiId>,
+}
+
+impl SustainityMatchesAdvisor {
+    /// Constructs a new `SustainityMatchesAdvisor`.
+    pub fn new(
+        map: &[sustainity::data::NameMatching],
+    ) -> Result<Self, sustainity_wikidata::errors::ParseIdError> {
+        let mut name_to_wiki = HashMap::<String, knowledge::WikiId>::new();
+        for entry in map {
+            if let Some(wiki_id) = entry.matched() {
+                name_to_wiki.insert(entry.name.clone(), wiki_id.to_num_id()?);
+            }
+        }
+
+        Ok(Self { name_to_wiki })
+    }
+
+    /// Loads a new `SustainityMatchesAdvisor` from a file.
+    pub fn load(match_path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(match_path) {
+            let map = sustainity::reader::parse_id_map(match_path)?;
+            Ok(Self::new(&map)?)
+        } else {
+            log::warn!("Could not access {match_path:?}. Sustainity match data won't be loaded!");
+            Ok(Self::new(&[])?)
+        }
+    }
+
+    /// Returns Wikidata ID given a name.
+    pub fn name_to_wiki(&self, name: &str) -> Option<&knowledge::WikiId> {
+        self.name_to_wiki.get(name)
     }
 }

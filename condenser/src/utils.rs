@@ -91,6 +91,11 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
+/// Trims the given name and transforms it to lower case.
+pub fn disambiguate_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
 /// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
 /// The mergind funtionality is provided via `merge::MErge` trait.
 pub fn merge_hashmaps<K, V>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>)
