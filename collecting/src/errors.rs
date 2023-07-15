@@ -8,14 +8,23 @@ pub enum IoOrSerdeError {
     #[error("IO error: {0}")]
     Io(std::io::Error),
 
-    #[error("CSV parsing error: {0}")]
-    Csv(csv::Error),
+    #[error("In file `{1}`.\nCSV parsing error: {0}")]
+    ReadCsv(csv::Error, std::path::PathBuf),
 
-    #[error("JSON parsing error: {0}")]
-    Json(serde_json::Error),
+    #[error("In file `{1}`.\n JSON parsing error: {0}")]
+    ReadJson(serde_json::Error, std::path::PathBuf),
 
-    #[error("YAML parsing error: {0}")]
-    Yaml(serde_yaml::Error),
+    #[error("In file `{1}`.\nYAML parsing error: {0}")]
+    ReadYaml(serde_yaml::Error, std::path::PathBuf),
+
+    #[error("CSV serialization error: {0}")]
+    WriteCsv(csv::Error),
+
+    #[error("JSON serialization error: {0}")]
+    WriteJson(serde_json::Error),
+
+    #[error("YAML serialization error: {0}")]
+    WriteYaml(serde_yaml::Error),
 }
 
 impl From<std::io::Error> for IoOrSerdeError {
@@ -24,20 +33,42 @@ impl From<std::io::Error> for IoOrSerdeError {
     }
 }
 
-impl From<csv::Error> for IoOrSerdeError {
-    fn from(error: csv::Error) -> Self {
-        Self::Csv(error)
+/// Trait for mapping from Serde crate errors to `IoOrSerdeError`.
+#[allow(clippy::missing_errors_doc)]
+pub trait MapSerde<T> {
+    /// Maps `Result` to `Result` with `IoOrSerdeError`.
+    fn map_serde(self) -> Result<T, IoOrSerdeError>;
+
+    /// Maps `Result` to `Result` with `IoOrSerdeError` adding the path of the file which parsing triggred the error.
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError>;
+}
+
+impl<T> MapSerde<T> for Result<T, csv::Error> {
+    fn map_serde(self) -> Result<T, IoOrSerdeError> {
+        self.map_err(IoOrSerdeError::WriteCsv)
+    }
+
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError> {
+        self.map_err(|e| IoOrSerdeError::ReadCsv(e, path.into()))
     }
 }
 
-impl From<serde_json::Error> for IoOrSerdeError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Json(error)
+impl<T> MapSerde<T> for Result<T, serde_json::Error> {
+    fn map_serde(self) -> Result<T, IoOrSerdeError> {
+        self.map_err(IoOrSerdeError::WriteJson)
+    }
+
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError> {
+        self.map_err(|e| IoOrSerdeError::ReadJson(e, path.into()))
     }
 }
 
-impl From<serde_yaml::Error> for IoOrSerdeError {
-    fn from(error: serde_yaml::Error) -> Self {
-        Self::Yaml(error)
+impl<T> MapSerde<T> for Result<T, serde_yaml::Error> {
+    fn map_serde(self) -> Result<T, IoOrSerdeError> {
+        self.map_err(IoOrSerdeError::WriteYaml)
+    }
+
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError> {
+        self.map_err(|e| IoOrSerdeError::ReadYaml(e, path.into()))
     }
 }

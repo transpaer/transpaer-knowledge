@@ -74,18 +74,19 @@ pub mod data {
 /// Reader to loading EU Ecolabel data.
 pub mod reader {
     use super::data::Record;
-    use crate::errors::IoOrSerdeError;
+    use crate::errors::{IoOrSerdeError, MapSerde};
 
     /// Loads the EU Ecolabel data from a file synchroneusly.
     ///
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<Record>, IoOrSerdeError> {
+    pub fn parse(path: &std::path::Path) -> Result<Vec<Record>, IoOrSerdeError> {
         let mut parsed = Vec::<Record>::new();
-        let mut reader = csv::ReaderBuilder::new().delimiter(b';').from_path(path)?;
+        let mut reader =
+            csv::ReaderBuilder::new().delimiter(b';').from_path(path).map_with_path(path)?;
         for result in reader.deserialize() {
-            parsed.push(result?);
+            parsed.push(result.map_with_path(path)?);
         }
         Ok(parsed)
     }
@@ -101,10 +102,11 @@ pub mod reader {
         F: std::future::Future<Output = ()>,
     {
         let mut result: usize = 0;
-        let mut reader = csv::ReaderBuilder::new().delimiter(b';').from_path(path)?;
-        let headers = reader.headers()?.clone();
+        let mut reader =
+            csv::ReaderBuilder::new().delimiter(b';').from_path(&path).map_with_path(&path)?;
+        let headers = reader.headers().map_with_path(&path)?.clone();
         for record in reader.into_records() {
-            callback(headers.clone(), record?).await;
+            callback(headers.clone(), record.map_with_path(&path)?).await;
             result += 1;
         }
         Ok(result)

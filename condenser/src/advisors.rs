@@ -8,25 +8,24 @@ use crate::{cache, errors, knowledge, utils};
 
 /// Holds the information read from the `BCorp` data.
 pub struct BCorpAdvisor {
-    /// Domains of `BCorp` companies.
-    domains: HashSet<String>,
+    /// Map from `BCorp` company domains to their names.
+    domain_to_name: HashMap<String, String>,
 }
 
 impl BCorpAdvisor {
     /// Constructs a new `BCorpAdvisor`.
     pub fn new(records: &[bcorp::data::Record]) -> Self {
-        let domains: HashSet<String> =
-            records.iter().map(|r| utils::extract_domain_from_url(&r.website)).collect();
-        Self { domains }
+        let domain_to_name: HashMap<String, String> = records
+            .iter()
+            .map(|r| (utils::extract_domain_from_url(&r.website), r.company_name.clone()))
+            .collect();
+        Self { domain_to_name }
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
-    pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
-    where
-        P: AsRef<std::path::Path> + std::fmt::Debug,
-    {
-        if utils::is_path_ok(path.as_ref()) {
-            let data = bcorp::reader::parse(&path)?;
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(path) {
+            let data = bcorp::reader::parse(path)?;
             Ok(Self::new(&data))
         } else {
             log::warn!("Could not access {path:?}. BCorp data won't be loaded!");
@@ -37,11 +36,30 @@ impl BCorpAdvisor {
     /// Checks if at least one of the passed domains corresponds to a `BCorp` company.
     pub fn has_domains(&self, domains: &HashSet<String>) -> bool {
         for domain in domains {
-            if self.domains.contains(domain) {
+            if self.domain_to_name.contains_key(domain) {
                 return true;
             }
         }
         false
+    }
+
+    /// Returns company certification data if a company with such domain was certified..
+    pub fn get_cert_from_domains(&self, domains: &HashSet<String>) -> Option<knowledge::BCorpCert> {
+        for domain in domains {
+            if let Some(name) = self.domain_to_name.get(domain) {
+                return Some(knowledge::BCorpCert {
+                    id: Self::guess_link_id_from_company_name(name),
+                });
+            }
+        }
+        None
+    }
+
+    /// The IDs of companies used in links to company profiles on the `BCorp` web page
+    /// are not provided in the Bcorp data.
+    /// Here we make a guess of how that ID looks like basing on company name.
+    pub fn guess_link_id_from_company_name(name: &str) -> String {
+        name.to_lowercase().replace(['.', '.'], "").replace(' ', "-")
     }
 }
 
@@ -71,7 +89,7 @@ pub struct EuEcolabelProduct {
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
     /// Map from companies Vat ID to their WIkidata IDs.
-    vat_to_wiki: HashMap<knowledge::VatId, knowledge::WikiId>,
+    vat_to_wiki: HashMap<knowledge::VatId, sustainity::data::Match>,
 }
 
 impl EuEcolabelAdvisor {
@@ -80,20 +98,20 @@ impl EuEcolabelAdvisor {
         records: &[eu_ecolabel::data::Record],
         map: &[sustainity::data::NameMatching],
     ) -> Result<Self, sustainity_wikidata::errors::ParseIdError> {
-        let mut name_to_wiki = HashMap::<String, knowledge::WikiId>::new();
+        let mut name_to_wiki = HashMap::<String, sustainity::data::Match>::new();
         for entry in map {
-            if let Some(wiki_id) = entry.matched() {
-                name_to_wiki.insert(entry.name.clone(), wiki_id.to_num_id()?);
+            if let Some(wiki_match) = entry.matched() {
+                name_to_wiki.insert(entry.name.clone(), wiki_match);
             }
         }
 
-        let mut vat_to_wiki = HashMap::<knowledge::VatId, knowledge::WikiId>::new();
+        let mut vat_to_wiki = HashMap::<knowledge::VatId, sustainity::data::Match>::new();
         for r in records {
             // We assume each company has only one VAT number.
             if let Some(vat_number) = &r.prepare_vat_number() {
                 let vat_id: knowledge::VatId = vat_number.try_into()?;
-                if let Some(wiki_id) = name_to_wiki.get(&r.product_or_service_name) {
-                    vat_to_wiki.insert(vat_id, wiki_id.clone());
+                if let Some(wiki_match) = name_to_wiki.get(&r.product_or_service_name) {
+                    vat_to_wiki.insert(vat_id, wiki_match.clone());
                 }
             }
         }
@@ -124,30 +142,32 @@ impl EuEcolabelAdvisor {
     }
 
     /// Returns Companies Wikidata ID given it VAT ID if availabel.
-    pub fn vat_to_wiki(&self, vat_id: &knowledge::VatId) -> Option<&knowledge::WikiId> {
+    pub fn vat_to_wiki(&self, vat_id: &knowledge::VatId) -> Option<&sustainity::data::Match> {
         self.vat_to_wiki.get(vat_id)
     }
 }
 
 /// Holds the information read from the `BCorp` data.
 pub struct TcoAdvisor {
-    /// Wikidata IDs of companies certifies by TCO.
-    companies: HashSet<knowledge::WikiStrId>,
+    /// Map from Wikidata IDs of companies certifies by TCO to their names.
+    companies: HashMap<knowledge::WikiStrId, String>,
 }
 
 impl TcoAdvisor {
     /// Constructs a new `TcoAdvisor`.
     pub fn new(entries: &[tco::data::Entry]) -> Self {
-        Self { companies: entries.iter().map(|entry| entry.wikidata_id.clone()).collect() }
+        Self {
+            companies: entries
+                .iter()
+                .map(|entry| (entry.wikidata_id.clone(), entry.company_name.clone()))
+                .collect(),
+        }
     }
 
     /// Loads a new `Tcodvisor` from a file.
-    pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
-    where
-        P: AsRef<std::path::Path> + std::fmt::Debug,
-    {
-        if utils::is_path_ok(path.as_ref()) {
-            let data = tco::reader::parse(&path)?;
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(path) {
+            let data = tco::reader::parse(path)?;
             Ok(Self::new(&data))
         } else {
             log::warn!("Could not access {path:?}. TCO data won't be loaded!");
@@ -157,7 +177,17 @@ impl TcoAdvisor {
 
     /// Checks if the company was certified.
     pub fn has_company(&self, company_id: &knowledge::WikiStrId) -> bool {
-        self.companies.contains(company_id)
+        self.companies.contains_key(company_id)
+    }
+
+    /// Returns company certification data if it was certified.
+    pub fn get_company_cert(
+        &self,
+        company_id: &knowledge::WikiStrId,
+    ) -> Option<knowledge::TcoCert> {
+        self.companies
+            .get(company_id)
+            .map(|brand_name| knowledge::TcoCert { brand_name: brand_name.clone() })
     }
 }
 
@@ -193,12 +223,9 @@ impl FashionTransparencyIndexAdvisor {
     }
 
     /// Loads a new `Tcodvisor` from a file.
-    pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
-    where
-        P: AsRef<std::path::Path> + std::fmt::Debug,
-    {
-        if utils::is_path_ok(path.as_ref()) {
-            let data = fashion_transparency_index::reader::parse(&path)?;
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(path) {
+            let data = fashion_transparency_index::reader::parse(path)?;
             let result = Self::new(&data)?;
             Ok(result)
         } else {
@@ -216,8 +243,8 @@ impl FashionTransparencyIndexAdvisor {
     }
 
     /// Get the score for the given company.
-    pub fn get_score(&self, company_id: &knowledge::WikiStrId) -> Option<usize> {
-        self.entries.get(company_id).map(|e| e.score)
+    pub fn get_cert(&self, company_id: &knowledge::WikiStrId) -> Option<knowledge::FtiCert> {
+        self.entries.get(company_id).map(|e| knowledge::FtiCert { score: e.score })
     }
 
     /// Prepares Fashion Transparency Index to be presented on the Library page.
@@ -301,12 +328,9 @@ impl SustainityLibraryAdvisor {
     }
 
     /// Loads a new `SustainityLibraryAdvisor` from a file.
-    pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
-    where
-        P: AsRef<std::path::Path> + std::fmt::Debug,
-    {
-        if utils::is_path_ok(path.as_ref()) {
-            let data = sustainity::reader::parse_library(&path)?;
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(path) {
+            let data = sustainity::reader::parse_library(path)?;
             Ok(Self::new(data))
         } else {
             log::warn!("Could not access {path:?}. Sustainity library data won't be loaded!");
@@ -333,7 +357,7 @@ impl SustainityMatchesAdvisor {
         let mut name_to_wiki = HashMap::<String, knowledge::WikiId>::new();
         for entry in map {
             if let Some(wiki_id) = entry.matched() {
-                name_to_wiki.insert(entry.name.clone(), wiki_id.to_num_id()?);
+                name_to_wiki.insert(entry.name.clone(), wiki_id.wiki_id.to_num_id()?);
             }
         }
 

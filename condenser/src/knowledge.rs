@@ -81,42 +81,72 @@ impl Image {
     }
 }
 
+/// Data about a `BCorp` company.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BCorpCert {
+    /// Name identifying the company.
+    pub id: String,
+}
+
+/// Data about a company ccertified by EU Ecolabel.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EuEcolabelCert {
+    /// Accuracy of match between the comapny name and matched Wikidata item labels.
+    pub match_accuracy: f64,
+}
+
+/// Data about a company scored by Fashion Transparency Index.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FtiCert {
+    /// Score (from 0% to 100%).
+    pub score: usize,
+}
+
+/// Data about a company which products were certified by TCO.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TcoCert {
+    /// Name identifying the company.
+    pub brand_name: String,
+}
+
 /// Lists known certifications.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, Merge)]
 pub struct Certifications {
     /// Manufacturer certifiad by BCorp.
-    #[merge(strategy = merge::bool::overwrite_false)]
-    pub bcorp: bool,
+    pub bcorp: Option<BCorpCert>,
 
     /// Manufacturer certified by EU Ecolabel.
-    #[merge(strategy = merge::bool::overwrite_false)]
-    pub eu_ecolabel: bool,
-
-    /// Manufacturer certifiad by TCO.
-    #[merge(strategy = merge::bool::overwrite_false)]
-    pub tco: bool,
+    pub eu_ecolabel: Option<EuEcolabelCert>,
 
     /// Organisation scored by Fashion Transparency Index.
-    pub fti: Option<usize>,
+    pub fti: Option<FtiCert>,
+
+    /// Manufacturer certifiad by TCO.
+    pub tco: Option<TcoCert>,
 }
 
 impl Certifications {
-    pub fn new_with_eu_ecolabel() -> Self {
-        Self { bcorp: false, eu_ecolabel: true, tco: false, fti: None }
+    pub fn new_with_eu_ecolabel(match_accuracy: f64) -> Self {
+        Self {
+            bcorp: None,
+            eu_ecolabel: Some(EuEcolabelCert { match_accuracy }),
+            tco: None,
+            fti: None,
+        }
     }
 
     /// Copies certifications.
     ///
     /// Eu Ecolabel is not inherited - this certification is assigned directly to products, not companies.
     pub fn inherit(&mut self, other: &Self) {
-        if other.bcorp {
-            self.bcorp = true;
-        }
-        if other.tco {
-            self.tco = true;
+        if other.bcorp.is_some() {
+            self.bcorp = other.bcorp.clone();
         }
         if other.fti.is_some() {
-            self.fti = other.fti;
+            self.fti = other.fti.clone();
+        }
+        if other.tco.is_some() {
+            self.tco = other.tco.clone();
         }
     }
 }

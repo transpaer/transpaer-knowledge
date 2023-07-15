@@ -40,14 +40,23 @@ pub enum ProcessingError {
     #[error("IO error: {0}")]
     Io(std::io::Error),
 
-    #[error("Csv parsing error: {0}")]
-    Csv(csv::Error),
+    #[error("In file `{1}`.\nCSV parsing error: {0}")]
+    ReadCsv(csv::Error, std::path::PathBuf),
 
-    #[error("parsing error: {0}")]
-    Json(serde_json::Error),
+    #[error("In file `{1}`.\nJSON parsing error: {0}")]
+    ReadJson(serde_json::Error, std::path::PathBuf),
 
-    #[error("YAML parsing error: {0}")]
-    Yaml(serde_yaml::Error),
+    #[error("In file `{1}`.\nYAML parsing error: {0}")]
+    ReadYaml(serde_yaml::Error, std::path::PathBuf),
+
+    #[error("CSV serialization error: {0}")]
+    WriteCsv(csv::Error),
+
+    #[error("JSON serialization error: {0}")]
+    WriteJson(serde_json::Error),
+
+    #[error("YAML serialization error: {0}")]
+    WriteYaml(serde_yaml::Error),
 
     #[error("Variant parsing error: {0}")]
     Variant(serde_variant::UnsupportedType),
@@ -77,24 +86,6 @@ pub enum ProcessingError {
 impl From<std::io::Error> for ProcessingError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
-    }
-}
-
-impl From<csv::Error> for ProcessingError {
-    fn from(error: csv::Error) -> Self {
-        Self::Csv(error)
-    }
-}
-
-impl From<serde_json::Error> for ProcessingError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Json(error)
-    }
-}
-
-impl From<serde_yaml::Error> for ProcessingError {
-    fn from(error: serde_yaml::Error) -> Self {
-        Self::Yaml(error)
     }
 }
 
@@ -144,9 +135,12 @@ impl From<IoOrSerdeError> for ProcessingError {
     fn from(error: IoOrSerdeError) -> Self {
         match error {
             IoOrSerdeError::Io(error) => Self::Io(error),
-            IoOrSerdeError::Csv(error) => Self::Csv(error),
-            IoOrSerdeError::Json(error) => Self::Json(error),
-            IoOrSerdeError::Yaml(error) => Self::Yaml(error),
+            IoOrSerdeError::ReadCsv(error, path) => Self::ReadCsv(error, path),
+            IoOrSerdeError::ReadJson(error, path) => Self::ReadJson(error, path),
+            IoOrSerdeError::ReadYaml(error, path) => Self::ReadYaml(error, path),
+            IoOrSerdeError::WriteCsv(error) => Self::WriteCsv(error),
+            IoOrSerdeError::WriteJson(error) => Self::WriteJson(error),
+            IoOrSerdeError::WriteYaml(error) => Self::WriteYaml(error),
         }
     }
 }

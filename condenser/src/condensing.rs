@@ -160,24 +160,24 @@ impl CondensingProcessor {
         for organisation in collector.organisations.values_mut() {
             let domains = utils::extract_domains_from_urls(&organisation.websites);
 
-            let is_bcorp = sources.bcorp.has_domains(&domains);
-            let (is_tco, fti_score) = {
+            let bcorp_cert = sources.bcorp.get_cert_from_domains(&domains);
+            let (tco_cert, fti_cert) = {
                 match &organisation.id {
                     knowledge::OrganisationId::Wiki(wiki_id) => {
-                        let is_tco = sources.tco.has_company(&wiki_id.to_str_id());
-                        let fti_score = sources.fti.get_score(&wiki_id.to_str_id());
+                        let tco_cert = sources.tco.get_company_cert(&wiki_id.to_str_id());
+                        let fti_cert = sources.fti.get_cert(&wiki_id.to_str_id());
                         num_wiki_organisations += 1;
-                        (is_tco, fti_score)
+                        (tco_cert, fti_cert)
                     }
-                    knowledge::OrganisationId::Vat(_) => (false, None),
+                    knowledge::OrganisationId::Vat(_) => (None, None),
                 }
             };
 
             organisation.certifications.inherit(&knowledge::Certifications {
-                bcorp: is_bcorp,
-                tco: is_tco,
-                eu_ecolabel: false, // not updated
-                fti: fti_score,
+                bcorp: bcorp_cert,
+                tco: tco_cert,
+                eu_ecolabel: None, // not updated
+                fti: fti_cert,
             });
         }
 
@@ -678,10 +678,12 @@ impl runners::FullProcessor for CondensingProcessor {
     ) -> Result<(), errors::ProcessingError> {
         if let Some(vat_number) = record.vat_number {
             let vat_number = knowledge::VatId::try_from(&vat_number)?;
-            let organisation_id: knowledge::OrganisationId = sources
-                .eu_ecolabel
-                .vat_to_wiki(&vat_number)
-                .map_or_else(|| vat_number.clone().into(), |id| id.clone().into());
+            let (organisation_id, match_accuracy): (knowledge::OrganisationId, f64) =
+                if let Some(wiki_match) = sources.eu_ecolabel.vat_to_wiki(&vat_number) {
+                    (wiki_match.wiki_id.to_num_id()?.into(), wiki_match.match_accuracy)
+                } else {
+                    (vat_number.clone().into(), 1.0)
+                };
 
             let organisation = knowledge::Organisation {
                 db_id: organisation_id.to_db_id(),
@@ -693,7 +695,7 @@ impl runners::FullProcessor for CondensingProcessor {
                 descriptions: Vec::default(),
                 images: Vec::default(),
                 websites: HashSet::default(),
-                certifications: knowledge::Certifications::new_with_eu_ecolabel(),
+                certifications: knowledge::Certifications::new_with_eu_ecolabel(match_accuracy),
             };
 
             collector.add_organisation(organisation_id, organisation);
@@ -714,7 +716,7 @@ impl runners::FullProcessor for CondensingProcessor {
                     images: Vec::default(),
                     follows: HashSet::default(),
                     followed_by: HashSet::default(),
-                    certifications: knowledge::Certifications::new_with_eu_ecolabel(),
+                    certifications: knowledge::Certifications::new_with_eu_ecolabel(match_accuracy),
                 };
 
                 collector.add_product(product_id, product);

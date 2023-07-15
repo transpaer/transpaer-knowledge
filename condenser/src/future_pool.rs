@@ -16,7 +16,7 @@ where
 {
     /// Constructs a new `FuturePool`.
     pub fn new() -> Self {
-        Self { handles: Vec::new(), result: std::marker::PhantomData::default() }
+        Self { handles: Vec::new(), result: std::marker::PhantomData {} }
     }
 
     /// Spawns a new task and saved the handler.
