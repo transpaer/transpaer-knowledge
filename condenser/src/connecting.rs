@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use sustainity_collecting::{eu_ecolabel, open_food_facts, sustainity};
+use sustainity_collecting::{errors::MapSerde, eu_ecolabel, open_food_facts, sustainity};
 use sustainity_wikidata::data::{Entity, Item};
 
 use crate::{
@@ -228,7 +228,7 @@ impl Processor for ConnectionProcessor {
         let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.matched().is_some()));
         log::info!(" - matched {} / {} names", matched, collector.data.len());
 
-        let contents = serde_yaml::to_string(&data)?;
+        let contents = serde_yaml::to_string(&data).map_serde()?;
         std::fs::write(&config.output_path, contents)?;
 
         Ok(())

@@ -59,10 +59,11 @@ pub mod data {
 /// Reader for loading Open Food Facts data.
 pub mod reader {
     use super::data::Record;
-    use crate::errors::IoOrSerdeError;
+    use crate::errors::{IoOrSerdeError, MapSerde};
 
     /// Iterator over Open Food Facts CSV file records.
     pub struct Iter {
+        path: std::path::PathBuf,
         reader: csv::DeserializeRecordsIntoIter<std::fs::File, Record>,
     }
 
@@ -70,7 +71,7 @@ pub mod reader {
         type Item = Result<Record, IoOrSerdeError>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.reader.next().map(|e| e.map_err(Into::into))
+            self.reader.next().map(|e| e.map_with_path(&self.path))
         }
     }
 
@@ -79,10 +80,13 @@ pub mod reader {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn parse<P: AsRef<std::path::Path>>(path: P) -> Result<Iter, IoOrSerdeError> {
-        Ok(Iter {
-            reader: csv::ReaderBuilder::new().delimiter(b'\t').from_path(path)?.into_deserialize(),
-        })
+    pub fn parse(path: &std::path::Path) -> Result<Iter, IoOrSerdeError> {
+        let reader = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .from_path(path)
+            .map_with_path(path)?
+            .into_deserialize();
+        Ok(Iter { reader, path: path.to_owned() })
     }
 
     /// Loads the Open Food Facts data from a file asynchroneusly.
@@ -96,10 +100,11 @@ pub mod reader {
         F: std::future::Future<Output = ()>,
     {
         let mut result: usize = 0;
-        let mut reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(path)?;
-        let headers = reader.headers()?.clone();
+        let mut reader =
+            csv::ReaderBuilder::new().delimiter(b'\t').from_path(&path).map_with_path(&path)?;
+        let headers = reader.headers().map_with_path(&path)?.clone();
         for record in reader.into_records() {
-            callback(headers.clone(), record?).await;
+            callback(headers.clone(), record.map_with_path(&path)?).await;
             result += 1;
         }
         Ok(result)

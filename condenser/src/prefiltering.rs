@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use sustainity_collecting::errors::MapSerde;
 use sustainity_wikidata::data::Entity;
 
 use crate::{
@@ -92,7 +93,7 @@ impl Processor for PrefilteringProcessor {
             classes: collector.classes.iter().cloned().collect(),
         };
 
-        let contents = serde_json::to_string_pretty(&cache)?;
+        let contents = serde_json::to_string_pretty(&cache).map_serde()?;
         std::fs::write(&config.wikidata_cache_path, contents)?;
 
         Ok(())

@@ -65,14 +65,14 @@ async fn main() {
     if let Err(err) =
         fern::Dispatch::new().level(log::LevelFilter::Info).chain(std::io::stdout()).apply()
     {
-        println!("Logger error: {err}");
+        println!("Logger error:\n{err}");
         return;
     }
 
     let start_time = std::time::Instant::now();
 
     if let Err(err) = run().await {
-        log::error!("Processing error: {err}");
+        log::error!("Processing error:\n{err}");
     }
 
     log::info!("Done! Elapsed time: {}", utils::format_elapsed_time(start_time.elapsed()));
