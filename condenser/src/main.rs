@@ -17,6 +17,7 @@ mod knowledge;
 mod prefiltering;
 mod processing;
 mod runners;
+mod score;
 mod sources;
 mod transcribing;
 mod utils;

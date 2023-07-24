@@ -29,6 +29,9 @@ pub struct CondensingCollector {
     /// Map from prodcuts to their manufacturers.
     product_to_organisations: HashMap<knowledge::ProductId, HashSet<knowledge::OrganisationId>>,
 
+    /// Map from products to categories.
+    product_to_categories: HashMap<knowledge::ProductId, HashSet<String>>,
+
     /// Map from categories to products.
     category_to_products: HashMap<String, HashSet<knowledge::ProductId>>,
 }
@@ -69,7 +72,7 @@ impl CondensingCollector {
         product_id: &knowledge::ProductId,
         categories: &[String],
     ) {
-        for category in categories {
+        for category in categories.iter() {
             self.category_to_products
                 .entry(category.to_string())
                 .and_modify(|products| {
@@ -77,6 +80,12 @@ impl CondensingCollector {
                 })
                 .or_insert_with(|| [product_id.clone()].into());
         }
+        self.product_to_categories
+            .entry(product_id.clone())
+            .and_modify(|values| {
+                values.extend(categories.iter().cloned());
+            })
+            .or_insert_with(|| categories.iter().cloned().collect());
     }
 }
 
@@ -87,6 +96,11 @@ impl merge::Merge for CondensingCollector {
         utils::merge_hashmaps_with(
             &mut self.product_to_organisations,
             other.product_to_organisations,
+            |a, b| a.extend(b.into_iter()),
+        );
+        utils::merge_hashmaps_with(
+            &mut self.product_to_categories,
+            other.product_to_categories,
             |a, b| a.extend(b.into_iter()),
         );
         utils::merge_hashmaps_with(
@@ -224,8 +238,8 @@ impl CondensingProcessor {
     /// - fills left-over certifications
     /// - converts into a vector
     fn prepare_products(collector: &mut CondensingCollector) -> Vec<knowledge::Product> {
-        // Assign certifications to products
         for product in collector.products.values_mut() {
+            // Assign certifications to products
             if let Some(manufacturer_ids) = collector.product_to_organisations.get(&product.id) {
                 for manufacturer_id in manufacturer_ids {
                     if let Some(organisation) = collector.organisations.get(manufacturer_id) {
@@ -235,6 +249,17 @@ impl CondensingProcessor {
                     //       It seems like all of them are bugs in Wikidata.
                     //       Make sure all organisations are found.
                 }
+            }
+
+            // Calculate product Sustainity score
+            {
+                let has_producer = collector
+                    .product_to_organisations
+                    .get(&product.id)
+                    .map_or(false, |o| !o.is_empty());
+                let categories = collector.product_to_categories.get(&product.id);
+                product.sustainity_score =
+                    crate::score::calculate(product, has_producer, categories);
             }
         }
 
@@ -570,6 +595,7 @@ impl runners::FullProcessor for CondensingProcessor {
                             follows: knowledge::ProductId::convert(item.get_follows())?,
                             followed_by: knowledge::ProductId::convert(item.get_followed_by())?,
                             certifications: knowledge::Certifications::default(),
+                            sustainity_score: knowledge::SustainityScore::default(),
                         };
 
                         collector.add_product(product_id.clone(), product);
@@ -643,6 +669,7 @@ impl runners::FullProcessor for CondensingProcessor {
                 follows: HashSet::default(),
                 followed_by: HashSet::default(),
                 certifications: knowledge::Certifications::default(),
+                sustainity_score: knowledge::SustainityScore::default(),
             };
 
             collector.add_product(product_id.clone(), product);
@@ -717,6 +744,7 @@ impl runners::FullProcessor for CondensingProcessor {
                     follows: HashSet::default(),
                     followed_by: HashSet::default(),
                     certifications: knowledge::Certifications::new_with_eu_ecolabel(match_accuracy),
+                    sustainity_score: knowledge::SustainityScore::default(),
                 };
 
                 collector.add_product(product_id, product);

@@ -126,6 +126,7 @@ pub struct Certifications {
 }
 
 impl Certifications {
+    /// Constructs a new `Certifications` with only `eu_ecolabel` set.
     pub fn new_with_eu_ecolabel(match_accuracy: f64) -> Self {
         Self {
             bcorp: None,
@@ -133,6 +134,16 @@ impl Certifications {
             tco: None,
             fti: None,
         }
+    }
+
+    /// Returns number of given certifications.
+    ///
+    /// TODO: FTI is not a certification.
+    pub fn get_num(&self) -> usize {
+        usize::from(self.bcorp.is_some())
+            + usize::from(self.eu_ecolabel.is_some())
+            + usize::from(self.fti.is_some())
+            + usize::from(self.tco.is_some())
     }
 
     /// Copies certifications.
@@ -167,6 +178,42 @@ pub struct Keyword {
     /// The keyword value.
     #[serde(rename = "keyword")]
     pub keyword: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SustainityScoreBranch {
+    /// Subbranches of the tree.
+    #[serde(rename = "branches")]
+    pub branches: Vec<SustainityScoreBranch>,
+
+    /// Unicode symbol representing this branch.
+    #[serde(rename = "symbol")]
+    pub symbol: char,
+
+    /// Weight of this branch.
+    #[serde(rename = "weight")]
+    pub weight: u32,
+
+    /// Calculated subscore of this branch.
+    #[serde(rename = "score")]
+    pub score: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SustainityScore {
+    /// Score tree.
+    #[serde(rename = "tree")]
+    pub tree: Vec<SustainityScoreBranch>,
+
+    /// Total calculated score.
+    #[serde(rename = "total")]
+    pub total: f64,
+}
+
+impl Default for SustainityScore {
+    fn default() -> Self {
+        Self { tree: Vec::default(), total: 0.0 }
+    }
 }
 
 /// Represents an edge in a graph database.
@@ -269,6 +316,10 @@ pub struct Product {
     /// Wikidata IDs older version products.
     #[serde(rename = "followed_by")]
     pub followed_by: HashSet<ProductId>,
+
+    /// The Sustainity score.
+    #[serde(rename = "sustainity_score")]
+    pub sustainity_score: SustainityScore,
 }
 
 impl merge::Merge for Product {
