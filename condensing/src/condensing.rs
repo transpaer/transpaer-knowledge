@@ -6,19 +6,19 @@ use sustainity_collecting::{eu_ecolabel, open_food_facts};
 use sustainity_wikidata::data::{Entity, Item};
 
 use crate::{
-    categories, config, errors, knowledge,
+    advisors, categories, config, errors, knowledge,
     processing::{Collectable, Processor},
     runners, sources, utils,
     wikidata::{ignored, ItemExt},
 };
 
 const LANG_EN: &str = "en";
-const MAX_CATEGORY_PRODUCT_NUM: usize = 40_000;
+const MAX_CATEGORY_PRODUCT_NUM: usize = 300_000;
 
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CondensingCollector {
     /// Found products.
     products: HashMap<knowledge::ProductId, knowledge::Product>,
@@ -28,6 +28,9 @@ pub struct CondensingCollector {
 
     /// Map from prodcuts to their manufacturers.
     product_to_organisations: HashMap<knowledge::ProductId, HashSet<knowledge::OrganisationId>>,
+
+    /// Map from products to regions where they are available.
+    product_to_regions: HashMap<knowledge::ProductId, knowledge::Regions>,
 
     /// Map from products to categories.
     product_to_categories: HashMap<knowledge::ProductId, HashSet<String>>,
@@ -72,7 +75,7 @@ impl CondensingCollector {
         product_id: &knowledge::ProductId,
         categories: &[String],
     ) {
-        for category in categories.iter() {
+        for category in categories {
             self.category_to_products
                 .entry(category.to_string())
                 .and_modify(|products| {
@@ -87,6 +90,15 @@ impl CondensingCollector {
             })
             .or_insert_with(|| categories.iter().cloned().collect());
     }
+
+    /// Links the given product to regions where they are available.
+    pub fn link_product_to_sell_regions(
+        &mut self,
+        product_id: &knowledge::ProductId,
+        regions: knowledge::Regions,
+    ) {
+        self.product_to_regions.insert(product_id.clone(), regions);
+    }
 }
 
 impl merge::Merge for CondensingCollector {
@@ -96,17 +108,22 @@ impl merge::Merge for CondensingCollector {
         utils::merge_hashmaps_with(
             &mut self.product_to_organisations,
             other.product_to_organisations,
-            |a, b| a.extend(b.into_iter()),
+            std::iter::Extend::extend,
+        );
+        utils::merge_hashmaps_with(
+            &mut self.product_to_regions,
+            other.product_to_regions,
+            merge::Merge::merge,
         );
         utils::merge_hashmaps_with(
             &mut self.product_to_categories,
             other.product_to_categories,
-            |a, b| a.extend(b.into_iter()),
+            std::iter::Extend::extend,
         );
         utils::merge_hashmaps_with(
             &mut self.category_to_products,
             other.category_to_products,
-            |a, b| a.extend(b.into_iter()),
+            std::iter::Extend::extend,
         );
     }
 }
@@ -150,6 +167,27 @@ impl CondensingProcessor {
         result
     }
 
+    /// Extracts sell regions from Open Food Facts record.
+    fn extract_open_food_facts_sell_regions(
+        record: &open_food_facts::data::Record,
+        off: &advisors::OpenFoodFactsAdvisor,
+    ) -> knowledge::Regions {
+        let mut result = HashSet::<isocountry::CountryCode>::new();
+        for tag in record.extract_sell_countries() {
+            match off.get_countries(&tag) {
+                Some(knowledge::Regions::World) => return knowledge::Regions::World,
+                Some(knowledge::Regions::List(list)) => result.extend(list.iter()),
+                Some(knowledge::Regions::Unknown) | None => {}
+            }
+        }
+
+        if result.is_empty() {
+            knowledge::Regions::Unknown
+        } else {
+            knowledge::Regions::List(result.into_iter().collect())
+        }
+    }
+
     /// Extraxts keywords for DB text search from passed texts.
     fn extract_keywords(texts: &[knowledge::Text]) -> HashSet<String> {
         let mut result = HashSet::with_capacity(texts.len());
@@ -170,6 +208,8 @@ impl CondensingProcessor {
         collector: &mut CondensingCollector,
         sources: &sources::FullSources,
     ) -> (Vec<knowledge::Organisation>, usize) {
+        log::info!("Preparing organisations");
+
         let mut num_wiki_organisations: usize = 0;
         for organisation in collector.organisations.values_mut() {
             let domains = utils::extract_domains_from_urls(&organisation.websites);
@@ -205,6 +245,8 @@ impl CondensingProcessor {
     fn prepare_organisation_keywords(
         collector: &CondensingCollector,
     ) -> (Vec<knowledge::Keyword>, Vec<knowledge::Edge>) {
+        log::info!("Preparing organisation keywords");
+
         let mut keywords = HashMap::<String, HashSet<knowledge::OrganisationId>>::new();
         for organisation in collector.organisations.values() {
             for keyword in Self::extract_keywords(&organisation.names) {
@@ -238,6 +280,8 @@ impl CondensingProcessor {
     /// - fills left-over certifications
     /// - converts into a vector
     fn prepare_products(collector: &mut CondensingCollector) -> Vec<knowledge::Product> {
+        log::info!("Preparing products");
+
         for product in collector.products.values_mut() {
             // Assign certifications to products
             if let Some(manufacturer_ids) = collector.product_to_organisations.get(&product.id) {
@@ -249,6 +293,11 @@ impl CondensingProcessor {
                     //       It seems like all of them are bugs in Wikidata.
                     //       Make sure all organisations are found.
                 }
+            }
+
+            // Assign region codes to products
+            if let Some(regions) = collector.product_to_regions.get(&product.id) {
+                product.regions = regions.clone();
             }
 
             // Calculate product Sustainity score
@@ -273,6 +322,8 @@ impl CondensingProcessor {
     fn prepare_product_keywords(
         collector: &CondensingCollector,
     ) -> (Vec<knowledge::Keyword>, Vec<knowledge::Edge>) {
+        log::info!("Preparing product keywords");
+
         let mut keywords = HashMap::<String, HashSet<knowledge::ProductId>>::new();
         for product in collector.products.values() {
             for keyword in Self::extract_keywords(&product.names) {
@@ -308,6 +359,7 @@ impl CondensingProcessor {
     fn prepare_gtins(
         collector: &CondensingCollector,
     ) -> (Vec<knowledge::IdEntry>, Vec<knowledge::Edge>) {
+        log::info!("Preparing GTINs");
         let mut gtins = Vec::<knowledge::IdEntry>::new();
         let mut gtin_edges = Vec::<knowledge::Edge>::new();
         for product in collector.products.values() {
@@ -328,6 +380,7 @@ impl CondensingProcessor {
     fn prepare_categories(
         collector: &CondensingCollector,
     ) -> (Vec<knowledge::IdEntry>, Vec<knowledge::Edge>) {
+        log::info!("Preparing categories");
         let mut categories = Vec::<knowledge::IdEntry>::new();
         let mut category_edges = Vec::<knowledge::Edge>::new();
         for (category, product_ids) in &collector.category_to_products {
@@ -354,6 +407,7 @@ impl CondensingProcessor {
     ///
     /// Data is domeposed from edges connecting produects to their manufacturers.
     fn prepare_manufacturing(collector: &CondensingCollector) -> Vec<knowledge::Edge> {
+        log::info!("Preparing manufacturing");
         let mut manufacturing_edges = Vec::<knowledge::Edge>::new();
         for (product_id, organisation_ids) in &collector.product_to_organisations {
             for organisation_id in organisation_ids {
@@ -363,12 +417,12 @@ impl CondensingProcessor {
                 });
             }
         }
-
         manufacturing_edges
     }
 
     /// Prepares presentations for the Library paths.
     fn prepare_presentations(sources: &sources::FullSources) -> Vec<knowledge::Presentation> {
+        log::info!("Preparing presentations");
         vec![sources.fti.prepare_presentation()]
     }
 
@@ -517,47 +571,44 @@ impl Processor for CondensingProcessor {
     type Sources = sources::FullSources;
     type Collector = CondensingCollector;
 
-    fn initialize(
-        &self,
-        _collector: &mut Self::Collector,
-        _sources: &Self::Sources,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        Ok(())
-    }
-
     fn finalize(
         &self,
         mut collector: Self::Collector,
         sources: &Self::Sources,
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
-        log::info!("Finalizing...");
-
         let organisations = Self::prepare_organisations(&mut collector, sources);
-        let organisation_keywords = Self::prepare_organisation_keywords(&collector);
-        let products = Self::prepare_products(&mut collector);
-        let product_keywords = Self::prepare_product_keywords(&collector);
-        let gtins = Self::prepare_gtins(&collector);
-        let categories = Self::prepare_categories(&collector);
-        let manufacturing_edges = Self::prepare_manufacturing(&collector);
-        let presentations = Self::prepare_presentations(sources);
-
         Self::save_organisations(organisations, config)?;
+
+        let organisation_keywords = Self::prepare_organisation_keywords(&collector);
         Self::save_organisation_keywords(organisation_keywords, config)?;
+
+        let products = Self::prepare_products(&mut collector);
         Self::save_products(products, config)?;
+
+        let product_keywords = Self::prepare_product_keywords(&collector);
         Self::save_product_keywords(product_keywords, config)?;
+
+        let gtins = Self::prepare_gtins(&collector);
         Self::save_gtins(gtins, config)?;
+
+        let categories = Self::prepare_categories(&collector);
         Self::save_categories(categories, config)?;
+
+        let manufacturing_edges = Self::prepare_manufacturing(&collector);
         Self::save_manufacturing(manufacturing_edges, config)?;
+
+        let presentations = Self::prepare_presentations(sources);
         Self::save_presentations(presentations, config)?;
+
+        log::info!("Condensation finished");
 
         Ok(())
     }
 }
 
-impl runners::FullProcessor for CondensingProcessor {
-    fn handle_wikidata_entity(
+impl runners::WikidataProcessor for CondensingProcessor {
+    fn process_wikidata_entity(
         &self,
         _msg: &str,
         entity: Entity,
@@ -594,6 +645,7 @@ impl runners::FullProcessor for CondensingProcessor {
                                 .collect(),
                             follows: knowledge::ProductId::convert(item.get_follows())?,
                             followed_by: knowledge::ProductId::convert(item.get_followed_by())?,
+                            regions: knowledge::Regions::default(),
                             certifications: knowledge::Certifications::default(),
                             sustainity_score: knowledge::SustainityScore::default(),
                         };
@@ -644,8 +696,10 @@ impl runners::FullProcessor for CondensingProcessor {
         }
         Ok(())
     }
+}
 
-    fn handle_open_food_facts_record(
+impl runners::OpenFoodFactsProcessor for CondensingProcessor {
+    fn process_open_food_facts_record(
         &self,
         record: open_food_facts::data::Record,
         sources: &Self::Sources,
@@ -656,7 +710,6 @@ impl runners::FullProcessor for CondensingProcessor {
         // Those are probably some internal bar codes, not GTINs.
         // Let's ignore them for now.
         if let Ok(gtin) = knowledge::Gtin::try_from(&record.code) {
-            let categories = Self::extract_open_food_facts_categories(&record);
             let product_id = knowledge::ProductId::from(gtin.clone());
             let product = knowledge::Product {
                 db_id: product_id.to_db_id(),
@@ -668,12 +721,17 @@ impl runners::FullProcessor for CondensingProcessor {
                     .into(),
                 follows: HashSet::default(),
                 followed_by: HashSet::default(),
+                regions: knowledge::Regions::default(),
                 certifications: knowledge::Certifications::default(),
                 sustainity_score: knowledge::SustainityScore::default(),
             };
 
+            let categories = Self::extract_open_food_facts_categories(&record);
+            let sell_regions = Self::extract_open_food_facts_sell_regions(&record, &sources.off);
+
             collector.add_product(product_id.clone(), product);
             collector.link_product_to_categories(&product_id, &categories);
+            collector.link_product_to_sell_regions(&product_id, sell_regions);
 
             let name = utils::disambiguate_name(&record.brand_owner);
             if let Some(wiki_id) = sources.matches.name_to_wiki(&name) {
@@ -695,8 +753,10 @@ impl runners::FullProcessor for CondensingProcessor {
         }
         Ok(())
     }
+}
 
-    fn handle_eu_ecolabel_record(
+impl runners::EuEcolabelProcessor for CondensingProcessor {
+    fn process_eu_ecolabel_record(
         &self,
         record: eu_ecolabel::data::Record,
         sources: &Self::Sources,
@@ -743,6 +803,7 @@ impl runners::FullProcessor for CondensingProcessor {
                     images: Vec::default(),
                     follows: HashSet::default(),
                     followed_by: HashSet::default(),
+                    regions: knowledge::Regions::default(),
                     certifications: knowledge::Certifications::new_with_eu_ecolabel(match_accuracy),
                     sustainity_score: knowledge::SustainityScore::default(),
                 };

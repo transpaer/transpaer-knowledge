@@ -15,6 +15,10 @@ pub struct Wikidata {
 }
 
 /// Reads in the cache data.
+///
+/// # Errors
+///
+/// Returns `Err` if fails to read from `path` or parse the contents.
 pub fn load(path: &std::path::Path) -> Result<Wikidata, IoOrSerdeError> {
     if path.exists() {
         let contents = std::fs::read_to_string(path)?;

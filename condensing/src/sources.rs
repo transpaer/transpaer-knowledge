@@ -19,14 +19,19 @@ pub struct FullSources {
 
     /// Fashion Transparency Index data.
     pub fti: advisors::FashionTransparencyIndexAdvisor,
+
+    /// Open Food Facts advisor.
+    pub off: advisors::OpenFoodFactsAdvisor,
 }
 
 impl FullSources {
     #[allow(clippy::unused_self)]
+    #[must_use]
     pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
         item.has_manufacturer() || item.has_gtin()
     }
 
+    #[must_use]
     pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
         if self.is_product(item) {
             return false;
@@ -71,7 +76,8 @@ impl Sourceable for FullSources {
         let fti = advisors::FashionTransparencyIndexAdvisor::load(
             &config.fashion_transparency_index_path,
         )?;
+        let off = advisors::OpenFoodFactsAdvisor::load(&config.open_food_facts_countries_path)?;
 
-        Ok(Self { wikidata, matches, bcorp, eu_ecolabel, tco, fti })
+        Ok(Self { wikidata, matches, bcorp, eu_ecolabel, tco, fti, off })
     }
 }

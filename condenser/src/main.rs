@@ -3,59 +3,54 @@
 #![deny(clippy::expect_used)]
 #![allow(clippy::module_name_repetitions)]
 
-mod advisors;
-mod analysis;
-mod cache;
-mod categories;
-mod condensing;
-mod config;
-mod connecting;
-mod errors;
-mod filtering;
-mod future_pool;
-mod knowledge;
-mod prefiltering;
-mod processing;
-mod runners;
-mod score;
-mod sources;
-mod transcribing;
-mod utils;
-mod wikidata;
+use sustainity_condensing::{config, errors, processing::Runnable};
 
-use processing::Runnable;
+/// Formats duration to a human-readable format.
+#[must_use]
+pub fn format_elapsed_time(duration: std::time::Duration) -> String {
+    let duration = duration.as_secs();
+    let seconds = duration % 60;
+    let minutes = (duration / 60) % 60;
+    let hours = duration / 3600;
+    format!("{hours}h {minutes}m {seconds}s")
+}
 
 async fn run() -> Result<(), errors::ProcessingError> {
     match config::Config::new_from_args() {
         config::Config::Prefiltering(config) => {
             config.check()?;
             log::info!("Start pre-filtering!");
-            prefiltering::PrefilteringRunner::run(config).await?;
+            sustainity_condensing::prefiltering::PrefilteringRunner::run(config).await?;
         }
         config::Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering!");
-            filtering::FilteringRunner::run(config).await?;
+            sustainity_condensing::filtering::FilteringRunner::run(config).await?;
+        }
+        config::Config::Updating(config) => {
+            config.check()?;
+            log::info!("Start updating!");
+            sustainity_condensing::updating::UpdateRunner::run(config).await?;
         }
         config::Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            condensing::CondensingRunner::run(config).await?;
+            sustainity_condensing::condensing::CondensingRunner::run(config).await?;
         }
         config::Config::Transcription(config) => {
             config.check()?;
             log::info!("Start transcribing!");
-            transcribing::Transcriptor::transcribe(&config)?;
+            sustainity_condensing::transcribing::Transcriptor::transcribe(&config)?;
         }
         config::Config::Analysis(config) => {
             config.check()?;
             log::info!("Start analysis!");
-            analysis::AnalysisRunner::run(config).await?;
+            sustainity_condensing::analysis::AnalysisRunner::run(config).await?;
         }
         config::Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
-            connecting::ConnectionRunner::run(config).await?;
+            sustainity_condensing::connecting::ConnectionRunner::run(config).await?;
         }
     }
     Ok(())
@@ -76,5 +71,8 @@ async fn main() {
         log::error!("Processing error:\n{err}");
     }
 
-    log::info!("Done! Elapsed time: {}", utils::format_elapsed_time(start_time.elapsed()));
+    log::info!(
+        "Done! Elapsed time: {}",
+        sustainity_condensing::utils::format_elapsed_time(start_time.elapsed())
+    );
 }

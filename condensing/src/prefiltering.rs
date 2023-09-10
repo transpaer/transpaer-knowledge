@@ -25,7 +25,7 @@ impl Sourceable for PrefilteringSources {
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct PrefilteringCollector {
     /// IDs of manufacturers.
     manufacturer_ids: HashSet<knowledge::WikiStrId>,
@@ -70,15 +70,6 @@ impl Processor for PrefilteringProcessor {
     type Sources = PrefilteringSources;
     type Collector = PrefilteringCollector;
 
-    fn initialize(
-        &self,
-        _collector: &mut Self::Collector,
-        _sources: &Self::Sources,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        Ok(())
-    }
-
     fn finalize(
         &self,
         collector: Self::Collector,
@@ -101,7 +92,7 @@ impl Processor for PrefilteringProcessor {
 }
 
 impl runners::WikidataProcessor for PrefilteringProcessor {
-    fn handle_wikidata_entity(
+    fn process_wikidata_entity(
         &self,
         _msg: &str,
         entity: Entity,

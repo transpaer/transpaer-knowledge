@@ -61,6 +61,9 @@ pub enum ProcessingError {
     #[error("Variant parsing error: {0}")]
     Variant(serde_variant::UnsupportedType),
 
+    #[error("Wrong country code: {0}")]
+    CountryCode(#[from] isocountry::CountryCodeParseErr),
+
     #[error("Task joining error: {0}")]
     Join(tokio::task::JoinError),
 

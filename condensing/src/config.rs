@@ -4,6 +4,12 @@ use crate::{errors::ConfigCheckError, utils};
 
 /// Arguments of the `prefilter` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "First step of fitering",
+    long_about = "Wikidata data set is very big and processing it takes a lot of time. \
+                  To mitigate that problem we preprocess that data by filtering out the entriess \
+                  that we are not interested in. We do that intwo steps and this the first of those steps."
+)]
 pub struct PrefilteringArgs {
     /// Origin data directory.
     #[arg(long)]
@@ -16,7 +22,37 @@ pub struct PrefilteringArgs {
 
 /// Arguments of the `filter` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "Second step of fitering",
+    long_about = "Wikidata data set is very big and processing it takes a lot of time. \
+                  To mitigate that problem we preprocess that data by filtering out the entriess \
+                  that we are not interested in. We do that intwo steps and this the second of those steps."
+)]
 pub struct FilteringArgs {
+    /// Origin data directory.
+    #[arg(long)]
+    origin: String,
+
+    /// Source data directory.
+    #[arg(long)]
+    source: String,
+
+    /// Cache directory.
+    #[arg(long)]
+    cache: String,
+}
+
+/// Arguments of the `filter` command.
+#[derive(Parser, Debug)]
+#[command(
+    about = "Update source files",
+    long_about = "Some data we are processing need to be augmented we additional information \
+                  which we prepare manually. With new versions of the original data those manually created \
+                  data may become insufficient or obsolete. This command updates the data and points to \
+                  any further manual updates required.\n\nCurrently this command updates mapping from \
+                  Open Food Facts countries to Sustaininty regions."
+)]
+pub struct UpdatingArgs {
     /// Origin data directory.
     #[arg(long)]
     origin: String,
@@ -32,6 +68,10 @@ pub struct FilteringArgs {
 
 /// Arguments of the `condense` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "Process big input data sources",
+    long_about = "Processes all available data sources to create an new version of Sustainity database"
+)]
 pub struct CondensationArgs {
     /// Origin data directory.
     #[arg(long)]
@@ -52,6 +92,13 @@ pub struct CondensationArgs {
 
 /// Arguments of the `transcribe` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "Convert backend config files to format storagble in the database",
+    long_about = "Some of the data we store in the database (e.g. texts and articles we show on the web page) \
+                  can be processed quickly because don't require access to large data sources like Wikidata. \
+                  This command runs this processing basically transcribing some human readable files into \
+                  a format that can be imported by the database."
+)]
 pub struct TranscriptionArgs {
     /// Source data directory.
     #[arg(long)]
@@ -68,6 +115,12 @@ pub struct TranscriptionArgs {
 
 /// Arguments of the `analyse` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "Run an analysis of input data",
+    long_about = "Runs an analysis of input data to find ways to improve the processing of those data.\n\n\
+                  Currently this command only looks for entry classes in Wikidata and looks for those \
+                  contain but do not correspond to any product category."
+)]
 pub struct AnalysisArgs {
     /// Cache directory.
     #[arg(long)]
@@ -76,6 +129,13 @@ pub struct AnalysisArgs {
 
 /// Arguments of the `connect` command.
 #[derive(Parser, Debug)]
+#[command(
+    about = "Try to connect companies of products known mainly only by name to entries in Wikidata",
+    long_about = "Using fuzzy estimations tries to connect companies and products from data sources like \
+                  Open Food Facts and EU Ecolabel data (which frequently don't contain identifiers) \
+                  to entries in Wikidata. The methods used cannot guaranty correctness of connections, \
+                  so in the future we would like to avoid using this approach."
+)]
 pub struct ConnectionArgs {
     #[arg(long)]
     wikidata_path: String,
@@ -92,6 +152,7 @@ pub struct ConnectionArgs {
 pub enum Commands {
     Prefilter(PrefilteringArgs),
     Filter(FilteringArgs),
+    Update(UpdatingArgs),
     Condense(CondensationArgs),
     Transcribe(TranscriptionArgs),
     Analyze(AnalysisArgs),
@@ -107,74 +168,133 @@ pub struct Args {
     pub command: Commands,
 }
 
-/// Configuration for `WikidataRunner`.
+/// Configuration for `WikidataGather`.
+#[must_use]
 #[derive(Debug, Clone)]
-pub struct WikidataRunnerConfig {
+pub struct WikidataGathererConfig {
     /// Path to Wikidata data.
     pub wikidata_path: std::path::PathBuf,
 }
 
-impl WikidataRunnerConfig {
-    /// Constructs a new `WikidataRunnerConfig` with filteresd Wikidata dump.
-    pub fn new_filtered(cache: &str) -> WikidataRunnerConfig {
+impl WikidataGathererConfig {
+    /// Constructs a new `WikidataGathererConfig` with filteresd Wikidata dump.
+    pub fn new_filtered(cache: &str) -> WikidataGathererConfig {
         let cache = std::path::PathBuf::from(&cache);
         Self { wikidata_path: cache.join("wikidata.jsonl") }
     }
 
-    /// Constructs a new `WikidataRunnerConfig` with full Wikidata dump.
-    pub fn new_full(origin: &str) -> WikidataRunnerConfig {
+    /// Constructs a new `WikidataGathererConfig` with full Wikidata dump.
+    pub fn new_full(origin: &str) -> WikidataGathererConfig {
         let origin = std::path::PathBuf::from(&origin);
         Self { wikidata_path: origin.join("wikidata-20230417-all.json.gz") }
     }
 
-    /// Constructs a new `WikidataRunnerConfig`.
-    pub fn new_with_path(path: &str) -> WikidataRunnerConfig {
+    /// Constructs a new `WikidataGathererConfig`.
+    pub fn new_with_path(path: &str) -> WikidataGathererConfig {
         let wikidata_path = std::path::PathBuf::from(&path);
         Self { wikidata_path }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_path)?;
         Ok(())
     }
 }
 
-/// Configuration for `WikidataRunner`.
+/// Configuration for `WikidataGatherer`.
+#[must_use]
 #[derive(Debug, Clone)]
-pub struct FullRunnerConfig {
-    /// Path to Wikidata data.
-    pub wikidata_path: std::path::PathBuf,
-
+pub struct OpenFoodFactsGathererConfig {
     /// Path to Open Food Facts data.
     pub open_food_facts_path: std::path::PathBuf,
-
-    /// Path to EU Ecolabel data.
-    pub eu_ecolabel_path: std::path::PathBuf,
 }
 
-impl FullRunnerConfig {
-    /// Constructs a new `WikidataRunnerConfig`.
-    pub fn new(origin: &str, cache: &str) -> FullRunnerConfig {
+impl OpenFoodFactsGathererConfig {
+    pub fn new(origin: &str) -> Self {
         let origin = std::path::PathBuf::from(origin);
-        let cache = std::path::PathBuf::from(cache);
-        Self {
-            wikidata_path: cache.join("wikidata.jsonl"),
-            open_food_facts_path: origin.join("en.openfoodfacts.org.products.csv"),
-            eu_ecolabel_path: origin.join("eu_ecolabel_products.csv"),
-        }
+        Self { open_food_facts_path: origin.join("en.openfoodfacts.org.products.csv") }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_path)?;
         utils::path_exists(&self.open_food_facts_path)?;
+        Ok(())
+    }
+}
+
+/// Configuration for `WikidataGatherer`.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct EuEcolabelGathererConfig {
+    /// Path to Open Food Facts data.
+    pub eu_ecolabel_path: std::path::PathBuf,
+}
+
+impl EuEcolabelGathererConfig {
+    pub fn new(origin: &str) -> Self {
+        let origin = std::path::PathBuf::from(origin);
+        Self { eu_ecolabel_path: origin.join("eu_ecolabel_products.csv") }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.eu_ecolabel_path)?;
         Ok(())
     }
 }
 
+/// Configuration for `FullGatherer`.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct FullGathererConfig {
+    /// Wikidata gatherer config.
+    pub wiki: WikidataGathererConfig,
+
+    /// Open Food Facts gatherer config.
+    pub off: OpenFoodFactsGathererConfig,
+
+    /// EU Ecolabel gatherer config.
+    pub eu_ecolabel: EuEcolabelGathererConfig,
+}
+
+impl FullGathererConfig {
+    /// Constructs a new `WikidataGathererConfig`.
+    pub fn new(origin: &str, cache: &str) -> FullGathererConfig {
+        Self {
+            wiki: WikidataGathererConfig::new_filtered(cache),
+            off: OpenFoodFactsGathererConfig::new(origin),
+            eu_ecolabel: EuEcolabelGathererConfig::new(origin),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        self.wiki.check()?;
+        self.off.check()?;
+        self.eu_ecolabel.check()?;
+        Ok(())
+    }
+}
+
 /// Subconfiguration related to source files used by several other configs.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct SourcesConfig {
     /// Path to input Wikidata cache.
@@ -194,6 +314,9 @@ pub struct SourcesConfig {
 
     /// Path to Fashion Transparency Index data.
     pub fashion_transparency_index_path: std::path::PathBuf,
+
+    /// Path to file mapping Open Food Facts sell countries to Sustainity regions.
+    pub open_food_facts_countries_path: std::path::PathBuf,
 }
 
 impl SourcesConfig {
@@ -209,27 +332,36 @@ impl SourcesConfig {
             match_path: source.join("matches.yaml"),
             tco_path: source.join("tco.yaml"),
             fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
+            open_food_facts_countries_path: source.join("open_food_facts_countries.yaml"),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
         utils::path_exists(&self.bcorp_path)?;
+        utils::path_exists(&self.eu_ecolabel_original_path)?;
+        utils::path_exists(&self.match_path)?;
         utils::path_exists(&self.tco_path)?;
         utils::path_exists(&self.fashion_transparency_index_path)?;
+        utils::path_exists(&self.open_food_facts_countries_path)?;
         Ok(())
     }
 }
 
 /// Configuration for the `filter-products` command.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct PrefilteringConfig {
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
-    /// `WikidataRunner` config.
-    pub wikidata_runner: WikidataRunnerConfig,
+    /// `WikidataGatherer` config.
+    pub wikidata_gatherer: WikidataGathererConfig,
 }
 
 impl PrefilteringConfig {
@@ -238,19 +370,24 @@ impl PrefilteringConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
-            wikidata_runner: WikidataRunnerConfig::new_full(&args.origin),
+            wikidata_gatherer: WikidataGathererConfig::new_full(&args.origin),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_creatable(&self.wikidata_cache_path)?;
-        self.wikidata_runner.check()?;
+        self.wikidata_gatherer.check()?;
         Ok(())
     }
 }
 
 /// Configuration for the `filter-manufacturers` command.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct FilteringConfig {
     /// Path to output filtered .
@@ -259,8 +396,8 @@ pub struct FilteringConfig {
     /// Data sources.
     pub sources: SourcesConfig,
 
-    /// `WikidataRunner` config.
-    pub wikidata_runner: WikidataRunnerConfig,
+    /// `WikidataGatherer` config.
+    pub wikidata_gatherer: WikidataGathererConfig,
 }
 
 impl FilteringConfig {
@@ -270,15 +407,46 @@ impl FilteringConfig {
         Self {
             wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
-            wikidata_runner: WikidataRunnerConfig::new_full(&args.cache),
+            wikidata_gatherer: WikidataGathererConfig::new_full(&args.cache),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_creatable(&self.wikidata_filtered_dump_path)?;
         self.sources.check()?;
-        self.wikidata_runner.check()?;
+        self.wikidata_gatherer.check()?;
+        Ok(())
+    }
+}
+
+#[must_use]
+#[derive(Clone, Debug)]
+pub struct UpdatingConfig {
+    pub off: OpenFoodFactsGathererConfig,
+    pub sources: SourcesConfig,
+}
+
+impl UpdatingConfig {
+    /// Constructs a new `UpdatingConfig`.
+    pub fn new(args: &UpdatingArgs) -> UpdatingConfig {
+        Self {
+            off: OpenFoodFactsGathererConfig::new(&args.origin),
+            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        self.off.check()?;
         Ok(())
     }
 }
@@ -303,6 +471,7 @@ pub struct CondensationInnerConfig {
 }
 
 /// Configuration for the `condense` command.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct CondensationConfig {
     /// Output file paths.
@@ -311,8 +480,8 @@ pub struct CondensationConfig {
     /// Data sources.
     pub sources: SourcesConfig,
 
-    /// `FullRunner` config.
-    pub full_runner: FullRunnerConfig,
+    /// `FullGatherer` config.
+    pub full_gatherer: FullGathererConfig,
 }
 
 impl CondensationConfig {
@@ -335,11 +504,15 @@ impl CondensationConfig {
                 presentations_path: target.join("presentations.jsonl"),
             }),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
-            full_runner: FullRunnerConfig::new(&args.origin, &args.cache),
+            full_gatherer: FullGathererConfig::new(&args.origin, &args.cache),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_creatable(&self.target.organisations_path)?;
         utils::path_creatable(&self.target.organisation_keywords_path)?;
@@ -354,12 +527,13 @@ impl CondensationConfig {
         utils::path_creatable(&self.target.manufacturing_edges_path)?;
         utils::path_creatable(&self.target.presentations_path)?;
         self.sources.check()?;
-        self.full_runner.check()?;
+        self.full_gatherer.check()?;
         Ok(())
     }
 }
 
 /// Configuration for the `transcribe` command.
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct TranscriptionConfig {
     /// Path to the input library file.
@@ -386,6 +560,10 @@ impl TranscriptionConfig {
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.library_file_path)?;
         utils::dir_exists(&self.library_dir_path)?;
@@ -395,13 +573,14 @@ impl TranscriptionConfig {
 }
 
 /// Configuration for the `analyze` command.
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
-    /// `WikidataRunner` config.
-    pub wikidata_runner: WikidataRunnerConfig,
+    /// `Wikidatagatherer` config.
+    pub wikidata_gatherer: WikidataGathererConfig,
 }
 
 impl AnalysisConfig {
@@ -410,19 +589,24 @@ impl AnalysisConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
-            wikidata_runner: WikidataRunnerConfig::new_filtered(&args.cache),
+            wikidata_gatherer: WikidataGathererConfig::new_filtered(&args.cache),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
-        self.wikidata_runner.check()?;
+        self.wikidata_gatherer.check()?;
         Ok(())
     }
 }
 
 /// Configuration for the `connect` command.
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct ConnectionConfig {
     /// Path to input EU Ecolabel data file.
@@ -434,8 +618,8 @@ pub struct ConnectionConfig {
     /// Path to output data file.
     pub output_path: std::path::PathBuf,
 
-    /// `WikidataRunner` config.
-    pub wikidata_runner: WikidataRunnerConfig,
+    /// `WikidataGatherer` config.
+    pub wikidata_gatherer: WikidataGathererConfig,
 }
 
 impl ConnectionConfig {
@@ -447,47 +631,93 @@ impl ConnectionConfig {
             eu_ecolabel_input_path: origin.join("eu_ecolabel_products.csv"),
             open_food_facts_input_path: origin.join("en.openfoodfacts.org.products.csv"),
             output_path: source.join("matches.yaml"),
-            wikidata_runner: WikidataRunnerConfig::new_with_path(&args.wikidata_path),
+            wikidata_gatherer: WikidataGathererConfig::new_with_path(&args.wikidata_path),
         }
     }
 
     /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.eu_ecolabel_input_path)?;
         utils::path_exists(&self.open_food_facts_input_path)?;
         utils::path_creatable(&self.output_path)?;
-        self.wikidata_runner.check()?;
+        self.wikidata_gatherer.check()?;
         Ok(())
     }
 }
 
-impl From<&CondensationConfig> for FullRunnerConfig {
-    fn from(config: &CondensationConfig) -> FullRunnerConfig {
-        config.full_runner.clone()
+impl From<&FullGathererConfig> for WikidataGathererConfig {
+    fn from(config: &FullGathererConfig) -> WikidataGathererConfig {
+        config.wiki.clone()
     }
 }
 
-impl From<&FilteringConfig> for WikidataRunnerConfig {
-    fn from(config: &FilteringConfig) -> WikidataRunnerConfig {
-        config.wikidata_runner.clone()
+impl From<&FullGathererConfig> for OpenFoodFactsGathererConfig {
+    fn from(config: &FullGathererConfig) -> OpenFoodFactsGathererConfig {
+        config.off.clone()
     }
 }
 
-impl From<&PrefilteringConfig> for WikidataRunnerConfig {
-    fn from(config: &PrefilteringConfig) -> WikidataRunnerConfig {
-        config.wikidata_runner.clone()
+impl From<&FullGathererConfig> for EuEcolabelGathererConfig {
+    fn from(config: &FullGathererConfig) -> EuEcolabelGathererConfig {
+        config.eu_ecolabel.clone()
     }
 }
 
-impl From<&AnalysisConfig> for WikidataRunnerConfig {
-    fn from(config: &AnalysisConfig) -> WikidataRunnerConfig {
-        config.wikidata_runner.clone()
+impl From<&CondensationConfig> for FullGathererConfig {
+    fn from(config: &CondensationConfig) -> FullGathererConfig {
+        config.full_gatherer.clone()
     }
 }
 
-impl From<&ConnectionConfig> for WikidataRunnerConfig {
-    fn from(config: &ConnectionConfig) -> WikidataRunnerConfig {
-        config.wikidata_runner.clone()
+impl From<&CondensationConfig> for WikidataGathererConfig {
+    fn from(config: &CondensationConfig) -> WikidataGathererConfig {
+        config.full_gatherer.wiki.clone()
+    }
+}
+
+impl From<&CondensationConfig> for OpenFoodFactsGathererConfig {
+    fn from(config: &CondensationConfig) -> OpenFoodFactsGathererConfig {
+        config.full_gatherer.off.clone()
+    }
+}
+
+impl From<&UpdatingConfig> for OpenFoodFactsGathererConfig {
+    fn from(config: &UpdatingConfig) -> OpenFoodFactsGathererConfig {
+        config.off.clone()
+    }
+}
+
+impl From<&CondensationConfig> for EuEcolabelGathererConfig {
+    fn from(config: &CondensationConfig) -> EuEcolabelGathererConfig {
+        config.full_gatherer.eu_ecolabel.clone()
+    }
+}
+
+impl From<&FilteringConfig> for WikidataGathererConfig {
+    fn from(config: &FilteringConfig) -> WikidataGathererConfig {
+        config.wikidata_gatherer.clone()
+    }
+}
+
+impl From<&PrefilteringConfig> for WikidataGathererConfig {
+    fn from(config: &PrefilteringConfig) -> WikidataGathererConfig {
+        config.wikidata_gatherer.clone()
+    }
+}
+
+impl From<&AnalysisConfig> for WikidataGathererConfig {
+    fn from(config: &AnalysisConfig) -> WikidataGathererConfig {
+        config.wikidata_gatherer.clone()
+    }
+}
+
+impl From<&ConnectionConfig> for WikidataGathererConfig {
+    fn from(config: &ConnectionConfig) -> WikidataGathererConfig {
+        config.wikidata_gatherer.clone()
     }
 }
 
@@ -499,6 +729,12 @@ impl From<&CondensationConfig> for SourcesConfig {
 
 impl From<&FilteringConfig> for SourcesConfig {
     fn from(config: &FilteringConfig) -> SourcesConfig {
+        config.sources.clone()
+    }
+}
+
+impl From<&UpdatingConfig> for SourcesConfig {
+    fn from(config: &UpdatingConfig) -> SourcesConfig {
         config.sources.clone()
     }
 }
@@ -522,10 +758,12 @@ impl From<&ConnectionConfig> for ConnectionConfig {
 }
 
 /// Configuration for the program.
+#[must_use]
 #[derive(Debug, Clone)]
 pub enum Config {
     Prefiltering(PrefilteringConfig),
     Filtering(FilteringConfig),
+    Updating(UpdatingConfig),
     Condensation(CondensationConfig),
     Transcription(TranscriptionConfig),
     Analysis(AnalysisConfig),
@@ -539,6 +777,7 @@ impl Config {
         match args.command {
             Commands::Prefilter(args) => Config::Prefiltering(PrefilteringConfig::new(&args)),
             Commands::Filter(args) => Config::Filtering(FilteringConfig::new(&args)),
+            Commands::Update(args) => Config::Updating(UpdatingConfig::new(&args)),
             Commands::Condense(args) => Config::Condensation(CondensationConfig::new(&args)),
             Commands::Transcribe(args) => Config::Transcription(TranscriptionConfig::new(&args)),
             Commands::Analyze(args) => Config::Analysis(AnalysisConfig::new(&args)),

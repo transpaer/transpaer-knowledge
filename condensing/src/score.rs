@@ -38,10 +38,11 @@ impl Subscore {
     }
 }
 
-pub fn calculate(
+#[must_use]
+pub fn calculate<S: std::hash::BuildHasher>(
     product: &knowledge::Product,
     has_producer: bool,
-    categories: Option<&HashSet<String>>,
+    categories: Option<&HashSet<String, S>>,
 ) -> knowledge::SustainityScore {
     let num_certs = product.certifications.get_num();
 

@@ -11,7 +11,7 @@ use crate::{
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct FilteringCollector {
     /// Picked entries from wikidata.
     entries: Vec<String>,
@@ -22,6 +22,7 @@ impl FilteringCollector {
         self.entries.push(entry);
     }
 
+    #[must_use]
     pub fn is_full(&self) -> bool {
         self.entries.len() >= 100_000
     }
@@ -40,15 +41,10 @@ impl merge::Merge for FilteringCollector {
 impl Collectable for FilteringCollector {}
 
 /// Helper structure for saving the data to a file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FilteringSaver;
 
 impl FilteringSaver {
-    /// Constructs a new `FilteringSaver`.
-    pub fn new() -> Self {
-        Self
-    }
-
     /// Saves the result into files.
     #[allow(clippy::unused_self)]
     fn save(
@@ -100,7 +96,7 @@ impl FilteringProcessor {
 
 impl Default for FilteringProcessor {
     fn default() -> Self {
-        Self { saver: std::sync::Arc::new(std::sync::Mutex::new(FilteringSaver::new())) }
+        Self { saver: std::sync::Arc::new(std::sync::Mutex::new(FilteringSaver)) }
     }
 }
 
@@ -108,15 +104,6 @@ impl Processor for FilteringProcessor {
     type Config = config::FilteringConfig;
     type Sources = sources::FullSources;
     type Collector = FilteringCollector;
-
-    fn initialize(
-        &self,
-        _collector: &mut Self::Collector,
-        _sources: &Self::Sources,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        Ok(())
-    }
 
     fn finalize(
         &self,
@@ -129,7 +116,7 @@ impl Processor for FilteringProcessor {
 }
 
 impl runners::WikidataProcessor for FilteringProcessor {
-    fn handle_wikidata_entity(
+    fn process_wikidata_entity(
         &self,
         msg: &str,
         entity: Entity,
