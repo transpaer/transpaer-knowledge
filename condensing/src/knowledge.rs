@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 
+use sustainity_collecting::open_food_facts;
 pub use sustainity_collecting::{
     data::{Gtin, OrganisationId, ProductId, VatId, WikiId, WikiStrId},
     sustainity,
@@ -40,16 +41,19 @@ pub struct Text {
 
 impl Text {
     /// Constructs a new `Text` with "Wikidata" as the source.
+    #[must_use]
     pub fn new_wikidata(text: String) -> Self {
         Self { text, source: Source::Wikidata }
     }
 
     /// Constructs a new `Text` with "Open Food Facts" as the source.
+    #[must_use]
     pub fn new_open_food_facts(text: String) -> Self {
         Self { text, source: Source::OpenFoodFacts }
     }
 
     /// Constructs a new `Text` with "Eu Ecolabel" as the source.
+    #[must_use]
     pub fn new_eu_ecolabel(text: String) -> Self {
         Self { text, source: Source::EuEcolabel }
     }
@@ -71,13 +75,85 @@ pub struct Image {
 
 impl Image {
     /// Constructs a new `Text` with "Wikidata" as the source.
+    #[must_use]
     pub fn new_wikidata(image: String) -> Self {
         Self { image, source: Source::Wikidata }
     }
 
     /// Constructs a new `Text` with "Open Food Facts" as the source.
+    #[must_use]
     pub fn new_open_food_facts(image: String) -> Self {
         Self { image, source: Source::OpenFoodFacts }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(tag = "variant", content = "content")]
+pub enum Regions {
+    /// Available world-wide
+    #[serde(rename = "all")]
+    World,
+
+    /// Region could not be identified
+    #[serde(rename = "unknown")]
+    #[default]
+    Unknown,
+
+    /// List of regions
+    #[serde(rename = "list")]
+    List(Vec<isocountry::CountryCode>),
+}
+
+impl merge::Merge for Regions {
+    fn merge(&mut self, other: Self) {
+        match other {
+            Self::World => {
+                *self = Self::World;
+            }
+            Self::Unknown => {}
+            Self::List(other_list) => match self {
+                Self::World => {}
+                Self::Unknown => {
+                    *self = Self::List(other_list);
+                }
+                Self::List(self_list) => {
+                    self_list.extend(&other_list);
+                    self_list.sort_unstable();
+                    self_list.dedup();
+                }
+            },
+        }
+    }
+}
+
+impl TryFrom<&open_food_facts::data::Regions> for Regions {
+    type Error = isocountry::CountryCodeParseErr;
+
+    fn try_from(regions: &open_food_facts::data::Regions) -> Result<Self, Self::Error> {
+        Ok(match regions {
+            open_food_facts::data::Regions::World => Self::World,
+            open_food_facts::data::Regions::Unknown => Self::Unknown,
+            open_food_facts::data::Regions::List(list) => {
+                let regions = list
+                    .iter()
+                    .map(|c| isocountry::CountryCode::for_alpha2(c))
+                    .collect::<Result<Vec<isocountry::CountryCode>, Self::Error>>()?;
+                Self::List(regions)
+            }
+        })
+    }
+}
+
+impl From<&Regions> for open_food_facts::data::Regions {
+    fn from(regions: &Regions) -> open_food_facts::data::Regions {
+        match regions {
+            Regions::World => Self::World,
+            Regions::Unknown => Self::Unknown,
+            Regions::List(list) => {
+                let codes = list.iter().map(|r| r.alpha2().to_string()).collect();
+                Self::List(codes)
+            }
+        }
     }
 }
 
@@ -127,6 +203,7 @@ pub struct Certifications {
 
 impl Certifications {
     /// Constructs a new `Certifications` with only `eu_ecolabel` set.
+    #[must_use]
     pub fn new_with_eu_ecolabel(match_accuracy: f64) -> Self {
         Self {
             bcorp: None,
@@ -139,6 +216,7 @@ impl Certifications {
     /// Returns number of given certifications.
     ///
     /// TODO: FTI is not a certification.
+    #[must_use]
     pub fn get_num(&self) -> usize {
         usize::from(self.bcorp.is_some())
             + usize::from(self.eu_ecolabel.is_some())
@@ -269,11 +347,11 @@ impl merge::Merge for Organisation {
         if self.id != other.id {
             return;
         }
-        self.vat_ids.extend(other.vat_ids.into_iter());
+        self.vat_ids.extend(other.vat_ids);
         self.names.extend_from_slice(&other.names);
         self.descriptions.extend_from_slice(&other.descriptions);
         self.images.extend_from_slice(&other.images);
-        self.websites.extend(other.websites.into_iter());
+        self.websites.extend(other.websites);
         self.certifications.merge(other.certifications);
     }
 }
@@ -317,6 +395,10 @@ pub struct Product {
     #[serde(rename = "followed_by")]
     pub followed_by: HashSet<ProductId>,
 
+    /// Regions where the product is available.
+    #[serde(rename = "regions")]
+    pub regions: Regions,
+
     /// The Sustainity score.
     #[serde(rename = "sustainity_score")]
     pub sustainity_score: SustainityScore,
@@ -327,13 +409,13 @@ impl merge::Merge for Product {
         if self.id != other.id {
             return;
         }
-        self.gtins.extend(other.gtins.into_iter());
+        self.gtins.extend(other.gtins);
         self.names.extend_from_slice(&other.names);
         self.descriptions.extend_from_slice(&other.descriptions);
         self.images.extend_from_slice(&other.images);
         self.certifications.merge(other.certifications);
-        self.follows.extend(other.follows.into_iter());
-        self.followed_by.extend(other.followed_by.into_iter());
+        self.follows.extend(other.follows);
+        self.followed_by.extend(other.followed_by);
     }
 }
 

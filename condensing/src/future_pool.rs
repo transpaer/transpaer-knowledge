@@ -1,4 +1,5 @@
 /// Represents a pool of futures.
+#[derive(Debug, Default)]
 pub struct FuturePool<R>
 where
     R: Default + merge::Merge + Send,
@@ -14,11 +15,6 @@ impl<R> FuturePool<R>
 where
     R: Default + merge::Merge + Send + 'static,
 {
-    /// Constructs a new `FuturePool`.
-    pub fn new() -> Self {
-        Self { handles: Vec::new(), result: std::marker::PhantomData {} }
-    }
-
     /// Spawns a new task and saved the handler.
     pub fn spawn<F>(&mut self, future: F)
     where
@@ -28,6 +24,10 @@ where
     }
 
     /// Waits for all the tasks to finish and merges returned results.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to join a task handler.
     pub async fn join(self) -> Result<R, tokio::task::JoinError> {
         let mut result = R::default();
         for handle in self.handles {

@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sustainity_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, sustainity, tco};
+use sustainity_collecting::{
+    bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, sustainity, tco,
+};
 
 use crate::{cache, errors, knowledge, utils};
 
@@ -14,6 +16,7 @@ pub struct BCorpAdvisor {
 
 impl BCorpAdvisor {
     /// Constructs a new `BCorpAdvisor`.
+    #[must_use]
     pub fn new(records: &[bcorp::data::Record]) -> Self {
         let domain_to_name: HashMap<String, String> = records
             .iter()
@@ -23,6 +26,10 @@ impl BCorpAdvisor {
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(path) {
             let data = bcorp::reader::parse(path)?;
@@ -34,6 +41,7 @@ impl BCorpAdvisor {
     }
 
     /// Checks if at least one of the passed domains corresponds to a `BCorp` company.
+    #[must_use]
     pub fn has_domains(&self, domains: &HashSet<String>) -> bool {
         for domain in domains {
             if self.domain_to_name.contains_key(domain) {
@@ -44,6 +52,7 @@ impl BCorpAdvisor {
     }
 
     /// Returns company certification data if a company with such domain was certified..
+    #[must_use]
     pub fn get_cert_from_domains(&self, domains: &HashSet<String>) -> Option<knowledge::BCorpCert> {
         for domain in domains {
             if let Some(name) = self.domain_to_name.get(domain) {
@@ -58,6 +67,7 @@ impl BCorpAdvisor {
     /// The IDs of companies used in links to company profiles on the `BCorp` web page
     /// are not provided in the Bcorp data.
     /// Here we make a guess of how that ID looks like basing on company name.
+    #[must_use]
     pub fn guess_link_id_from_company_name(name: &str) -> String {
         name.to_lowercase().replace(['.', '.'], "").replace(' ', "-")
     }
@@ -94,6 +104,10 @@ pub struct EuEcolabelAdvisor {
 
 impl EuEcolabelAdvisor {
     /// Constructs a new `EuEcolabelAdvisor`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` the records contain invalid data, e.g. VAT number.
     pub fn new(
         records: &[eu_ecolabel::data::Record],
         map: &[sustainity::data::NameMatching],
@@ -120,6 +134,11 @@ impl EuEcolabelAdvisor {
     }
 
     /// Loads a new `EuEcolabelAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path`, fails to parse the contents or the contents
+    /// contain invalid data.
     pub fn load(
         original_path: &std::path::Path,
         match_path: &std::path::Path,
@@ -142,8 +161,55 @@ impl EuEcolabelAdvisor {
     }
 
     /// Returns Companies Wikidata ID given it VAT ID if availabel.
+    #[must_use]
     pub fn vat_to_wiki(&self, vat_id: &knowledge::VatId) -> Option<&sustainity::data::Match> {
         self.vat_to_wiki.get(vat_id)
+    }
+}
+
+/// Holds the information read from the Open Food Facts data.
+pub struct OpenFoodFactsAdvisor {
+    /// Map from Open Food facts countries to Sustainity regionss.
+    country_to_regions: HashMap<String, knowledge::Regions>,
+}
+
+impl OpenFoodFactsAdvisor {
+    /// Constructs a new empty `OpenFoodFactsAdvisor`.
+    #[must_use]
+    pub fn new_empty() -> Self {
+        Self { country_to_regions: HashMap::new() }
+    }
+
+    /// Constructs a new `OpenFoodFactsAdvisor`.
+    #[must_use]
+    pub fn new(country_to_regions: HashMap<String, knowledge::Regions>) -> Self {
+        Self { country_to_regions }
+    }
+
+    /// Loads a new `OpenFoodFactsdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::is_path_ok(path) {
+            let data = open_food_facts::reader::parse_countries(path)?;
+            let mut country_to_regions = HashMap::new();
+            for entry in data {
+                if let Some(regions) = &entry.regions {
+                    country_to_regions.insert(entry.country_tag, regions.try_into()?);
+                }
+            }
+            Ok(Self::new(country_to_regions))
+        } else {
+            log::warn!("Could not access {path:?}. Open Food Facts data won't be loaded!");
+            Ok(Self::new_empty())
+        }
+    }
+
+    #[must_use]
+    pub fn get_countries(&self, country_tag: &str) -> Option<&knowledge::Regions> {
+        self.country_to_regions.get(country_tag)
     }
 }
 
@@ -155,6 +221,7 @@ pub struct TcoAdvisor {
 
 impl TcoAdvisor {
     /// Constructs a new `TcoAdvisor`.
+    #[must_use]
     pub fn new(entries: &[tco::data::Entry]) -> Self {
         Self {
             companies: entries
@@ -165,6 +232,10 @@ impl TcoAdvisor {
     }
 
     /// Loads a new `Tcodvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(path) {
             let data = tco::reader::parse(path)?;
@@ -176,11 +247,13 @@ impl TcoAdvisor {
     }
 
     /// Checks if the company was certified.
+    #[must_use]
     pub fn has_company(&self, company_id: &knowledge::WikiStrId) -> bool {
         self.companies.contains_key(company_id)
     }
 
     /// Returns company certification data if it was certified.
+    #[must_use]
     pub fn get_company_cert(
         &self,
         company_id: &knowledge::WikiStrId,
@@ -198,6 +271,10 @@ pub struct FashionTransparencyIndexAdvisor {
 
 impl FashionTransparencyIndexAdvisor {
     /// Constructs a new `TcoAdvisor`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if sources contain invalid data, e.g. repeated IDs.
     pub fn new(
         source: &[fashion_transparency_index::data::Entry],
     ) -> Result<Self, errors::SourcesCheckError> {
@@ -223,6 +300,10 @@ impl FashionTransparencyIndexAdvisor {
     }
 
     /// Loads a new `Tcodvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path`, fails to parse the contents or the contents are invalid.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(path) {
             let data = fashion_transparency_index::reader::parse(path)?;
@@ -238,16 +319,19 @@ impl FashionTransparencyIndexAdvisor {
     }
 
     /// Checks if the company is known.
+    #[must_use]
     pub fn has_company(&self, company_id: &knowledge::WikiStrId) -> bool {
         self.entries.contains_key(company_id)
     }
 
     /// Get the score for the given company.
+    #[must_use]
     pub fn get_cert(&self, company_id: &knowledge::WikiStrId) -> Option<knowledge::FtiCert> {
         self.entries.get(company_id).map(|e| knowledge::FtiCert { score: e.score })
     }
 
     /// Prepares Fashion Transparency Index to be presented on the Library page.
+    #[must_use]
     pub fn prepare_presentation(&self) -> knowledge::Presentation {
         let mut data = Vec::with_capacity(self.entries.len());
         for entry in self.entries.values() {
@@ -278,6 +362,7 @@ pub struct WikidataAdvisor {
 
 impl WikidataAdvisor {
     /// Constructs a new `WikidataAdvisor` with loaded data.
+    #[must_use]
     pub fn new(cache: &cache::Wikidata) -> Self {
         Self {
             manufacturer_ids: cache.manufacturer_ids.iter().cloned().collect(),
@@ -286,11 +371,16 @@ impl WikidataAdvisor {
     }
 
     /// Constructs a new `WikidataAdvisor` with no data.
+    #[must_use]
     pub fn new_empty() -> Self {
         Self { manufacturer_ids: HashSet::new(), class_ids: HashSet::new() }
     }
 
     /// Loads a new `WikidataAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
@@ -305,11 +395,13 @@ impl WikidataAdvisor {
     }
 
     /// Checks if the passed ID belongs to a known manufacturer.
+    #[must_use]
     pub fn has_manufacturer_id(&self, id: &knowledge::WikiStrId) -> bool {
         self.manufacturer_ids.contains(id)
     }
 
     /// Checks if the passed ID belongs to a known item class.
+    #[must_use]
     pub fn has_class_id(&self, id: &knowledge::WikiStrId) -> bool {
         self.class_ids.contains(id)
     }
@@ -323,11 +415,16 @@ pub struct SustainityLibraryAdvisor {
 
 impl SustainityLibraryAdvisor {
     /// Constructs a new `SustainityLibraryAdvisor`.
+    #[must_use]
     pub fn new(info: Vec<sustainity::data::LibraryInfo>) -> Self {
         Self { info }
     }
 
     /// Loads a new `SustainityLibraryAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(path) {
             let data = sustainity::reader::parse_library(path)?;
@@ -339,6 +436,7 @@ impl SustainityLibraryAdvisor {
     }
 
     /// Returns all info.
+    #[must_use]
     pub fn get_info(&self) -> &[sustainity::data::LibraryInfo] {
         &self.info
     }
@@ -351,6 +449,10 @@ pub struct SustainityMatchesAdvisor {
 
 impl SustainityMatchesAdvisor {
     /// Constructs a new `SustainityMatchesAdvisor`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if passed data is invalid, e.g. contains invalida IDs.
     pub fn new(
         map: &[sustainity::data::NameMatching],
     ) -> Result<Self, sustainity_wikidata::errors::ParseIdError> {
@@ -365,6 +467,10 @@ impl SustainityMatchesAdvisor {
     }
 
     /// Loads a new `SustainityMatchesAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(match_path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::is_path_ok(match_path) {
             let map = sustainity::reader::parse_id_map(match_path)?;
@@ -376,6 +482,7 @@ impl SustainityMatchesAdvisor {
     }
 
     /// Returns Wikidata ID given a name.
+    #[must_use]
     pub fn name_to_wiki(&self, name: &str) -> Option<&knowledge::WikiId> {
         self.name_to_wiki.get(name)
     }

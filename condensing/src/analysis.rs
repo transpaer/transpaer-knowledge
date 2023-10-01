@@ -281,6 +281,7 @@ pub struct Class {
 
 impl Class {
     /// Copies this class with diffrent `amount`.
+    #[must_use]
     pub fn clone_with_amount(&self, amount: usize) -> Self {
         Self { amount, ..self.clone() }
     }
@@ -305,7 +306,7 @@ impl Sourceable for AnalysisSources {
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AnalysisCollector {
     /// Found products.
     products: Vec<Product>,
@@ -340,6 +341,7 @@ impl Collectable for AnalysisCollector {}
 pub struct AnalysisProcessor;
 
 impl AnalysisProcessor {
+    #[must_use]
     pub fn get_classes(item: &Item) -> HashSet<knowledge::WikiId> {
         let mut classes = HashSet::<knowledge::WikiId>::new();
         if let Some(superclasses) = item.get_superclasses() {
@@ -386,15 +388,6 @@ impl Processor for AnalysisProcessor {
     type Config = config::AnalysisConfig;
     type Sources = AnalysisSources;
     type Collector = AnalysisCollector;
-
-    fn initialize(
-        &self,
-        _collector: &mut Self::Collector,
-        _sources: &Self::Sources,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        Ok(())
-    }
 
     /// Saves the result into files.
     fn finalize(
@@ -445,7 +438,7 @@ impl Processor for AnalysisProcessor {
 
 impl runners::WikidataProcessor for AnalysisProcessor {
     /// Handles one Wikidata entity.
-    fn handle_wikidata_entity(
+    fn process_wikidata_entity(
         &self,
         _msg: &str,
         entity: Entity,

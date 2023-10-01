@@ -316,6 +316,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e186cfbae8084e513daff4240b4797e342f988cecda4fb6c939150f96315fd8"
+
+[[package]]
 name = "io-lifetimes"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -336,6 +342,16 @@ dependencies = [
  "io-lifetimes",
  "rustix",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "isocountry"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ea1dc4bf0fb4904ba83ffdb98af3d9c325274e92e6e295e4151e86c96363e04"
+dependencies = [
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -740,11 +756,24 @@ dependencies = [
 name = "sustainity-condenser"
 version = "0.1.0"
 dependencies = [
+ "clap",
+ "fern",
+ "log",
+ "sustainity-condensing",
+ "tokio",
+]
+
+[[package]]
+name = "sustainity-condensing"
+version = "0.1.0"
+dependencies = [
  "async-channel",
  "async-trait",
  "clap",
  "csv",
  "fern",
+ "indoc",
+ "isocountry",
  "log",
  "md5",
  "merge",

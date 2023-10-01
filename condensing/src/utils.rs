@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::errors;
 
 /// Extracts domain from a URL.
+#[must_use]
 pub fn extract_domain_from_url(url: &str) -> String {
     let mut domain = url;
     if domain.starts_with("http://") {
@@ -36,11 +37,16 @@ where
 }
 
 /// Checks is the path exists and is a file.
+#[must_use]
 pub fn is_path_ok(path: &std::path::Path) -> bool {
     path.exists() && path.is_file()
 }
 
 /// Verifies that the path exists and is a file.
+///
+/// # Errors
+///
+/// Returns an error if the path does not exist or is not a file.
 pub fn path_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
         return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
@@ -52,6 +58,10 @@ pub fn path_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckErro
 }
 
 /// Verifies that the path exists and is a directory.
+///
+/// # Errors
+///
+/// Returns an error if the path does not exist or is not a directory.
 pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
         return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
@@ -63,6 +73,10 @@ pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError
 }
 
 /// Verifies that the path itself does not exist, but it's parent exists and is a directory.
+///
+/// # Errors
+///
+/// Returns an error if the path exists or the base is not a directory.
 pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if path.exists() {
         return Err(errors::ConfigCheckError::PathAlreadyExists(path.to_owned()));
@@ -83,6 +97,7 @@ pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckE
 }
 
 /// Formats duration to a human-readable format.
+#[must_use]
 pub fn format_elapsed_time(duration: std::time::Duration) -> String {
     let duration = duration.as_secs();
     let seconds = duration % 60;
@@ -92,16 +107,18 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
 }
 
 /// Trims the given name and transforms it to lower case.
+#[must_use]
 pub fn disambiguate_name(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
 /// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
 /// The mergind funtionality is provided via `merge::MErge` trait.
-pub fn merge_hashmaps<K, V>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>)
+pub fn merge_hashmaps<K, V, S>(m1: &mut HashMap<K, V, S>, m2: HashMap<K, V, S>)
 where
     K: Eq + std::hash::Hash,
     V: Clone + merge::Merge,
+    S: std::hash::BuildHasher,
 {
     for (key, value2) in m2 {
         m1.entry(key).and_modify(|value1| value1.merge(value2.clone())).or_insert_with(|| value2);
@@ -110,11 +127,12 @@ where
 
 /// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
 /// The mergind funtionality is provided via a closure.
-pub fn merge_hashmaps_with<K, V, M>(m1: &mut HashMap<K, V>, m2: HashMap<K, V>, m: M)
+pub fn merge_hashmaps_with<K, V, M, S>(m1: &mut HashMap<K, V, S>, m2: HashMap<K, V, S>, m: M)
 where
     K: Eq + std::hash::Hash,
     V: Clone,
     M: Fn(&mut V, V),
+    S: std::hash::BuildHasher,
 {
     for (key, value2) in m2 {
         m1.entry(key).and_modify(|value1| m(value1, value2.clone())).or_insert_with(|| value2);

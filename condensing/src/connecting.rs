@@ -114,7 +114,7 @@ impl merge::Merge for Entry {
     fn merge(&mut self, other: Self) {
         match self.similarity.partial_cmp(&other.similarity) {
             Some(std::cmp::Ordering::Equal) => {
-                self.ids.extend(other.ids.into_iter());
+                self.ids.extend(other.ids);
             }
             Some(std::cmp::Ordering::Less) => {
                 self.ids = other.ids;
@@ -174,7 +174,7 @@ impl Sourceable for ConnectionSources {
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ConnectionCollector {
     data: HashMap<String, Entry>,
 }
@@ -214,7 +214,6 @@ impl Processor for ConnectionProcessor {
         Ok(())
     }
 
-    /// Saves the result into files.
     fn finalize(
         &self,
         collector: Self::Collector,
@@ -237,7 +236,7 @@ impl Processor for ConnectionProcessor {
 
 impl runners::WikidataProcessor for ConnectionProcessor {
     /// Handles one Wikidata entity.
-    fn handle_wikidata_entity(
+    fn process_wikidata_entity(
         &self,
         _msg: &str,
         entity: Entity,

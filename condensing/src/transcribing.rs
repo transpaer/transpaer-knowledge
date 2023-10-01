@@ -3,6 +3,11 @@ use crate::{advisors, config, errors, knowledge};
 pub struct Transcriptor;
 
 impl Transcriptor {
+    /// Rust the transcription command.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if reading, parsing or saving required data failed.
     pub fn transcribe(config: &config::TranscriptionConfig) -> Result<(), errors::ProcessingError> {
         let sustainity = advisors::SustainityLibraryAdvisor::load(&config.library_file_path)?;
         let mut library = Vec::<knowledge::LibraryInfo>::new();
