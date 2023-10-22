@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use sustainity_collecting::{errors::MapSerde, open_food_facts};
 
@@ -7,6 +7,14 @@ use crate::{
     processing::{Collectable, Processor},
     runners, sources, utils,
 };
+
+fn compare_countries(c1: &(String, usize), c2: &(String, usize)) -> Ordering {
+    let cmp = c2.1.cmp(&c1.1);
+    match cmp {
+        Ordering::Equal => c1.0.cmp(&c2.0),
+        Ordering::Less | Ordering::Greater => cmp,
+    }
+}
 
 /// Data storage for gathered data.
 ///
@@ -46,7 +54,7 @@ impl Processor for UpdateProcessor {
         config: &Self::Config,
     ) -> Result<(), errors::ProcessingError> {
         let mut counted_countries: Vec<(String, usize)> = collector.countries.drain().collect();
-        counted_countries.sort_by(|a, b| b.1.cmp(&a.1));
+        counted_countries.sort_by(compare_countries);
 
         let mut countries = Vec::<open_food_facts::data::CountryEntry>::new();
         let mut assigned: usize = 0;
