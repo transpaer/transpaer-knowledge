@@ -15,7 +15,7 @@ pub mod data {
 
         /// Score of the company in the Fashion Transparency Index.
         #[serde(rename = "score")]
-        pub score: usize,
+        pub score: i32,
     }
 }
 

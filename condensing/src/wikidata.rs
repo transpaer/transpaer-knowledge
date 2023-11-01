@@ -1,6 +1,65 @@
 //! Extensions for types from `sustainity_wikidata` crate.
 
-use sustainity_wikidata::{data, properties};
+use sustainity_models::ids;
+use sustainity_wikidata::{data, errors, properties};
+
+/// Represents a Wikidata ID.
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, Ord, PartialOrd)]
+pub struct WikiId(usize);
+
+impl WikiId {
+    /// Constructs a new `Id`.
+    #[must_use]
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub fn get_value(&self) -> usize {
+        self.0
+    }
+}
+
+impl WikiId {
+    #[must_use]
+    pub fn into_num_id(self) -> ids::NumId {
+        ids::NumId::new(self.get_value())
+    }
+
+    #[must_use]
+    pub fn into_organisation_id(self) -> ids::OrganisationId {
+        ids::OrganisationId::Wiki(self.into_num_id())
+    }
+
+    #[must_use]
+    pub fn into_product_id(self) -> ids::ProductId {
+        ids::ProductId::Wiki(self.into_num_id())
+    }
+}
+
+impl From<data::Id> for WikiId {
+    fn from(other: data::Id) -> Self {
+        Self::new(other.get_value())
+    }
+}
+
+impl From<&data::Id> for WikiId {
+    fn from(other: &data::Id) -> Self {
+        Self::new(other.get_value())
+    }
+}
+
+impl From<ids::NumId> for WikiId {
+    fn from(other: ids::NumId) -> Self {
+        Self::new(other.get_value())
+    }
+}
+
+impl From<&ids::NumId> for WikiId {
+    fn from(other: &ids::NumId) -> Self {
+        Self::new(other.get_value())
+    }
+}
 
 pub mod items {
     pub const ACTION_FIGURE: &str = "Q343566";
@@ -585,24 +644,24 @@ pub mod ignored {
 }
 
 pub mod organisations {
-    pub const BUSSINESS: &str = "Q4830453";
-    pub const PUBLIC_COMPANY: &str = "Q891723";
-    pub const BRAND: &str = "Q431289";
-    pub const RETAIL_CHAIN: &str = "Q507619";
-    pub const FASHION_HOUSE: &str = "Q3661311";
-    pub const ENTERPRISE: &str = "Q6881511";
-    pub const ONLINE_SHOP: &str = "Q4382945";
-    pub const SUPERMARKET_CHAIN: &str = "Q18043413";
-    pub const CONCERN: &str = "Q206361";
-    pub const CONSUMER_COOPERATIVE: &str = "Q614084";
-    pub const BRICK_AND_MORTAR: &str = "Q726870";
-    pub const COMPANY: &str = "Q783794";
-    pub const SUBSIDIARY: &str = "Q658255";
-    pub const DEPARTMENT_STORE_CHAIN: &str = "Q2549179";
-    pub const DEPARTMENT_STORE: &str = "Q216107";
-    pub const FOOD_MANUFACTURER: &str = "Q1252971";
+    pub const BUSSINESS: usize = 4_830_453;
+    pub const PUBLIC_COMPANY: usize = 891_723;
+    pub const BRAND: usize = 431_289;
+    pub const RETAIL_CHAIN: usize = 507_619;
+    pub const FASHION_HOUSE: usize = 3_661_311;
+    pub const ENTERPRISE: usize = 6_881_511;
+    pub const ONLINE_SHOP: usize = 4_382_945;
+    pub const SUPERMARKET_CHAIN: usize = 18_043_413;
+    pub const CONCERN: usize = 206_361;
+    pub const CONSUMER_COOPERATIVE: usize = 614_084;
+    pub const BRICK_AND_MORTAR: usize = 726_870;
+    pub const COMPANY: usize = 783_794;
+    pub const SUBSIDIARY: usize = 658_255;
+    pub const DEPARTMENT_STORE_CHAIN: usize = 2_549_179;
+    pub const DEPARTMENT_STORE: usize = 216_107;
+    pub const FOOD_MANUFACTURER: usize = 1_252_971;
 
-    pub const ALL: &[&str] = &[
+    pub const ALL: &[usize] = &[
         BUSSINESS,
         PUBLIC_COMPANY,
         BRAND,
@@ -633,7 +692,10 @@ pub trait ItemExt {
     fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str>;
 
     /// Returns ID associated with the passed property.
-    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::StrId>>;
+    fn get_entity_ids(
+        &self,
+        property_id: &str,
+    ) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Returns strings associated with the passed property.
     fn get_strings(&self, property_id: &str) -> Option<Vec<String>>;
@@ -645,16 +707,13 @@ pub trait ItemExt {
     fn relates(&self, property_id: &str, class_id: &str) -> bool;
 
     /// Returns IDs of entities linked with "follows" property.
-    #[must_use]
-    fn get_follows(&self) -> Option<Vec<data::StrId>>;
+    fn get_follows(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Returns IDs of entities linked with "followed by" property.
-    #[must_use]
-    fn get_followed_by(&self) -> Option<Vec<data::StrId>>;
+    fn get_followed_by(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Returns IDs of entities linked with "manufacturer" property.
-    #[must_use]
-    fn get_manufacturer_ids(&self) -> Option<Vec<data::StrId>>;
+    fn get_manufacturer_ids(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Checks if has any entities linked with "manufacturer" property.
     #[must_use]
@@ -691,16 +750,14 @@ pub trait ItemExt {
     fn is_instance_of(&self, class: &str) -> bool;
 
     /// Returns IDs of classes this item is an instance of.
-    #[must_use]
-    fn get_classes(&self) -> Option<Vec<data::StrId>>;
+    fn get_classes(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Checks if this item is a subclass of the given class.
     #[must_use]
     fn is_subclass_of(&self, class: &str) -> bool;
 
     /// Returns all superclasses of this item.
-    #[must_use]
-    fn get_superclasses(&self) -> Option<Vec<data::StrId>>;
+    fn get_superclasses(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Returns strings associated with the "GTIN" property.
     #[must_use]
@@ -755,9 +812,12 @@ impl ItemExt for data::Item {
         result
     }
 
-    fn get_entity_ids(&self, property_id: &str) -> Option<Vec<data::StrId>> {
+    fn get_entity_ids(
+        &self,
+        property_id: &str,
+    ) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         if let Some(claims) = self.claims.get(property_id) {
-            let mut result = Vec::<data::StrId>::new();
+            let mut result = Vec::<data::Id>::new();
             for claim in claims {
                 let data::Claim::Statement(statement) = claim;
                 if let data::Snak::Value(value) = &statement.mainsnak {
@@ -765,13 +825,13 @@ impl ItemExt for data::Item {
                         entity_info,
                     )) = &value.datavalue
                     {
-                        result.push(entity_info.id.clone());
+                        result.push(entity_info.id.to_num_id()?);
                     }
                 }
             }
-            Some(result)
+            Ok(Some(result))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -826,18 +886,15 @@ impl ItemExt for data::Item {
         }
     }
 
-    #[must_use]
-    fn get_follows(&self) -> Option<Vec<data::StrId>> {
+    fn get_follows(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::FOLLOWS)
     }
 
-    #[must_use]
-    fn get_followed_by(&self) -> Option<Vec<data::StrId>> {
+    fn get_followed_by(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::FOLLOWED_BY)
     }
 
-    #[must_use]
-    fn get_manufacturer_ids(&self) -> Option<Vec<data::StrId>> {
+    fn get_manufacturer_ids(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::MANUFACTURER)
     }
 
@@ -881,8 +938,7 @@ impl ItemExt for data::Item {
         self.relates(properties::INSTANCE_OF, class)
     }
 
-    #[must_use]
-    fn get_classes(&self) -> Option<Vec<data::StrId>> {
+    fn get_classes(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::INSTANCE_OF)
     }
 
@@ -891,8 +947,7 @@ impl ItemExt for data::Item {
         self.relates(properties::SUBCLASS_OF, class)
     }
 
-    #[must_use]
-    fn get_superclasses(&self) -> Option<Vec<data::StrId>> {
+    fn get_superclasses(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::SUBCLASS_OF)
     }
 
@@ -926,9 +981,9 @@ impl ItemExt for data::Item {
             return false;
         }
 
-        if let Some(ids) = self.get_classes() {
+        if let Ok(Some(ids)) = self.get_classes() {
             for id in ids {
-                if organisations::ALL.contains(&id.as_str()) {
+                if organisations::ALL.contains(&id.get_value()) {
                     return true;
                 }
             }

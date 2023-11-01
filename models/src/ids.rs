@@ -1,16 +1,86 @@
-//! This module contains definitions of some commonly used data types.
+//! This module contains definitions of some commonly used ID data types.
 
 use std::collections::HashSet;
 
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
-
-pub use sustainity_wikidata::{
-    data::{Id as WikiId, StrId as WikiStrId},
-    errors::ParseIdError,
-};
+use snafu::prelude::*;
 
 /// Maximal GTIN (highest number with 14 digits).
 const MAX_GTIN: usize = 99_999_999_999_999;
+
+/// Describes an error occured during parsing an Id.
+#[derive(Debug, Eq, PartialEq, Snafu)]
+pub enum ParseIdError {
+    /// Part of the ID was expected to be a number but wasn't.
+    #[snafu(display("Failed to parse number from `{string}`: {source}"))]
+    Num { source: std::num::ParseIntError, string: String },
+
+    /// Length of the ID was wrong.
+    #[snafu(display("The ID `{string}` has wrong length"))]
+    Length { string: String },
+
+    /// The ID didn't contain the expected prefix.
+    #[snafu(display("The ID `{string}` has unexpected prefix"))]
+    Prefix { string: String },
+}
+
+impl ParseIdError {
+    pub fn num(string: String, source: std::num::ParseIntError) -> Self {
+        Self::Num { string, source }
+    }
+
+    pub fn length(string: String) -> Self {
+        Self::Length { string }
+    }
+
+    pub fn prefix(string: String) -> Self {
+        Self::Prefix { string }
+    }
+}
+
+/// Represents a numerical ID.
+#[derive(Debug, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
+pub struct NumId(usize);
+
+impl NumId {
+    /// Constructs a new `NumId`.
+    #[must_use]
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub const fn get_value(&self) -> usize {
+        self.0
+    }
+}
+
+impl TryFrom<&str> for NumId {
+    type Error = ParseIdError;
+
+    fn try_from(string: &str) -> Result<Self, ParseIdError> {
+        match string.parse::<usize>() {
+            Ok(num) => Ok(Self(num)),
+            Err(err) => Err(ParseIdError::num(string.to_string(), err)),
+        }
+    }
+}
+
+impl Serialize for NumId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.0.to_string().as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for NumId {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
+    }
+}
 
 /// Represents a Global Trade Item Number.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -66,11 +136,11 @@ impl TryFrom<&str> for Gtin {
         let string = string.replace([' ', '-', '.'], "").trim_start_matches('0').to_string();
         let len = string.len();
         if !(8..=14).contains(&len) {
-            return Err(ParseIdError::Length(string));
+            return Err(ParseIdError::length(string));
         }
         match string.parse::<usize>() {
             Ok(num) => Ok(Gtin(num)),
-            Err(err) => Err(ParseIdError::Num(string, err)),
+            Err(err) => Err(ParseIdError::num(string, err)),
         }
     }
 }
@@ -88,7 +158,7 @@ impl TryFrom<usize> for Gtin {
 
     fn try_from(num: usize) -> Result<Self, Self::Error> {
         if num > MAX_GTIN {
-            return Err(ParseIdError::Length(num.to_string()));
+            return Err(ParseIdError::length(num.to_string()));
         }
         Ok(Self(num))
     }
@@ -153,7 +223,7 @@ impl TryFrom<&str> for VatId {
         let id = id.replace([' ', '-', '.'], "");
 
         if id.len() < 2 {
-            return Err(ParseIdError::Length(id));
+            return Err(ParseIdError::length(id));
         }
 
         Ok(Self(id))
@@ -188,30 +258,13 @@ impl<'de> Deserialize<'de> for VatId {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum OrganisationId {
     /// Organisations data comes from Wikidata.
-    Wiki(WikiId),
+    Wiki(NumId),
 
     /// Organisation data comes from diffretn source providing VAT ID.
     Vat(VatId),
 }
 
 impl OrganisationId {
-    /// Converts optional vector of string Wikidata IDs to a vector of Organisation IDs.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if at least one of the strings could not be parsed as an ID.
-    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<Vec<OrganisationId>, ParseIdError> {
-        if let Some(ids) = data {
-            let mut result = HashSet::with_capacity(ids.len());
-            for id in ids {
-                result.insert(Self::Wiki(id.to_num_id()?));
-            }
-            Ok(result.into_iter().collect())
-        } else {
-            Ok(Vec::default())
-        }
-    }
-
     /// Converts the ID into `ArangoDB` ID in `organisations` collection.
     #[must_use]
     pub fn to_db_id(&self) -> String {
@@ -222,29 +275,9 @@ impl OrganisationId {
 impl ToString for OrganisationId {
     fn to_string(&self) -> String {
         match &self {
-            Self::Wiki(id) => id.to_str_id().into_string(),
+            Self::Wiki(id) => format!("Q{}", id.0),
             Self::Vat(id) => format!("V{}", id.as_str()),
         }
-    }
-}
-
-impl From<WikiId> for OrganisationId {
-    fn from(id: WikiId) -> Self {
-        Self::Wiki(id)
-    }
-}
-
-impl From<&WikiId> for OrganisationId {
-    fn from(id: &WikiId) -> Self {
-        Self::Wiki(id.clone())
-    }
-}
-
-impl TryFrom<WikiStrId> for OrganisationId {
-    type Error = ParseIdError;
-
-    fn try_from(id: WikiStrId) -> Result<Self, Self::Error> {
-        Ok(Self::Wiki(id.to_num_id()?))
     }
 }
 
@@ -253,11 +286,17 @@ impl TryFrom<&str> for OrganisationId {
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
         match string.chars().next() {
-            Some('Q') => Ok(Self::Wiki(WikiId::try_from(string)?)),
+            Some('Q') => Ok(Self::Wiki(NumId::try_from(&string[1..])?)),
             Some('V') => Ok(Self::Vat(VatId::try_from(&string[1..])?)),
-            Some(_) => Err(ParseIdError::Prefix(string.to_string())),
-            None => Err(ParseIdError::Length(string.to_string())),
+            Some(_) => Err(ParseIdError::prefix(string.to_string())),
+            None => Err(ParseIdError::length(string.to_string())),
         }
+    }
+}
+
+impl From<NumId> for OrganisationId {
+    fn from(id: NumId) -> Self {
+        Self::Wiki(id)
     }
 }
 
@@ -287,30 +326,13 @@ impl<'de> Deserialize<'de> for OrganisationId {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ProductId {
     /// Product data comes from Wikidata.
-    Wiki(WikiId),
+    Wiki(NumId),
 
     /// Product data comes from diffretn source providing VAT ID.
     Gtin(Gtin),
 }
 
 impl ProductId {
-    /// Converts optional vector of string IDs to a vector of product IDs.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if at least one of the strings could not be parsed as an ID.
-    pub fn convert(data: Option<Vec<WikiStrId>>) -> Result<HashSet<ProductId>, ParseIdError> {
-        if let Some(ids) = data {
-            let mut result = HashSet::with_capacity(ids.len());
-            for id in ids {
-                result.insert(Self::Wiki(id.to_num_id()?));
-            }
-            Ok(result)
-        } else {
-            Ok(HashSet::default())
-        }
-    }
-
     /// Converts the ID into `ArangoDB` ID in `products` collection.
     #[must_use]
     pub fn to_db_id(&self) -> String {
@@ -321,14 +343,14 @@ impl ProductId {
 impl ToString for ProductId {
     fn to_string(&self) -> String {
         match &self {
-            Self::Wiki(id) => id.to_str_id().into_string(),
+            Self::Wiki(id) => format!("Q{}", id.0),
             Self::Gtin(id) => format!("G{}", id.to_string()),
         }
     }
 }
 
-impl From<WikiId> for ProductId {
-    fn from(id: WikiId) -> Self {
+impl From<NumId> for ProductId {
+    fn from(id: NumId) -> Self {
         Self::Wiki(id)
     }
 }
@@ -344,10 +366,10 @@ impl TryFrom<&str> for ProductId {
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
         match string.chars().next() {
-            Some('Q') => Ok(ProductId::Wiki(WikiId::try_from(string)?)),
+            Some('Q') => Ok(ProductId::Wiki(NumId::try_from(&string[1..])?)),
             Some('G') => Ok(ProductId::Gtin(Gtin::try_from(&string[1..])?)),
-            Some(_) => Err(ParseIdError::Prefix(string.to_string())),
-            None => Err(ParseIdError::Length(string.to_string())),
+            Some(_) => Err(ParseIdError::prefix(string.to_string())),
+            None => Err(ParseIdError::length(string.to_string())),
         }
     }
 }

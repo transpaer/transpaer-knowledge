@@ -1,4 +1,16 @@
-use crate::{advisors, config, errors, processing::Sourceable, utils, wikidata::ItemExt};
+use crate::{advisors, config, errors, utils, wikidata::ItemExt};
+
+/// Trait for structures holding all the supplementary source data required by a `Processor`.
+pub trait Sourceable: Sized + Sync + Send {
+    type Config: Clone + Send;
+
+    /// Loads the data.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path`, fails to parse the contents or the contents are invalid.
+    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError>;
+}
 
 /// Holds all the supplementary source data.
 pub struct FullSources {
@@ -41,11 +53,12 @@ impl FullSources {
             return true;
         }
 
-        if self.wikidata.has_manufacturer_id(&item.id) {
+        let item_id = (&item.id).into();
+        if self.wikidata.has_manufacturer_id(&item_id) {
             return true;
         }
 
-        if self.fti.has_company(&item.id) || self.tco.has_company(&item.id) {
+        if self.fti.has_company(&item_id) || self.tco.has_company(&item_id) {
             return true;
         }
 

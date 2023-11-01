@@ -87,6 +87,11 @@ impl Id {
     pub fn to_str_id(&self) -> StrId {
         StrId(format!("Q{}", self.0))
     }
+
+    #[must_use]
+    pub fn get_value(&self) -> usize {
+        self.0
+    }
 }
 
 impl TryFrom<&str> for Id {
@@ -142,14 +147,14 @@ impl Language {
 }
 
 /// Represents Wikidata redirection.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Redirection {
     from: StrId,
     to: StrId,
 }
 
 /// Represents a Wikidata label.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Label {
     /// Language of the text.
@@ -162,7 +167,7 @@ pub struct Label {
 /// Represents a Wikidata entity ID.
 ///
 /// The ID is a number with "Q" or "P" prefix.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct EntityIdInfo {
     /// Full ID.
@@ -174,7 +179,7 @@ pub struct EntityIdInfo {
 }
 
 /// Represents a Wikidata entity ID.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct EntityIdOptionInfo {
     /// Full ID.
@@ -185,7 +190,7 @@ pub struct EntityIdOptionInfo {
     pub numeric_id: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "entity-type", deny_unknown_fields)]
 pub enum EntityIdDataValue {
     #[serde(rename = "item")]
@@ -204,7 +209,7 @@ pub enum EntityIdDataValue {
     Sense(EntityIdOptionInfo),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct TimeDataValue {
     #[serde(rename = "time")]
@@ -226,7 +231,7 @@ pub struct TimeDataValue {
     pub calendarmodel: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct MonolingualTextDataValue {
     #[serde(rename = "text")]
@@ -236,7 +241,7 @@ pub struct MonolingualTextDataValue {
     pub language: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct GlobeCoordinateDataValue {
     #[serde(rename = "latitude")]
@@ -255,7 +260,7 @@ pub struct GlobeCoordinateDataValue {
     pub globe: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct QuantityDataValue {
     #[serde(rename = "amount")]
@@ -273,7 +278,7 @@ pub struct QuantityDataValue {
 
 /// `DataValue` holds value and type of the data.
 #[allow(clippy::module_name_repetitions)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "value", deny_unknown_fields)]
 pub enum DataValue {
     /// String.
@@ -297,7 +302,7 @@ pub enum DataValue {
     Quantity(QuantityDataValue),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Value {
     #[serde(rename = "hash")]
@@ -307,13 +312,13 @@ pub struct Value {
     pub property: String,
 
     #[serde(rename = "datatype")]
-    pub datatype: String,
+    pub datatype: Option<String>,
 
     #[serde(rename = "datavalue")]
     pub datavalue: DataValue,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct SomeValue {
     #[serde(rename = "hash")]
@@ -323,10 +328,10 @@ pub struct SomeValue {
     pub property: String,
 
     #[serde(rename = "datatype")]
-    pub datatype: String,
+    pub datatype: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct NoValue {
     #[serde(rename = "hash")]
@@ -336,10 +341,10 @@ pub struct NoValue {
     pub property: String,
 
     #[serde(rename = "datatype")]
-    pub datatype: String,
+    pub datatype: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "snaktype", deny_unknown_fields)]
 pub enum Snak {
     #[serde(rename = "value")]
@@ -352,7 +357,7 @@ pub enum Snak {
     NoValue(NoValue),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub enum Rank {
     #[serde(rename = "preferred")]
@@ -365,7 +370,7 @@ pub enum Rank {
     Deprecated,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
     #[serde(rename = "hash")]
@@ -378,7 +383,7 @@ pub struct Reference {
     snaks_order: Vec<StrId>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Statement {
     #[serde(rename = "id")]
@@ -400,14 +405,14 @@ pub struct Statement {
     pub references: Option<Vec<Reference>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Claim {
     #[serde(rename = "statement")]
     Statement(Statement),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Sitelink {
     pub site: String,
@@ -416,11 +421,11 @@ pub struct Sitelink {
 }
 
 /// Represents an item ("Q") entry.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Item {
     /// Item ID.
-    pub id: StrId,
+    pub id: Id,
 
     pub title: Option<String>,
     pub pageid: Option<u64>,
@@ -448,7 +453,7 @@ pub struct Item {
 }
 
 /// Represents a property ("P") entry.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Property {
     /// Property ID.
@@ -459,7 +464,7 @@ pub struct Property {
     pub ns: Option<u64>,
     pub lastrevid: u64,
     pub modified: Option<String>,
-    pub datatype: String,
+    pub datatype: Option<String>,
 
     /// Short names of the item in various languages.
     pub labels: HashMap<String, Label>,
@@ -475,7 +480,7 @@ pub struct Property {
 }
 
 /// Represents one entry in Wikidata.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Entity {
     /// Item ("Q") entry.

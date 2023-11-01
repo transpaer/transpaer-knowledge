@@ -36,6 +36,16 @@ pub mod data {
         OtherNotFound,
     }
 
+    impl LibraryTopic {
+        #[must_use]
+        #[allow(clippy::missing_panics_doc)]
+        pub fn to_str(&self) -> &'static str {
+            #[allow(clippy::expect_used)]
+            serde_variant::to_variant_name(&self)
+                .expect("Converting enum to string should always succeed")
+        }
+    }
+
     /// Sustainity topic entry.
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct LibraryInfo {
@@ -55,7 +65,7 @@ pub mod data {
     #[derive(Clone, Debug)]
     pub struct Match {
         /// Wikidata ID.
-        pub wiki_id: sustainity_wikidata::data::StrId,
+        pub wiki_id: sustainity_wikidata::data::Id,
 
         /// Match accuracy.
         pub match_accuracy: f64,
@@ -72,7 +82,7 @@ pub mod data {
 
         /// Wikidata IDs.
         #[serde(rename = "ids")]
-        pub ids: Vec<sustainity_wikidata::data::StrId>,
+        pub ids: Vec<sustainity_wikidata::data::Id>,
 
         /// Measure of certainty that the matched IDs really belong to the correct entry.
         #[serde(rename = "similarity")]

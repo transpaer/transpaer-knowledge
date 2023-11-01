@@ -3,7 +3,7 @@
 #![deny(clippy::expect_used)]
 #![allow(clippy::module_name_repetitions)]
 
-use sustainity_condensing::{config, errors, processing::Runnable};
+use sustainity_condensing::{config, errors};
 
 /// Formats duration to a human-readable format.
 #[must_use]
@@ -15,27 +15,27 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
-async fn run() -> Result<(), errors::ProcessingError> {
+fn run() -> Result<(), errors::ProcessingError> {
     match config::Config::new_from_args() {
         config::Config::Prefiltering(config) => {
             config.check()?;
             log::info!("Start pre-filtering!");
-            sustainity_condensing::prefiltering::PrefilteringRunner::run(config).await?;
+            sustainity_condensing::prefiltering::PrefilteringRunner::run(&config)?;
         }
         config::Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering!");
-            sustainity_condensing::filtering::FilteringRunner::run(config).await?;
+            sustainity_condensing::filtering::FilteringRunner::run(&config)?;
         }
         config::Config::Updating(config) => {
             config.check()?;
             log::info!("Start updating!");
-            sustainity_condensing::updating::UpdateRunner::run(config).await?;
+            sustainity_condensing::updating::UpdateRunner::run(&config)?;
         }
         config::Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            sustainity_condensing::condensing::CondensingRunner::run(config).await?;
+            sustainity_condensing::condensing::CondensingRunner::run(&config)?;
         }
         config::Config::Transcription(config) => {
             config.check()?;
@@ -45,19 +45,18 @@ async fn run() -> Result<(), errors::ProcessingError> {
         config::Config::Analysis(config) => {
             config.check()?;
             log::info!("Start analysis!");
-            sustainity_condensing::analysis::AnalysisRunner::run(config).await?;
+            sustainity_condensing::analysis::AnalysisRunner::run(&config)?;
         }
         config::Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
-            sustainity_condensing::connecting::ConnectionRunner::run(config).await?;
+            sustainity_condensing::connecting::ConnectionRunner::run(&config)?;
         }
     }
     Ok(())
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     if let Err(err) =
         fern::Dispatch::new().level(log::LevelFilter::Info).chain(std::io::stdout()).apply()
     {
@@ -67,7 +66,7 @@ async fn main() {
 
     let start_time = std::time::Instant::now();
 
-    if let Err(err) = run().await {
+    if let Err(err) = run() {
         log::error!("Processing error:\n{err}");
     }
 

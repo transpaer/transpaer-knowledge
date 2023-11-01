@@ -3,6 +3,8 @@
 resolver = "2"
 members = [
     "wikidata",
+    "models",
     "collecting",
     "condenser",
+    "backend",
 ]
