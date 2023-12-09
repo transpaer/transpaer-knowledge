@@ -1,16 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
+use async_trait::async_trait;
+use merge::Merge;
 use serde::Serialize;
 
 use sustainity_collecting::{errors::MapSerde, eu_ecolabel, open_food_facts, sustainity};
 use sustainity_wikidata::data::{Entity, Item};
 
-use crate::{
-    config, errors, knowledge,
-    processing::{Collectable, Processor, Sourceable},
-    runners, utils,
-    wikidata::ItemExt,
-};
+use crate::{config, errors, parallel, runners, sources::Sourceable, utils, wikidata::ItemExt};
 
 /// Calculates similarity of entry in some data to entry in Wikidata.
 #[derive(Serialize, Clone, Debug, Hash, PartialEq, Eq)]
@@ -71,7 +68,7 @@ struct Entry {
     matcher: Matcher,
 
     /// IDs with the highest similarity score.
-    ids: HashSet<knowledge::WikiStrId>,
+    ids: HashSet<sustainity_wikidata::data::Id>,
 
     /// The value of the similarity score.
     similarity: f64,
@@ -174,9 +171,24 @@ impl Sourceable for ConnectionSources {
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectionCollector {
     data: HashMap<String, Entry>,
+}
+
+impl ConnectionCollector {
+    #[must_use]
+    pub fn new(sources: &ConnectionSources) -> Self {
+        let mut data = HashMap::new();
+        for (name, matcher) in &sources.data {
+            data.insert(name.clone(), Entry::new(matcher.clone()));
+        }
+        Self { data }
+    }
+
+    fn new_empty() -> Self {
+        Self { data: HashMap::new() }
+    }
 }
 
 impl merge::Merge for ConnectionCollector {
@@ -185,69 +197,32 @@ impl merge::Merge for ConnectionCollector {
     }
 }
 
-impl Collectable for ConnectionCollector {}
-
-/// Connects company or brand names found in EU Ecolabel and Open Food Facts datasets to entried in Wikidata.
 #[derive(Clone, Debug)]
-pub struct ConnectionProcessor;
+pub struct ConnectionWorker {
+    collector: ConnectionCollector,
+}
 
-impl Default for ConnectionProcessor {
-    fn default() -> Self {
-        Self
+impl ConnectionWorker {
+    #[must_use]
+    pub fn new(collector: ConnectionCollector) -> Self {
+        Self { collector }
     }
 }
 
-impl Processor for ConnectionProcessor {
-    type Config = config::ConnectionConfig;
-    type Sources = ConnectionSources;
-    type Collector = ConnectionCollector;
+#[async_trait]
+impl runners::WikidataWorker for ConnectionWorker {
+    type Output = ConnectionCollector;
 
-    fn initialize(
-        &self,
-        collector: &mut Self::Collector,
-        sources: &Self::Sources,
-        _config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        for (name, matcher) in &sources.data {
-            collector.data.insert(name.clone(), Entry::new(matcher.clone()));
-        }
-        Ok(())
-    }
-
-    fn finalize(
-        &self,
-        collector: Self::Collector,
-        _sources: &Self::Sources,
-        config: &Self::Config,
-    ) -> Result<(), errors::ProcessingError> {
-        log::info!("Saving name matches");
-
-        let data: Vec<sustainity::data::NameMatching> =
-            collector.data.values().map(Into::into).collect();
-        let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.matched().is_some()));
-        log::info!(" - matched {} / {} names", matched, collector.data.len());
-
-        let contents = serde_yaml::to_string(&data).map_serde()?;
-        std::fs::write(&config.output_path, contents)?;
-
-        Ok(())
-    }
-}
-
-impl runners::WikidataProcessor for ConnectionProcessor {
-    /// Handles one Wikidata entity.
-    fn process_wikidata_entity(
-        &self,
+    async fn process(
+        &mut self,
         _msg: &str,
         entity: Entity,
-        _sources: &Self::Sources,
-        collector: &mut Self::Collector,
-        _config: &Self::Config,
+        _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
         match entity {
             Entity::Item(item) => {
                 if item.is_organisation() {
-                    for entry in collector.data.values_mut() {
+                    for entry in self.collector.data.values_mut() {
                         entry.process(&item);
                     }
                 }
@@ -256,6 +231,69 @@ impl runners::WikidataProcessor for ConnectionProcessor {
         }
         Ok(())
     }
+
+    async fn finish(
+        self,
+        tx: parallel::Sender<Self::Output>,
+    ) -> Result<(), errors::ProcessingError> {
+        tx.send(self.collector).await;
+        Ok(())
+    }
 }
 
-pub type ConnectionRunner = runners::WikidataRunner<ConnectionProcessor>;
+#[derive(Clone, Debug)]
+pub struct ConnectionStash {
+    /// Collected data.
+    collector: ConnectionCollector,
+
+    /// Configuration.
+    config: config::ConnectionConfig,
+}
+
+impl ConnectionStash {
+    #[must_use]
+    pub fn new(config: config::ConnectionConfig) -> Self {
+        Self { collector: ConnectionCollector::new_empty(), config }
+    }
+}
+
+#[async_trait]
+impl runners::Stash for ConnectionStash {
+    type Input = ConnectionCollector;
+
+    fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
+        self.collector.merge(input);
+        Ok(())
+    }
+
+    fn finish(self) -> Result<(), errors::ProcessingError> {
+        log::info!("Saving name matches");
+
+        let data: Vec<sustainity::data::NameMatching> =
+            self.collector.data.values().map(Into::into).collect();
+        let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.matched().is_some()));
+        log::info!(" - matched {} / {} names", matched, self.collector.data.len());
+
+        let contents = serde_yaml::to_string(&data).map_serde()?;
+        std::fs::write(&self.config.output_path, contents)?;
+
+        Ok(())
+    }
+}
+
+pub struct ConnectionRunner;
+
+impl ConnectionRunner {
+    pub fn run(config: &config::ConnectionConfig) -> Result<(), errors::ProcessingError> {
+        let sources = ConnectionSources::load(config)?;
+        let collector = ConnectionCollector::new(&sources);
+
+        let worker = ConnectionWorker::new(collector);
+        let stash = ConnectionStash::new(config.clone());
+
+        let flow = parallel::Flow::new();
+        runners::WikidataRunner::flow(flow, config, worker, stash)?.join();
+
+        Ok(())
+    }
+}

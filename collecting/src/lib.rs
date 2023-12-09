@@ -2,7 +2,10 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 
-pub mod data;
+pub mod data {
+    pub use sustainity_wikidata::data::{Id as WikiId, StrId as WikiStrId};
+}
+
 pub mod errors;
 
 pub mod bcorp;

@@ -1,10 +1,44 @@
 use std::collections::HashSet;
 
+use sustainity_api::models as api;
+
+/// This test makes sure that Sustainity scores in the database and in the API can be mapped "1 to 1".
+///
+/// In the code there is already mapping from the database to the API.
+#[test]
+fn score_category_to_api() {
+    use sustainity_models::models::SustainityScoreCategory;
+
+    #[allow(dead_code)]
+    fn convert(cat: api::SustainityScoreCategory) -> SustainityScoreCategory {
+        match cat {
+            api::SustainityScoreCategory::DataAvailability => {
+                SustainityScoreCategory::DataAvailability
+            }
+            api::SustainityScoreCategory::ProducerKnown => SustainityScoreCategory::ProducerKnown,
+            api::SustainityScoreCategory::ProductionPlaceKnown => {
+                SustainityScoreCategory::ProductionPlaceKnown
+            }
+            api::SustainityScoreCategory::IdKnown => SustainityScoreCategory::IdKnown,
+            api::SustainityScoreCategory::CategoryAssigned => {
+                SustainityScoreCategory::CategoryAssigned
+            }
+            api::SustainityScoreCategory::Category => SustainityScoreCategory::Category,
+            api::SustainityScoreCategory::WarrantyLength => SustainityScoreCategory::WarrantyLength,
+            api::SustainityScoreCategory::NumCerts => SustainityScoreCategory::NumCerts,
+            api::SustainityScoreCategory::AtLeastOneCert => SustainityScoreCategory::AtLeastOneCert,
+            api::SustainityScoreCategory::AtLeastTwoCerts => {
+                SustainityScoreCategory::AtLeastTwoCerts
+            }
+        }
+    }
+}
+
 #[test]
 fn regions_merge() {
     use isocountry::CountryCode::{DEU, ESP, FRA, ITA, POL, SWE};
     use merge::Merge;
-    use sustainity_condensing::knowledge::Regions;
+    use sustainity_models::models::Regions;
 
     fn merge(r1: &Regions, r2: &Regions) -> Regions {
         let mut r = r1.clone();
@@ -30,7 +64,7 @@ fn regions_merge() {
 
 #[test]
 fn serde_product_1() {
-    use sustainity_condensing::knowledge::{
+    use sustainity_models::write::{
         Certifications, Gtin, Product, ProductId, Regions, SustainityScore,
     };
 
@@ -81,7 +115,7 @@ fn serde_product_1() {
 
 #[test]
 fn serde_product_2() {
-    use sustainity_condensing::knowledge::{
+    use sustainity_models::write::{
         Certifications, Gtin, Product, ProductId, Regions, SustainityScore,
     };
 

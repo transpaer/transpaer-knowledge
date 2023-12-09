@@ -11,7 +11,7 @@ pub mod data {
 
         /// Wikidata ID of the company.
         #[serde(rename = "wiki")]
-        pub wikidata_id: sustainity_wikidata::data::StrId,
+        pub wikidata_id: sustainity_wikidata::data::Id,
     }
 }
 

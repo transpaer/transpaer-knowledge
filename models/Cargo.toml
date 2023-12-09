@@ -1,0 +1,19 @@
+[package]
+name = "sustainity-models"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+isocountry = { version = "0.3.2" }
+merge = { version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+snafu = { version = "0.7.5" }
+
+sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false, optional = true }
+
+[dev-dependencies]
+indoc = { version = "2" }
+serde_json = { version = "1.0" }
+
+[features]
+into-api = ["dep:sustainity-api"]

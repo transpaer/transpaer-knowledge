@@ -1,172 +1,6 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
-use crate::{errors::ConfigCheckError, utils};
-
-/// Arguments of the `prefilter` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "First step of fitering",
-    long_about = "Wikidata data set is very big and processing it takes a lot of time. \
-                  To mitigate that problem we preprocess that data by filtering out the entriess \
-                  that we are not interested in. We do that intwo steps and this the first of those steps."
-)]
-pub struct PrefilteringArgs {
-    /// Origin data directory.
-    #[arg(long)]
-    origin: String,
-
-    /// Cache directory.
-    #[arg(long)]
-    cache: String,
-}
-
-/// Arguments of the `filter` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Second step of fitering",
-    long_about = "Wikidata data set is very big and processing it takes a lot of time. \
-                  To mitigate that problem we preprocess that data by filtering out the entriess \
-                  that we are not interested in. We do that intwo steps and this the second of those steps."
-)]
-pub struct FilteringArgs {
-    /// Origin data directory.
-    #[arg(long)]
-    origin: String,
-
-    /// Source data directory.
-    #[arg(long)]
-    source: String,
-
-    /// Cache directory.
-    #[arg(long)]
-    cache: String,
-}
-
-/// Arguments of the `filter` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Update source files",
-    long_about = "Some data we are processing need to be augmented we additional information \
-                  which we prepare manually. With new versions of the original data those manually created \
-                  data may become insufficient or obsolete. This command updates the data and points to \
-                  any further manual updates required.\n\nCurrently this command updates mapping from \
-                  Open Food Facts countries to Sustaininty regions."
-)]
-pub struct UpdatingArgs {
-    /// Origin data directory.
-    #[arg(long)]
-    origin: String,
-
-    /// Source data directory.
-    #[arg(long)]
-    source: String,
-
-    /// Cache directory.
-    #[arg(long)]
-    cache: String,
-}
-
-/// Arguments of the `condense` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Process big input data sources",
-    long_about = "Processes all available data sources to create an new version of Sustainity database"
-)]
-pub struct CondensationArgs {
-    /// Origin data directory.
-    #[arg(long)]
-    origin: String,
-
-    /// Source data directory.
-    #[arg(long)]
-    source: String,
-
-    /// Cache directory.
-    #[arg(long)]
-    cache: String,
-
-    /// Target data directory.
-    #[arg(long)]
-    target: String,
-}
-
-/// Arguments of the `transcribe` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Convert backend config files to format storagble in the database",
-    long_about = "Some of the data we store in the database (e.g. texts and articles we show on the web page) \
-                  can be processed quickly because don't require access to large data sources like Wikidata. \
-                  This command runs this processing basically transcribing some human readable files into \
-                  a format that can be imported by the database."
-)]
-pub struct TranscriptionArgs {
-    /// Source data directory.
-    #[arg(long)]
-    source: String,
-
-    /// Library data directory.
-    #[arg(long)]
-    library: String,
-
-    /// Target data directory.
-    #[arg(long)]
-    target: String,
-}
-
-/// Arguments of the `analyse` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Run an analysis of input data",
-    long_about = "Runs an analysis of input data to find ways to improve the processing of those data.\n\n\
-                  Currently this command only looks for entry classes in Wikidata and looks for those \
-                  contain but do not correspond to any product category."
-)]
-pub struct AnalysisArgs {
-    /// Cache directory.
-    #[arg(long)]
-    cache: String,
-}
-
-/// Arguments of the `connect` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Try to connect companies of products known mainly only by name to entries in Wikidata",
-    long_about = "Using fuzzy estimations tries to connect companies and products from data sources like \
-                  Open Food Facts and EU Ecolabel data (which frequently don't contain identifiers) \
-                  to entries in Wikidata. The methods used cannot guaranty correctness of connections, \
-                  so in the future we would like to avoid using this approach."
-)]
-pub struct ConnectionArgs {
-    #[arg(long)]
-    wikidata_path: String,
-
-    #[arg(long)]
-    origin: String,
-
-    #[arg(long)]
-    source: String,
-}
-
-/// All arguments of the program.
-#[derive(Subcommand, Debug)]
-pub enum Commands {
-    Prefilter(PrefilteringArgs),
-    Filter(FilteringArgs),
-    Update(UpdatingArgs),
-    Condense(CondensationArgs),
-    Transcribe(TranscriptionArgs),
-    Analyze(AnalysisArgs),
-    Connect(ConnectionArgs),
-}
-
-/// Program arguments.
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-pub struct Args {
-    /// Commands.
-    #[command(subcommand)]
-    pub command: Commands,
-}
+use crate::{commands, errors::ConfigCheckError, utils};
 
 /// Configuration for `WikidataGather`.
 #[must_use]
@@ -186,7 +20,7 @@ impl WikidataGathererConfig {
     /// Constructs a new `WikidataGathererConfig` with full Wikidata dump.
     pub fn new_full(origin: &str) -> WikidataGathererConfig {
         let origin = std::path::PathBuf::from(&origin);
-        Self { wikidata_path: origin.join("wikidata-20230417-all.json.gz") }
+        Self { wikidata_path: origin.join("wikidata-20231120-all.json.gz") }
     }
 
     /// Constructs a new `WikidataGathererConfig`.
@@ -366,7 +200,7 @@ pub struct PrefilteringConfig {
 
 impl PrefilteringConfig {
     /// Constructs a new `Prefiltering`.
-    pub fn new(args: &PrefilteringArgs) -> PrefilteringConfig {
+    pub fn new(args: &commands::PrefilteringArgs) -> PrefilteringConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
@@ -402,12 +236,12 @@ pub struct FilteringConfig {
 
 impl FilteringConfig {
     /// Constructs a new `FilteringConfig`.
-    pub fn new(args: &FilteringArgs) -> FilteringConfig {
+    pub fn new(args: &commands::FilteringArgs) -> FilteringConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
-            wikidata_gatherer: WikidataGathererConfig::new_full(&args.cache),
+            wikidata_gatherer: WikidataGathererConfig::new_full(&args.origin),
         }
     }
 
@@ -433,7 +267,7 @@ pub struct UpdatingConfig {
 
 impl UpdatingConfig {
     /// Constructs a new `UpdatingConfig`.
-    pub fn new(args: &UpdatingArgs) -> UpdatingConfig {
+    pub fn new(args: &commands::UpdatingArgs) -> UpdatingConfig {
         Self {
             off: OpenFoodFactsGathererConfig::new(&args.origin),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
@@ -486,7 +320,7 @@ pub struct CondensationConfig {
 
 impl CondensationConfig {
     /// Constructs a new `CondensationConfig`.
-    pub fn new(args: &CondensationArgs) -> CondensationConfig {
+    pub fn new(args: &commands::CondensationArgs) -> CondensationConfig {
         let target = std::path::PathBuf::from(&args.target);
         Self {
             target: Box::new(CondensationInnerConfig {
@@ -548,7 +382,7 @@ pub struct TranscriptionConfig {
 
 impl TranscriptionConfig {
     //i/ Constructs a new `TranscriptionConfig`.
-    pub fn new(args: &TranscriptionArgs) -> TranscriptionConfig {
+    pub fn new(args: &commands::TranscriptionArgs) -> TranscriptionConfig {
         let source = std::path::PathBuf::from(&args.source);
         let library = std::path::PathBuf::from(&args.library);
         let target = std::path::PathBuf::from(&args.target);
@@ -585,7 +419,7 @@ pub struct AnalysisConfig {
 
 impl AnalysisConfig {
     /// Constructs a new `FilteringConfig`.
-    pub fn new(args: &AnalysisArgs) -> AnalysisConfig {
+    pub fn new(args: &commands::AnalysisArgs) -> AnalysisConfig {
         let cache = std::path::PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
@@ -624,7 +458,7 @@ pub struct ConnectionConfig {
 
 impl ConnectionConfig {
     /// Constructs a new `ConnectionConfig`.
-    pub fn new(args: &ConnectionArgs) -> ConnectionConfig {
+    pub fn new(args: &commands::ConnectionArgs) -> ConnectionConfig {
         let origin = std::path::PathBuf::from(&args.origin);
         let source = std::path::PathBuf::from(&args.source);
         Self {
@@ -739,24 +573,6 @@ impl From<&UpdatingConfig> for SourcesConfig {
     }
 }
 
-impl From<&PrefilteringConfig> for PrefilteringConfig {
-    fn from(config: &PrefilteringConfig) -> PrefilteringConfig {
-        config.clone()
-    }
-}
-
-impl From<&AnalysisConfig> for AnalysisConfig {
-    fn from(config: &AnalysisConfig) -> AnalysisConfig {
-        config.clone()
-    }
-}
-
-impl From<&ConnectionConfig> for ConnectionConfig {
-    fn from(config: &ConnectionConfig) -> ConnectionConfig {
-        config.clone()
-    }
-}
-
 /// Configuration for the program.
 #[must_use]
 #[derive(Debug, Clone)]
@@ -773,6 +589,8 @@ pub enum Config {
 impl Config {
     /// Constructs a new config from `Args::parse()`.
     pub fn new_from_args() -> Config {
+        use commands::{Args, Commands};
+
         let args = Args::parse();
         match args.command {
             Commands::Prefilter(args) => Config::Prefiltering(PrefilteringConfig::new(&args)),
