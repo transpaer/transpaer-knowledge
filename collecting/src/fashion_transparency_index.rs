@@ -10,7 +10,10 @@ pub mod data {
         pub name: String,
 
         /// ID of the copmpany in Wikidata.
-        #[serde(rename = "wiki")]
+        #[serde(
+            rename = "wiki",
+            deserialize_with = "sustainity_wikidata::data::deserialize_option_id_from_option_string"
+        )]
         pub wikidata_id: Option<sustainity_wikidata::data::Id>,
 
         /// Score of the company in the Fashion Transparency Index.

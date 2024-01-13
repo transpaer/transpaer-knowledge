@@ -85,11 +85,11 @@ impl Entry {
         let similarity = self.matcher.calc_similarity(item);
         match self.similarity.partial_cmp(&similarity) {
             Some(std::cmp::Ordering::Equal) => {
-                self.ids.insert(item.id.clone());
+                self.ids.insert(item.id);
             }
             Some(std::cmp::Ordering::Less) => {
                 self.ids.clear();
-                self.ids.insert(item.id.clone());
+                self.ids.insert(item.id);
                 self.similarity = similarity;
             }
             _ => {}
@@ -101,7 +101,7 @@ impl From<&Entry> for sustainity::data::NameMatching {
     fn from(entry: &Entry) -> Self {
         Self {
             name: entry.matcher.name.clone(),
-            ids: entry.ids.iter().cloned().collect(),
+            ids: entry.ids.iter().copied().collect(),
             similarity: entry.similarity,
         }
     }
@@ -146,7 +146,7 @@ impl Sourceable for ConnectionSources {
         for record in open_food_facts::reader::parse(&config.open_food_facts_input_path)? {
             let record = record?;
             if record.brand_owner.is_empty() {
-                for label in record.extract_labels() {
+                for label in record.extract_brand_labels() {
                     let name = utils::disambiguate_name(&label);
                     off_data.insert(name.clone(), Matcher::new(name, None));
                 }

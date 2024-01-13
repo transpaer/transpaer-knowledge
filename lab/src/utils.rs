@@ -1,6 +1,6 @@
 //! Miscellaneous utilities.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::errors;
 
@@ -72,6 +72,31 @@ pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError
     Ok(())
 }
 
+/// Verifies that the path exists and is an empty directory.
+///
+/// # Errors
+///
+/// Returns an error if the path does not exist or is not a directory.
+pub fn empty_dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+    if !path.exists() {
+        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
+    }
+    if !path.is_dir() {
+        return Err(errors::ConfigCheckError::PathIsNotADir(path.to_owned()));
+    }
+    match path.read_dir() {
+        Ok(mut entry) => {
+            if entry.next().is_some() {
+                return Err(errors::ConfigCheckError::PathIsNotAnEmptyDir(path.to_owned()));
+            }
+        }
+        Err(_) => {
+            return Err(errors::ConfigCheckError::PathIsNotReadable(path.to_owned()));
+        }
+    }
+    Ok(())
+}
+
 /// Verifies that the path itself does not exist, but it's parent exists and is a directory.
 ///
 /// # Errors
@@ -84,13 +109,13 @@ pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckE
 
     if let Some(base) = path.parent() {
         if !base.exists() {
-            return Err(errors::ConfigCheckError::BaseDoesNotExist(path.to_owned()));
+            return Err(errors::ConfigCheckError::PathDoesNotExist(base.to_owned()));
         }
         if !base.is_dir() {
-            return Err(errors::ConfigCheckError::BaseIsNotADirectory(path.to_owned()));
+            return Err(errors::ConfigCheckError::PathIsNotADir(base.to_owned()));
         }
     } else {
-        return Err(errors::ConfigCheckError::BaseDoesNotExist(path.to_owned()));
+        return Err(errors::ConfigCheckError::PathHasNoParent(path.to_owned()));
     }
 
     Ok(())
@@ -126,16 +151,29 @@ where
 }
 
 /// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
-/// The mergind funtionality is provided via a closure.
+/// The merging funtionality is provided via a closure.
 pub fn merge_hashmaps_with<K, V, M, S>(m1: &mut HashMap<K, V, S>, m2: HashMap<K, V, S>, m: M)
 where
     K: Eq + std::hash::Hash,
     V: Clone,
-    M: Fn(&mut V, V),
+    M: Fn(&mut V, &V),
     S: std::hash::BuildHasher,
 {
     for (key, value2) in m2 {
-        m1.entry(key).and_modify(|value1| m(value1, value2.clone())).or_insert_with(|| value2);
+        m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
+    }
+}
+
+/// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
+/// The merging funtionality is provided via a closure.
+pub fn merge_btreemaps_with<K, V, M>(m1: &mut BTreeMap<K, V>, m2: BTreeMap<K, V>, m: M)
+where
+    K: Eq + Ord,
+    V: Clone,
+    M: Fn(&mut V, &V),
+{
+    for (key, value2) in m2 {
+        m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
     }
 }
 

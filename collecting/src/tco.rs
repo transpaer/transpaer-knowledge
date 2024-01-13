@@ -10,7 +10,10 @@ pub mod data {
         pub company_name: String,
 
         /// Wikidata ID of the company.
-        #[serde(rename = "wiki")]
+        #[serde(
+            rename = "wiki",
+            deserialize_with = "sustainity_wikidata::data::Id::deserialize_from_string"
+        )]
         pub wikidata_id: sustainity_wikidata::data::Id,
     }
 }

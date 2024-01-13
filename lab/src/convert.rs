@@ -1,4 +1,4 @@
-use sustainity_models::{ids, write as models};
+use sustainity_models::gather as models;
 
 /// Converts Open Food Facts to model regions.
 pub fn to_model_regions(
@@ -32,16 +32,4 @@ pub fn to_off_regions(
             Regions::List(regions)
         }
     }
-}
-
-/// Converts a Wikidata ID to an organisation ID.
-#[must_use]
-pub fn to_org_id(id: &sustainity_wikidata::data::Id) -> ids::OrganisationId {
-    ids::OrganisationId::Wiki(ids::NumId::new(id.get_value()))
-}
-
-/// Converts a Wikidata ID to a product ID.
-#[must_use]
-pub fn to_product_id(id: &sustainity_wikidata::data::Id) -> ids::ProductId {
-    ids::ProductId::Wiki(ids::NumId::new(id.get_value()))
 }

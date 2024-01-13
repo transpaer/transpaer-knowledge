@@ -1,65 +1,12 @@
 //! Extensions for types from `sustainity_wikidata` crate.
 
-use sustainity_models::ids;
+use std::collections::HashSet;
+
 use sustainity_wikidata::{data, errors, properties};
 
-/// Represents a Wikidata ID.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct WikiId(usize);
+pub use sustainity_wikidata::data::Id as WikiId;
 
-impl WikiId {
-    /// Constructs a new `Id`.
-    #[must_use]
-    pub const fn new(id: usize) -> Self {
-        Self(id)
-    }
-
-    #[must_use]
-    pub fn get_value(&self) -> usize {
-        self.0
-    }
-}
-
-impl WikiId {
-    #[must_use]
-    pub fn into_num_id(self) -> ids::NumId {
-        ids::NumId::new(self.get_value())
-    }
-
-    #[must_use]
-    pub fn into_organisation_id(self) -> ids::OrganisationId {
-        ids::OrganisationId::Wiki(self.into_num_id())
-    }
-
-    #[must_use]
-    pub fn into_product_id(self) -> ids::ProductId {
-        ids::ProductId::Wiki(self.into_num_id())
-    }
-}
-
-impl From<data::Id> for WikiId {
-    fn from(other: data::Id) -> Self {
-        Self::new(other.get_value())
-    }
-}
-
-impl From<&data::Id> for WikiId {
-    fn from(other: &data::Id) -> Self {
-        Self::new(other.get_value())
-    }
-}
-
-impl From<ids::NumId> for WikiId {
-    fn from(other: ids::NumId) -> Self {
-        Self::new(other.get_value())
-    }
-}
-
-impl From<&ids::NumId> for WikiId {
-    fn from(other: &ids::NumId) -> Self {
-        Self::new(other.get_value())
-    }
-}
+use crate::utils;
 
 pub mod items {
     pub const ACTION_FIGURE: &str = "Q343566";
@@ -644,24 +591,24 @@ pub mod ignored {
 }
 
 pub mod organisations {
-    pub const BUSSINESS: usize = 4_830_453;
-    pub const PUBLIC_COMPANY: usize = 891_723;
-    pub const BRAND: usize = 431_289;
-    pub const RETAIL_CHAIN: usize = 507_619;
-    pub const FASHION_HOUSE: usize = 3_661_311;
-    pub const ENTERPRISE: usize = 6_881_511;
-    pub const ONLINE_SHOP: usize = 4_382_945;
-    pub const SUPERMARKET_CHAIN: usize = 18_043_413;
-    pub const CONCERN: usize = 206_361;
-    pub const CONSUMER_COOPERATIVE: usize = 614_084;
-    pub const BRICK_AND_MORTAR: usize = 726_870;
-    pub const COMPANY: usize = 783_794;
-    pub const SUBSIDIARY: usize = 658_255;
-    pub const DEPARTMENT_STORE_CHAIN: usize = 2_549_179;
-    pub const DEPARTMENT_STORE: usize = 216_107;
-    pub const FOOD_MANUFACTURER: usize = 1_252_971;
+    pub const BUSSINESS: u64 = 4_830_453;
+    pub const PUBLIC_COMPANY: u64 = 891_723;
+    pub const BRAND: u64 = 431_289;
+    pub const RETAIL_CHAIN: u64 = 507_619;
+    pub const FASHION_HOUSE: u64 = 3_661_311;
+    pub const ENTERPRISE: u64 = 6_881_511;
+    pub const ONLINE_SHOP: u64 = 4_382_945;
+    pub const SUPERMARKET_CHAIN: u64 = 18_043_413;
+    pub const CONCERN: u64 = 206_361;
+    pub const CONSUMER_COOPERATIVE: u64 = 614_084;
+    pub const BRICK_AND_MORTAR: u64 = 726_870;
+    pub const COMPANY: u64 = 783_794;
+    pub const SUBSIDIARY: u64 = 658_255;
+    pub const DEPARTMENT_STORE_CHAIN: u64 = 2_549_179;
+    pub const DEPARTMENT_STORE: u64 = 216_107;
+    pub const FOOD_MANUFACTURER: u64 = 1_252_971;
 
-    pub const ALL: &[usize] = &[
+    pub const ALL: &[u64] = &[
         BUSSINESS,
         PUBLIC_COMPANY,
         BRAND,
@@ -689,7 +636,7 @@ pub trait ItemExt {
     fn get_labels(&self) -> Vec<&str>;
 
     /// Returns all labels and aliases.
-    fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str>;
+    fn get_all_labels_and_aliases(&self) -> HashSet<&str>;
 
     /// Returns ID associated with the passed property.
     fn get_entity_ids(
@@ -778,6 +725,10 @@ pub trait ItemExt {
     /// Checks if this item can be clasified as an organisation.
     #[must_use]
     fn is_organisation(&self) -> bool;
+
+    /// Extracts internet domains from website addresses.
+    #[must_use]
+    fn extract_domains(&self) -> Option<HashSet<String>>;
 }
 
 impl ItemExt for data::Item {
@@ -799,8 +750,8 @@ impl ItemExt for data::Item {
         }
     }
 
-    fn get_all_labels_and_aliases(&self) -> std::collections::HashSet<&str> {
-        let mut result = std::collections::HashSet::new();
+    fn get_all_labels_and_aliases(&self) -> HashSet<&str> {
+        let mut result = HashSet::new();
         for label in self.labels.values() {
             result.insert(label.value.as_str());
         }
@@ -990,5 +941,10 @@ impl ItemExt for data::Item {
         }
 
         false
+    }
+
+    #[must_use]
+    fn extract_domains(&self) -> Option<HashSet<String>> {
+        self.get_official_websites().map(|u| utils::extract_domains_from_urls(&u))
     }
 }

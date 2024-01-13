@@ -1,0 +1,42 @@
+[package]
+name = "sustainity-lab"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+async-channel = { workspace = true }
+async-trait = { workspace = true }
+csv = { workspace = true }
+derive-new = { workspace = true }
+futures = { workspace = true }
+isocountry = { workspace = true }
+kv = { workspace = true, features = ["json-value"] }
+log = { workspace = true }
+maplit = { workspace = true }
+merge = { workspace = true }
+num_cpus = { workspace = true }
+postcard = { workspace = true }
+serde-jsonlines = { workspace = true }
+serde_json = { workspace = true }
+serde_variant = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = { workspace = true }
+swagger = { workspace = true, features = ["serdejson", "client"] }
+strsim = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+clap = { workspace = true, features = ["derive"] }
+humantime = { workspace = true }
+fern = { workspace = true }
+
+sustainity-api = { workspace = true, features = ["client"] }
+sustainity-schema = { workspace = true }
+sustainity-wikidata = { workspace = true }
+sustainity-collecting = { workspace = true }
+sustainity-models = { workspace = true, features = ["from-substrate"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+

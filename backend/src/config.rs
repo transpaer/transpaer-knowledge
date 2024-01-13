@@ -51,12 +51,18 @@ impl SecretConfig {
 
     pub fn load_or_default() -> Self {
         match Self::load_from_file() {
-            Ok(ok) => return ok,
+            Ok(ok) => {
+                log::info!("Loaded config from a file");
+                return ok;
+            }
             Err(err) => log::warn!("{err}"),
         }
 
         match Self::load_from_env() {
-            Ok(ok) => return ok,
+            Ok(ok) => {
+                log::info!("Loaded config from an env variable");
+                return ok;
+            }
             Err(err) => log::warn!("{err}"),
         }
 

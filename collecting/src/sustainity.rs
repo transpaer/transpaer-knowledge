@@ -81,7 +81,10 @@ pub mod data {
         pub name: String,
 
         /// Wikidata IDs.
-        #[serde(rename = "ids")]
+        #[serde(
+            rename = "ids",
+            deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_string"
+        )]
         pub ids: Vec<sustainity_wikidata::data::Id>,
 
         /// Measure of certainty that the matched IDs really belong to the correct entry.
@@ -94,9 +97,7 @@ pub mod data {
         #[must_use]
         pub fn matched(&self) -> Option<Match> {
             if self.similarity > 0.85 && self.ids.len() == 1 {
-                self.ids
-                    .first()
-                    .map(|id| Match { wiki_id: id.clone(), match_accuracy: self.similarity })
+                self.ids.first().map(|id| Match { wiki_id: *id, match_accuracy: self.similarity })
             } else {
                 None
             }

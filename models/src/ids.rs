@@ -5,6 +5,9 @@ use std::collections::HashSet;
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use snafu::prelude::*;
 
+/// Maximal EAN (highest number with 13 digits).
+const MAX_EAN: usize = 9_999_999_999_999;
+
 /// Maximal GTIN (highest number with 14 digits).
 const MAX_GTIN: usize = 99_999_999_999_999;
 
@@ -38,44 +41,152 @@ impl ParseIdError {
     }
 }
 
-/// Represents a numerical ID.
-#[derive(Debug, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct NumId(usize);
+impl From<sustainity_wikidata::errors::ParseIdError> for ParseIdError {
+    fn from(err: sustainity_wikidata::errors::ParseIdError) -> Self {
+        use sustainity_wikidata::errors::ParseIdError as E;
+        match err {
+            E::Num(string, err) => Self::Num { string, source: err },
+            E::Length(string) => Self::Length { string },
+            E::Prefix(string) => Self::Prefix { string },
+        }
+    }
+}
 
-impl NumId {
-    /// Constructs a new `NumId`.
+/// Represents a Wikidata ID in a numeric form.
+///
+/// Compare to `StrId`. Numenric ID takes less memory and is easier to compare, but string form is
+/// sometimes easier to handle.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct WikiId(u64);
+
+impl WikiId {
+    /// Constructs a new `Id`.
     #[must_use]
-    pub const fn new(id: usize) -> Self {
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
     #[must_use]
-    pub const fn get_value(&self) -> usize {
+    pub fn get_value(&self) -> u64 {
         self.0
+    }
+
+    #[must_use]
+    pub fn to_canonical_string(&self) -> String {
+        self.get_value().to_string()
     }
 }
 
-impl TryFrom<&str> for NumId {
+impl From<sustainity_wikidata::data::Id> for WikiId {
+    fn from(other: sustainity_wikidata::data::Id) -> Self {
+        Self(other.get_value())
+    }
+}
+
+impl TryFrom<&str> for WikiId {
     type Error = ParseIdError;
 
     fn try_from(string: &str) -> Result<Self, ParseIdError> {
-        match string.parse::<usize>() {
+        match string.parse::<u64>() {
             Ok(num) => Ok(Self(num)),
             Err(err) => Err(ParseIdError::num(string.to_string(), err)),
         }
     }
 }
 
-impl Serialize for NumId {
+impl TryFrom<&String> for WikiId {
+    type Error = ParseIdError;
+
+    fn try_from(string: &String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str())
+    }
+}
+
+impl Serialize for WikiId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.0.to_string().as_str())
+        serializer.serialize_u64(self.0)
     }
 }
 
-impl<'de> Deserialize<'de> for NumId {
+impl<'de> Deserialize<'de> for WikiId {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let value = u64::deserialize(d)?;
+        Ok(Self::new(value))
+    }
+}
+
+/// Represents a Internationl Article Number.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Ean(usize);
+
+impl Ean {
+    /// Constructs as new `Ean`.
+    #[must_use]
+    pub fn new(number: usize) -> Self {
+        Self(number)
+    }
+
+    #[must_use]
+    pub fn as_number(&self) -> usize {
+        self.0
+    }
+
+    #[must_use]
+    pub fn to_canonical_string(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl std::fmt::Display for Ean {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<&str> for Ean {
+    type Error = ParseIdError;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let string = string.replace([' ', '-', '.'], "").trim_start_matches('0').to_string();
+        match string.parse::<usize>() {
+            Ok(num) => Ok(Ean::try_from(num)?),
+            Err(err) => Err(ParseIdError::num(string, err)),
+        }
+    }
+}
+
+impl TryFrom<&String> for Ean {
+    type Error = ParseIdError;
+
+    fn try_from(string: &String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str())
+    }
+}
+
+impl TryFrom<usize> for Ean {
+    type Error = ParseIdError;
+
+    fn try_from(num: usize) -> Result<Self, Self::Error> {
+        if num > MAX_EAN {
+            return Err(ParseIdError::length(num.to_string()));
+        }
+        Ok(Self(num))
+    }
+}
+
+impl Serialize for Ean {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+impl<'de> Deserialize<'de> for Ean {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
         Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
@@ -98,6 +209,11 @@ impl Gtin {
         self.0
     }
 
+    #[must_use]
+    pub fn to_canonical_string(&self) -> String {
+        format!("{:0>14}", self.0)
+    }
+
     /// Converts optional vector of strings to a vector of VAT IDs.
     ///
     /// # Errors
@@ -115,32 +231,27 @@ impl Gtin {
             None => Ok(HashSet::default()),
         }
     }
-
-    /// Converts the ID into `ArangoDB` ID in `gtins` collection.
-    #[must_use]
-    pub fn to_db_id(&self) -> String {
-        format!("gtins/{}", self.to_string())
-    }
 }
 
-impl ToString for Gtin {
-    fn to_string(&self) -> String {
-        format!("{:0>14}", self.0)
+impl std::fmt::Display for Gtin {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:0>14}", self.0)
     }
 }
 
 impl TryFrom<&str> for Gtin {
     type Error = ParseIdError;
 
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let string = string.replace([' ', '-', '.'], "").trim_start_matches('0').to_string();
-        let len = string.len();
+    fn try_from(gtin: &str) -> Result<Self, Self::Error> {
+        let mut reduced = gtin.to_owned();
+        reduced.retain(|c| c.is_ascii_alphanumeric());
+        let len = reduced.len();
         if !(8..=14).contains(&len) {
-            return Err(ParseIdError::length(string));
+            return Err(ParseIdError::length(gtin.to_owned()));
         }
-        match string.parse::<usize>() {
+        match reduced.parse::<usize>() {
             Ok(num) => Ok(Gtin(num)),
-            Err(err) => Err(ParseIdError::num(string, err)),
+            Err(err) => Err(ParseIdError::num(reduced, err)),
         }
     }
 }
@@ -187,14 +298,22 @@ pub struct VatId(String);
 impl VatId {
     /// Constructs a new `VatId`.
     #[must_use]
-    pub fn new(id: String) -> Self {
-        Self(id)
+    pub fn new(id: &str) -> Self {
+        let mut reduced = id.to_owned();
+        reduced.retain(|c| c.is_ascii_alphanumeric());
+        Self(reduced)
     }
 
     /// Returns reference to the inner string.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+
+    /// Returns reference to the inner string.
+    #[must_use]
+    pub fn to_canonical_string(&self) -> String {
+        self.0.clone()
     }
 
     /// Converts optional vector of strings to a vector of VAT IDs.
@@ -220,13 +339,13 @@ impl TryFrom<&str> for VatId {
     type Error = ParseIdError;
 
     fn try_from(id: &str) -> Result<Self, Self::Error> {
-        let id = id.replace([' ', '-', '.'], "");
+        let vat = Self::new(id);
 
-        if id.len() < 2 {
-            return Err(ParseIdError::length(id));
+        if vat.0.len() < 2 {
+            return Err(ParseIdError::length(vat.0));
         }
 
-        Ok(Self(id))
+        Ok(vat)
     }
 }
 
@@ -256,53 +375,28 @@ impl<'de> Deserialize<'de> for VatId {
 
 /// Represents in ID of an organisation.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub enum OrganisationId {
-    /// Organisations data comes from Wikidata.
-    Wiki(NumId),
-
-    /// Organisation data comes from diffretn source providing VAT ID.
-    Vat(VatId),
-}
+pub struct OrganisationId(usize);
 
 impl OrganisationId {
-    /// Converts the ID into `ArangoDB` ID in `organisations` collection.
-    #[must_use]
-    pub fn to_db_id(&self) -> String {
-        format!("organisations/{}", self.to_string())
+    /// Constructs a new `OrganisationId`.
+    pub fn from_value(value: usize) -> Self {
+        Self(value)
+    }
+
+    /// Returns the underlying value.
+    pub fn get_value(&self) -> usize {
+        self.0
+    }
+
+    // Converts the ID to string for serialisation.
+    pub fn to_canonical_string(&self) -> String {
+        self.0.to_string()
     }
 }
 
-impl ToString for OrganisationId {
-    fn to_string(&self) -> String {
-        match &self {
-            Self::Wiki(id) => format!("Q{}", id.0),
-            Self::Vat(id) => format!("V{}", id.as_str()),
-        }
-    }
-}
-
-impl TryFrom<&str> for OrganisationId {
-    type Error = ParseIdError;
-
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        match string.chars().next() {
-            Some('Q') => Ok(Self::Wiki(NumId::try_from(&string[1..])?)),
-            Some('V') => Ok(Self::Vat(VatId::try_from(&string[1..])?)),
-            Some(_) => Err(ParseIdError::prefix(string.to_string())),
-            None => Err(ParseIdError::length(string.to_string())),
-        }
-    }
-}
-
-impl From<NumId> for OrganisationId {
-    fn from(id: NumId) -> Self {
-        Self::Wiki(id)
-    }
-}
-
-impl From<VatId> for OrganisationId {
-    fn from(id: VatId) -> Self {
-        Self::Vat(id)
+impl std::fmt::Display for OrganisationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -311,66 +405,34 @@ impl Serialize for OrganisationId {
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
-
-impl<'de> Deserialize<'de> for OrganisationId {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
+        serializer.serialize_str(self.to_canonical_string().as_ref())
     }
 }
 
 /// Represents in ID of a product.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub enum ProductId {
-    /// Product data comes from Wikidata.
-    Wiki(NumId),
-
-    /// Product data comes from diffretn source providing VAT ID.
-    Gtin(Gtin),
-}
+pub struct ProductId(usize);
 
 impl ProductId {
-    /// Converts the ID into `ArangoDB` ID in `products` collection.
-    #[must_use]
-    pub fn to_db_id(&self) -> String {
-        format!("products/{}", self.to_string())
+    /// Constructs a new `ProductId`.
+    pub fn from_value(value: usize) -> Self {
+        Self(value)
+    }
+
+    /// Returns the underlying value.
+    pub fn get_value(&self) -> usize {
+        self.0
+    }
+
+    // Converts the ID to string for serialisation.
+    pub fn to_canonical_string(&self) -> String {
+        self.0.to_string()
     }
 }
 
-impl ToString for ProductId {
-    fn to_string(&self) -> String {
-        match &self {
-            Self::Wiki(id) => format!("Q{}", id.0),
-            Self::Gtin(id) => format!("G{}", id.to_string()),
-        }
-    }
-}
-
-impl From<NumId> for ProductId {
-    fn from(id: NumId) -> Self {
-        Self::Wiki(id)
-    }
-}
-
-impl From<Gtin> for ProductId {
-    fn from(id: Gtin) -> Self {
-        Self::Gtin(id)
-    }
-}
-
-impl TryFrom<&str> for ProductId {
-    type Error = ParseIdError;
-
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        match string.chars().next() {
-            Some('Q') => Ok(ProductId::Wiki(NumId::try_from(&string[1..])?)),
-            Some('G') => Ok(ProductId::Gtin(Gtin::try_from(&string[1..])?)),
-            Some(_) => Err(ParseIdError::prefix(string.to_string())),
-            None => Err(ParseIdError::length(string.to_string())),
-        }
+impl std::fmt::Display for ProductId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -379,13 +441,6 @@ impl Serialize for ProductId {
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
-}
-
-impl<'de> Deserialize<'de> for ProductId {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
+        serializer.serialize_str(self.to_canonical_string().as_ref())
     }
 }

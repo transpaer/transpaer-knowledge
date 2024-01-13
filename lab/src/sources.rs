@@ -20,7 +20,7 @@ pub struct FullSources {
     /// Names (company, brand, etc...) matched to Wikidata items representing them.
     pub matches: advisors::SustainityMatchesAdvisor,
 
-    /// BCorp data.
+    /// B-Corp data.
     pub bcorp: advisors::BCorpAdvisor,
 
     /// EU Ecolabel data.
@@ -53,12 +53,11 @@ impl FullSources {
             return true;
         }
 
-        let item_id = (&item.id).into();
-        if self.wikidata.has_manufacturer_id(&item_id) {
+        if self.wikidata.has_manufacturer_id(&item.id) {
             return true;
         }
 
-        if self.fti.has_company(&item_id) || self.tco.has_company(&item_id) {
+        if self.fti.has_company(&item.id) || self.tco.has_company(&item.id) {
             return true;
         }
 

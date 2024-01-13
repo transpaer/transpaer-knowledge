@@ -365,7 +365,7 @@ impl AnalysisWorker {
 
     /// Checks if the passed item represents a class.
     fn is_class(&self, item: &Item) -> bool {
-        self.sources.wikidata.has_class_id(&(&item.id).into())
+        self.sources.wikidata.has_class_id(&item.id)
     }
 
     /// Checks if the passed item represents a product.
@@ -390,7 +390,7 @@ impl runners::WikidataWorker for AnalysisWorker {
                 if let Some(label) = item.get_label(Language::En) {
                     if self.is_class(&item) {
                         self.collector.add_class(Class {
-                            id: item.id.clone(),
+                            id: item.id,
                             label: label.to_string(),
                             amount: 1,
                         });
@@ -440,14 +440,14 @@ impl runners::Stash for AnalysisStash {
             wikidata::items::ALL.iter().filter_map(|s| WikiId::try_from(*s).ok()).collect();
         let ignored_classes = HashSet::<WikiId>::from(IGNORED_CLASSES);
         let classes: HashMap<WikiId, Class> =
-            self.collector.classes.iter().map(|c| (c.id.clone(), c.clone())).collect();
+            self.collector.classes.iter().map(|c| (c.id, c.clone())).collect();
 
         let mut uncategorized_classes = HashMap::<WikiId, Class>::new();
         for p in &self.collector.products {
             for c in &p.classes {
                 if !categories.contains(c) && classes.contains_key(c) {
                     uncategorized_classes
-                        .entry(c.clone())
+                        .entry(*c)
                         .and_modify(|e| e.amount += 1)
                         .or_insert_with(|| classes[c].clone_with_amount(1));
                 }

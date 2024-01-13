@@ -5,6 +5,49 @@ members = [
     "wikidata",
     "models",
     "collecting",
-    "condenser",
+    "lab",
     "backend",
 ]
+
+[workspace.dependencies]
+arangors = { version = "0.5", default-features = false }
+async-channel = { version = "1.8" }
+async-trait = { version = "0.1.68" }
+bzip2 = { version = "0.4" }
+clap = { version = "4.1" }
+csv = { version = "1.1" }
+derive-new = { version = "0.6" }
+fern = { version = "0.6" }
+flate2 = { version = "1.0" }
+futures = { version = "0.3" }
+humantime = { version = "2.1" }
+hyper = { version = "0.14" }
+indoc = { version = "2" }
+isocountry = { version = "0.3.2" }
+kv = { version = "0.24" }
+log = { version = "0.4" }
+maplit = { version = "1.0.2" }
+md5 = { version = "0.7.0" }
+merge = { version = "0.1" }
+num_cpus = { version = "1.0" }
+postcard = { version = "1.0", features = ["use-std"] }
+pretty_assertions = { version = "1.4.0" }
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+serde-jsonlines = { version = "0.4" }
+serde_variant = { version = "0.1" }
+serde_yaml = { version = "0.9" }
+snafu = { version = "0.7" }
+strsim = { version = "0.10.0" }
+swagger = { version = "6.4" }
+tempfile = { version = "3.10" }
+thiserror = { version = "1.0" }
+tokio = { version = "1.24" }
+
+sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false }
+sustainity-schema = { git = "https://github.com/sustainity-dev/sustainity-schema-rust.git", branch = "main" }
+
+sustainity-collecting = { path = "collecting" }
+sustainity-condensing = { path = "condensing" }
+sustainity-models = { path = "models" }
+sustainity-wikidata = { path = "wikidata" }

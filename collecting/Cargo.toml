@@ -5,11 +5,13 @@ edition = "2021"
 
 [dependencies]
 
-csv = { version = "1.1" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
-serde_yaml = { version = "0.9" }
-serde_variant = { version = "0.1.2" }
-thiserror = { version = "1.0" }
+csv = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+serde_variant = { workspace = true }
+thiserror = { workspace = true }
+
+sustainity-schema = { workspace = true }
 
 sustainity-wikidata = { path = "../wikidata" }

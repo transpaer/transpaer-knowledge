@@ -10,10 +10,10 @@ use crate::{cache, config, errors, parallel, runners, sources::Sourceable, wikid
 
 /// Holds all the supplementary source data.
 #[derive(Debug)]
-pub struct PrefilteringSources;
+pub struct FilteringSources;
 
-impl Sourceable for PrefilteringSources {
-    type Config = config::PrefilteringConfig;
+impl Sourceable for FilteringSources {
+    type Config = config::Filtering1Config;
 
     fn load(_config: &Self::Config) -> Result<Self, errors::ProcessingError> {
         Ok(Self)
@@ -24,7 +24,7 @@ impl Sourceable for PrefilteringSources {
 ///
 /// Allows merging different instances.
 #[derive(Default, Debug, Clone)]
-pub struct PrefilteringCollector {
+pub struct FilteringCollector {
     /// IDs of manufacturers.
     manufacturer_ids: HashSet<WikiId>,
 
@@ -32,17 +32,17 @@ pub struct PrefilteringCollector {
     classes: HashSet<WikiId>,
 }
 
-impl PrefilteringCollector {
+impl FilteringCollector {
     pub fn add_manufacturer_ids(&mut self, ids: &[WikiId]) {
-        self.manufacturer_ids.extend(ids.iter().cloned());
+        self.manufacturer_ids.extend(ids.iter().copied());
     }
 
     pub fn add_classes(&mut self, classes: &[WikiId]) {
-        self.classes.extend(classes.iter().cloned());
+        self.classes.extend(classes.iter().copied());
     }
 }
 
-impl merge::Merge for PrefilteringCollector {
+impl merge::Merge for FilteringCollector {
     fn merge(&mut self, other: Self) {
         self.manufacturer_ids.extend(other.manufacturer_ids);
         self.classes.extend(other.classes);
@@ -51,11 +51,11 @@ impl merge::Merge for PrefilteringCollector {
 
 /// Filters product entries out from the wikidata dump file.
 #[derive(Clone, Debug, Default)]
-pub struct PrefilteringWorker {
-    collector: PrefilteringCollector,
+pub struct FilteringWorker {
+    collector: FilteringCollector,
 }
 
-impl PrefilteringWorker {
+impl FilteringWorker {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -63,8 +63,8 @@ impl PrefilteringWorker {
 }
 
 #[async_trait]
-impl runners::WikidataWorker for PrefilteringWorker {
-    type Output = PrefilteringCollector;
+impl runners::WikidataWorker for FilteringWorker {
+    type Output = FilteringCollector;
 
     async fn process(
         &mut self,
@@ -99,26 +99,31 @@ impl runners::WikidataWorker for PrefilteringWorker {
 }
 
 #[derive(Clone, Debug)]
-pub struct PrefilteringStash {
+pub struct FilteringStash {
     /// Collected data.
-    collector: PrefilteringCollector,
+    collector: FilteringCollector,
 
     /// Configuration.
-    config: config::PrefilteringConfig,
+    config: config::Filtering1Config,
 }
 
-impl PrefilteringStash {
+impl FilteringStash {
     #[must_use]
-    pub fn new(config: config::PrefilteringConfig) -> Self {
-        Self { collector: PrefilteringCollector::default(), config }
+    pub fn new(config: config::Filtering1Config) -> Self {
+        Self { collector: FilteringCollector::default(), config }
     }
 }
 
 #[async_trait]
-impl runners::Stash for PrefilteringStash {
-    type Input = PrefilteringCollector;
+impl runners::Stash for FilteringStash {
+    type Input = FilteringCollector;
 
     fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
+        log::info!(
+            "Merging {} manufacturers and {} products or classes",
+            input.manufacturer_ids.len(),
+            input.classes.len()
+        );
         self.collector.merge(input);
         Ok(())
     }
@@ -128,26 +133,29 @@ impl runners::Stash for PrefilteringStash {
         log::info!("Found {} products or classes", self.collector.classes.len());
 
         let mut cache = cache::Wikidata {
-            manufacturer_ids: self.collector.manufacturer_ids.iter().cloned().collect(),
-            classes: self.collector.classes.iter().cloned().collect(),
+            manufacturer_ids: self.collector.manufacturer_ids.iter().copied().collect(),
+            classes: self.collector.classes.iter().copied().collect(),
         };
 
         cache.manufacturer_ids.sort();
         cache.classes.sort();
 
+        log::info!("Serializing...");
         let contents = serde_json::to_string_pretty(&cache).map_serde()?;
+
+        log::info!("Writing to {:?}", self.config.wikidata_cache_path);
         std::fs::write(&self.config.wikidata_cache_path, contents)?;
 
         Ok(())
     }
 }
 
-pub struct PrefilteringRunner;
+pub struct FilteringRunner;
 
-impl PrefilteringRunner {
-    pub fn run(config: &config::PrefilteringConfig) -> Result<(), errors::ProcessingError> {
-        let worker = PrefilteringWorker::new();
-        let stash = PrefilteringStash::new(config.clone());
+impl FilteringRunner {
+    pub fn run(config: &config::Filtering1Config) -> Result<(), errors::ProcessingError> {
+        let worker = FilteringWorker::new();
+        let stash = FilteringStash::new(config.clone());
 
         let flow = parallel::Flow::new();
         runners::WikidataRunner::flow(flow, config, worker, stash)?.join();

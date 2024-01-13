@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use sustainity_api::models as api;
 
 /// This test makes sure that Sustainity scores in the database and in the API can be mapped "1 to 1".
@@ -63,44 +61,48 @@ fn regions_merge() {
 }
 
 #[test]
-fn serde_product_1() {
-    use sustainity_models::write::{
-        Certifications, Gtin, Product, ProductId, Regions, SustainityScore,
-    };
+fn serde_product_defaults() {
+    use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
 
     let original_product = Product {
-        db_id: "id".to_string(),
-        id: ProductId::Gtin(Gtin::new(123)),
-        gtins: HashSet::default(),
+        db_key: "12".to_string(),
+        ids: ProductIds { eans: vec![], gtins: vec![], wiki: vec![] },
         names: Vec::default(),
         descriptions: Vec::default(),
         images: Vec::default(),
-        certifications: Certifications::default(),
-        follows: HashSet::default(),
-        followed_by: HashSet::default(),
+        categories: Vec::default(),
         regions: Regions::World,
+        certifications: Certifications::default(),
+        manufacturer_ids: Vec::new(),
+        follows: Vec::default(),
+        followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
     };
 
     let expected_string = indoc::indoc!(
         r#"{
-          "_id": "id",
-          "id": "G00000000000123",
-          "gtins": [],
+          "_key": "12",
+          "ids": {
+            "eans": [],
+            "gtins": [],
+            "wiki": []
+          },
           "names": [],
           "descriptions": [],
           "images": [],
+          "categories": [],
+          "regions": {
+            "variant": "all"
+          },
           "certifications": {
             "bcorp": null,
             "eu_ecolabel": null,
             "fti": null,
             "tco": null
           },
+          "manufacturer_ids": [],
           "follows": [],
           "followed_by": [],
-          "regions": {
-            "variant": "all"
-          },
           "sustainity_score": {
             "tree": [],
             "total": 0.0
@@ -110,45 +112,50 @@ fn serde_product_1() {
 
     let received_string = serde_json::to_string_pretty(&original_product).unwrap();
 
-    assert_eq!(expected_string, received_string);
+    pretty_assertions::assert_eq!(expected_string, received_string);
 }
 
 #[test]
-fn serde_product_2() {
-    use sustainity_models::write::{
-        Certifications, Gtin, Product, ProductId, Regions, SustainityScore,
-    };
+fn serde_product_filled() {
+    use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
 
     let original_product = Product {
-        db_id: "id".to_string(),
-        id: ProductId::Gtin(Gtin::new(123)),
-        gtins: HashSet::default(),
+        db_key: "12".to_string(),
+        ids: ProductIds {
+            eans: vec!["34".to_string()],
+            gtins: vec!["56".to_string()],
+            wiki: vec!["78".to_string()],
+        },
         names: Vec::default(),
         descriptions: Vec::default(),
         images: Vec::default(),
-        certifications: Certifications::default(),
-        follows: HashSet::default(),
-        followed_by: HashSet::default(),
+        categories: Vec::default(),
         regions: Regions::List(vec![isocountry::CountryCode::FRA, isocountry::CountryCode::NLD]),
+        certifications: Certifications::default(),
+        manufacturer_ids: Vec::new(),
+        follows: Vec::default(),
+        followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
     };
 
     let expected_string = indoc::indoc!(
         r#"{
-          "_id": "id",
-          "id": "G00000000000123",
-          "gtins": [],
+          "_key": "12",
+          "ids": {
+            "eans": [
+              "34"
+            ],
+            "gtins": [
+              "56"
+            ],
+            "wiki": [
+              "78"
+            ]
+          },
           "names": [],
           "descriptions": [],
           "images": [],
-          "certifications": {
-            "bcorp": null,
-            "eu_ecolabel": null,
-            "fti": null,
-            "tco": null
-          },
-          "follows": [],
-          "followed_by": [],
+          "categories": [],
           "regions": {
             "variant": "list",
             "content": [
@@ -156,6 +163,15 @@ fn serde_product_2() {
               "NL"
             ]
           },
+          "certifications": {
+            "bcorp": null,
+            "eu_ecolabel": null,
+            "fti": null,
+            "tco": null
+          },
+          "manufacturer_ids": [],
+          "follows": [],
+          "followed_by": [],
           "sustainity_score": {
             "tree": [],
             "total": 0.0
@@ -165,5 +181,5 @@ fn serde_product_2() {
 
     let received_string = serde_json::to_string_pretty(&original_product).unwrap();
 
-    assert_eq!(expected_string, received_string);
+    pretty_assertions::assert_eq!(expected_string, received_string);
 }

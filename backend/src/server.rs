@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use swagger::ApiError;
 
 use sustainity_api::{
-    models::{LibraryContents, LibraryTopic},
+    models::{
+        LibraryContents, LibraryTopic, OrganisationIdVariant, ProductIdVariant, TextSearchResults,
+    },
     Api, CheckHealthResponse, GetAlternativesResponse, GetLibraryItemResponse, GetLibraryResponse,
     GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
 };
@@ -84,7 +86,7 @@ where
         let db = get::<Db, C>(context);
         let results = retrieve::search_by_text(query, db).await?;
         Ok(SearchByTextResponse::Ok {
-            body: sustainity_api::models::TextSearchResults { results },
+            body: TextSearchResults { results },
             access_control_allow_origin: CORS_ORIGIN.to_string(),
             access_control_allow_methods: CORS_METHODS.to_string(),
             access_control_allow_headers: CORS_HEADERS.to_string(),
@@ -93,11 +95,12 @@ where
 
     async fn get_organisation(
         &self,
+        id_variant: OrganisationIdVariant,
         id: String,
         context: &C,
     ) -> Result<GetOrganisationResponse, ApiError> {
         let db = get::<Db, C>(context);
-        if let Some(org) = retrieve::organisation(&id, db).await? {
+        if let Some(org) = retrieve::organisation(id_variant, &id, db).await? {
             Ok(GetOrganisationResponse::Ok {
                 body: org,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -115,12 +118,13 @@ where
 
     async fn get_product(
         &self,
+        id_variant: ProductIdVariant,
         id: String,
         region: Option<String>,
         context: &C,
     ) -> Result<GetProductResponse, ApiError> {
         let db = get::<Db, C>(context);
-        if let Some(prod) = retrieve::product(&id, region.as_deref(), db).await? {
+        if let Some(prod) = retrieve::product(id_variant, &id, region.as_deref(), db).await? {
             Ok(GetProductResponse::Ok {
                 body: prod,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),

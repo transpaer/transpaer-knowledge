@@ -17,14 +17,17 @@ pub enum ConfigCheckError {
     #[error("Path '{0}' is not a directory")]
     PathIsNotADir(std::path::PathBuf),
 
+    #[error("Path '{0}' is not a readable")]
+    PathIsNotReadable(std::path::PathBuf),
+
+    #[error("Path '{0}' is not an empty directory")]
+    PathIsNotAnEmptyDir(std::path::PathBuf),
+
     #[error("Path '{0}' already exists")]
     PathAlreadyExists(std::path::PathBuf),
 
-    #[error("Base of '{0}' does not exist")]
-    BaseDoesNotExist(std::path::PathBuf),
-
-    #[error("Base of '{0}' is not a directory")]
-    BaseIsNotADirectory(std::path::PathBuf),
+    #[error("Path '{0}' has no parent")]
+    PathHasNoParent(std::path::PathBuf),
 }
 
 /// Error related to validating the input data.
@@ -33,6 +36,41 @@ pub enum SourcesCheckError {
     /// IDs were duplicated while expected to be unique.
     #[error("Repeated IDs: {0:?}")]
     RepeatedIds(std::collections::HashSet<WikiId>),
+}
+
+/// Errors specific to the crystalisation command.
+#[derive(Error, Debug)]
+pub enum CrystalizationError {
+    #[error("Crystalization: {0:?}")]
+    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+
+    #[error("ID parsing: {0}")]
+    IdParsing(#[from] sustainity_models::ids::ParseIdError),
+
+    #[error("ISO country code: {0}")]
+    IsoCountry(#[from] isocountry::CountryCodeParseErr),
+
+    #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
+    UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: std::path::PathBuf, when: String },
+
+    #[error("IO error: {0} ({1:?})")]
+    Io(std::io::Error, std::path::PathBuf),
+
+    #[error("KV storage: {0}")]
+    KvStorage(#[from] KvStoreError),
+
+    #[error("Keys are not unique for: {comment} (only {unique} unique out of {all})")]
+    NotUniqueKeys { comment: String, unique: usize, all: usize },
+}
+
+/// Errors related to key-value store.
+#[derive(Error, Debug)]
+pub enum KvStoreError {
+    #[error("Failed fo serde the entry: {0}")]
+    Serde(#[from] postcard::Error),
+
+    #[error("KV operation failed: {0}")]
+    Store(#[from] kv::Error),
 }
 
 /// Error returned when a problem with processing.
@@ -50,6 +88,9 @@ pub enum ProcessingError {
     #[error("In file `{1}`.\nYAML parsing error: {0}")]
     ReadYaml(serde_yaml::Error, std::path::PathBuf),
 
+    #[error("Reading Substrate error: {0}")]
+    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+
     #[error("CSV serialization error: {0}")]
     WriteCsv(csv::Error),
 
@@ -58,6 +99,9 @@ pub enum ProcessingError {
 
     #[error("YAML serialization error: {0}")]
     WriteYaml(serde_yaml::Error),
+
+    #[error("Saving Substrate error: {0}")]
+    WriteSubstrate(#[from] sustainity_schema::errors::SaveError),
 
     #[error("Variant parsing error: {0}")]
     Variant(#[from] serde_variant::UnsupportedType),
@@ -76,6 +120,9 @@ pub enum ProcessingError {
 
     #[error("Sources check: {0}")]
     SourcesCheck(#[from] SourcesCheckError),
+
+    #[error("Crystalization error: {0}")]
+    Crystalization(#[from] CrystalizationError),
 
     #[error("ID parsing: {0}")]
     IdParsing(#[from] sustainity_models::ids::ParseIdError),

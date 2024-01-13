@@ -58,7 +58,7 @@ pub struct WikidataProducer {
 
 impl WikidataProducer {
     /// Constructs a new `WikidataProducer`
-    pub fn new(config: &config::WikidataGathererConfig) -> Result<Self, errors::ProcessingError> {
+    pub fn new(config: &config::WikidataProducerConfig) -> Result<Self, errors::ProcessingError> {
         Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_path)? })
     }
 }
@@ -173,7 +173,7 @@ where
     W: WikidataWorker + Sync + 'static,
     S: Stash<Input = W::Output> + 'static,
     C: Clone + Send,
-    for<'c> &'c C: Into<config::WikidataGathererConfig>,
+    for<'c> &'c C: Into<config::WikidataProducerConfig>,
 {
     pub fn flow(
         flow: Flow,
@@ -209,13 +209,13 @@ pub struct OpenFoodFactsRunnerMessage {
 #[must_use]
 #[derive(Debug)]
 pub struct OpenFoodFactsProducer {
-    config: config::OpenFoodFactsGathererConfig,
+    config: config::OpenFoodFactsProducerConfig,
 }
 
 impl OpenFoodFactsProducer {
     /// Constructs a new `OpenFoodFactsProducer`
     pub fn new(
-        config: config::OpenFoodFactsGathererConfig,
+        config: config::OpenFoodFactsProducerConfig,
     ) -> Result<Self, errors::ProcessingError> {
         Ok(Self { config })
     }
@@ -332,7 +332,7 @@ where
     W: OpenFoodFactsWorker + Sync + 'static,
     S: Stash<Input = W::Output> + 'static,
     C: Clone + Send,
-    for<'c> &'c C: Into<config::OpenFoodFactsGathererConfig>,
+    for<'c> &'c C: Into<config::OpenFoodFactsProducerConfig>,
 {
     pub fn flow(
         flow: Flow,
@@ -368,12 +368,12 @@ pub struct EuEcolabelRunnerMessage {
 #[must_use]
 #[derive(Debug)]
 pub struct EuEcolabelProducer {
-    config: config::EuEcolabelGathererConfig,
+    config: config::EuEcolabelProducerConfig,
 }
 
 impl EuEcolabelProducer {
     /// Constructs a new `EuEcolabelProducer`.
-    pub fn new(config: config::EuEcolabelGathererConfig) -> Result<Self, errors::ProcessingError> {
+    pub fn new(config: config::EuEcolabelProducerConfig) -> Result<Self, errors::ProcessingError> {
         Ok(Self { config })
     }
 }
@@ -385,7 +385,7 @@ impl Producer for EuEcolabelProducer {
 
     async fn produce(self, tx: Sender<Self::Output>) -> Result<(), errors::ProcessingError> {
         let num = eu_ecolabel::reader::load(
-            self.config.eu_ecolabel_path,
+            &self.config.eu_ecolabel_path,
             move |headers: csv::StringRecord, record: csv::StringRecord| {
                 let tx2 = tx.clone();
                 async move {
@@ -489,7 +489,7 @@ where
     W: EuEcolabelWorker + Sync + 'static,
     S: Stash<Input = W::Output> + 'static,
     C: Clone + Send,
-    for<'c> &'c C: Into<config::EuEcolabelGathererConfig>,
+    for<'c> &'c C: Into<config::EuEcolabelProducerConfig>,
 {
     pub fn flow(
         flow: Flow,
@@ -532,9 +532,9 @@ where
         + Sync
         + 'static,
     C: Clone + Send,
-    for<'c> &'c C: Into<config::WikidataGathererConfig>
-        + Into<config::OpenFoodFactsGathererConfig>
-        + Into<config::EuEcolabelGathererConfig>,
+    for<'c> &'c C: Into<config::WikidataProducerConfig>
+        + Into<config::OpenFoodFactsProducerConfig>
+        + Into<config::EuEcolabelProducerConfig>,
 {
     pub fn flow(
         flow: Flow,
