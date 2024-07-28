@@ -1,9 +1,6 @@
 //! This modules contains definitions of data stored in the internal database.
 
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::{collections::BTreeSet, str::FromStr};
 
 use merge::Merge;
 use serde::{Deserialize, Serialize};
@@ -12,31 +9,39 @@ use snafu::prelude::*;
 #[cfg(feature = "into-api")]
 use sustainity_api::models as api;
 
+#[cfg(feature = "from-substrate")]
+use sustainity_schema as schema;
+
 use crate::ids;
 
 pub type LibraryTopic = String;
-pub type ReadGtin = usize;
-pub type ReadProductId = String;
-pub type ReadOrganisationId = String;
-pub type ReadVatId = String;
+pub type StoreGtin = usize;
+pub type GatherProductId = ids::ProductId;
+pub type StoreProductId = String;
+pub type GatherOrganisationId = ids::OrganisationId;
+pub type StoreOrganisationId = String;
+pub type GatherVatId = ids::VatId;
+pub type StoreVatId = String;
+pub type GatherDomain = String;
+pub type StoreDomain = String;
 
 #[cfg(feature = "into-api")]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum IntoApiError {
-    #[snafu(display("Failed conversion to LibraryTopic"))]
-    ToLibraryTopic { message: String },
+    #[snafu(display("Failed conversion to LibraryTopic: {err}"))]
+    ToLibraryTopic { err: api::error::ConversionError },
 }
 
 #[cfg(feature = "into-api")]
 impl IntoApiError {
-    pub fn to_library_topic(message: String) -> Self {
-        Self::ToLibraryTopic { message }
+    pub fn to_library_topic(err: api::error::ConversionError) -> Self {
+        Self::ToLibraryTopic { err }
     }
 }
 
 /// Points to a source of some data.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Source {
     /// Wikidata.
     #[serde(rename = "wiki")]
@@ -49,21 +54,70 @@ pub enum Source {
     /// EU Ecolabel.
     #[serde(rename = "eu")]
     EuEcolabel,
+
+    /// BCorp.
+    #[serde(rename = "bcorp")]
+    BCorp,
+
+    /// Fashion Transparency Index.
+    #[serde(rename = "fti")]
+    Fti,
+
+    /// TCO.
+    #[serde(rename = "tco")]
+    Tco,
+
+    #[serde(rename = "other")]
+    Other,
+}
+
+impl Source {
+    pub fn from_string(string: &str) -> Self {
+        match string {
+            "wikidata" => Source::Wikidata,
+            "open_food_facts" => Source::OpenFoodFacts,
+            "eu_ecolabel" => Source::EuEcolabel,
+            "bcorp" => Source::BCorp,
+            "fti" => Source::Fti,
+            "tco" => Source::Tco,
+            _ => Source::Other,
+        }
+    }
+
+    pub fn is_bcorp(&self) -> bool {
+        matches!(self, Self::BCorp)
+    }
+
+    pub fn is_euecolabel(&self) -> bool {
+        matches!(self, Self::EuEcolabel)
+    }
+
+    pub fn is_fti(&self) -> bool {
+        matches!(self, Self::Fti)
+    }
+
+    pub fn is_tco(&self) -> bool {
+        matches!(self, Self::Tco)
+    }
 }
 
 #[cfg(feature = "into-api")]
 impl Source {
     pub fn into_api(self) -> api::DataSource {
         match self {
+            Self::BCorp => api::DataSource::BCorp,
             Self::EuEcolabel => api::DataSource::Eu,
+            Self::Fti => api::DataSource::Fti,
             Self::OpenFoodFacts => api::DataSource::Off,
             Self::Wikidata => api::DataSource::Wiki,
+            Self::Tco => api::DataSource::Tco,
+            Self::Other => api::DataSource::Other,
         }
     }
 }
 
 /// Text together with it's source.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Text {
     /// Text.
     #[serde(rename = "text")]
@@ -74,39 +128,35 @@ pub struct Text {
     pub source: Source,
 }
 
-impl Text {
-    /// Constructs a new `Text` with "Wikidata" as the source.
-    #[must_use]
-    pub fn new_wikidata(text: String) -> Self {
-        Self { text, source: Source::Wikidata }
-    }
-
-    /// Constructs a new `Text` with "Open Food Facts" as the source.
-    #[must_use]
-    pub fn new_open_food_facts(text: String) -> Self {
-        Self { text, source: Source::OpenFoodFacts }
-    }
-
-    /// Constructs a new `Text` with "Eu Ecolabel" as the source.
-    #[must_use]
-    pub fn new_eu_ecolabel(text: String) -> Self {
-        Self { text, source: Source::EuEcolabel }
-    }
-}
-
 #[cfg(feature = "into-api")]
 impl Text {
     pub fn into_api_long(self) -> api::LongText {
-        api::LongText { text: self.text, source: self.source.into_api() }
+        let text = match api::LongString::from_str(&self.text) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("Could not convert to a LongString: {err}");
+                default_long_string()
+            }
+        };
+
+        api::LongText { text, source: self.source.into_api() }
     }
 
     pub fn into_api_short(self) -> api::ShortText {
-        api::ShortText { text: self.text, source: self.source.into_api() }
+        let text = match api::ShortString::from_str(&self.text) {
+            Ok(ok) => ok,
+            Err(err) => {
+                log::error!("Could not convert to a ShortString: {err}");
+                default_short_string()
+            }
+        };
+
+        api::ShortText { text, source: self.source.into_api() }
     }
 }
 
 /// Image together with it's source.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Image {
     /// Name of the images.
     ///
@@ -117,20 +167,6 @@ pub struct Image {
     /// Source of the image.
     #[serde(rename = "source")]
     pub source: Source,
-}
-
-impl Image {
-    /// Constructs a new `Text` with "Wikidata" as the source.
-    #[must_use]
-    pub fn new_wikidata(image: String) -> Self {
-        Self { image, source: Source::Wikidata }
-    }
-
-    /// Constructs a new `Text` with "Open Food Facts" as the source.
-    #[must_use]
-    pub fn new_open_food_facts(image: String) -> Self {
-        Self { image, source: Source::OpenFoodFacts }
-    }
 }
 
 #[cfg(feature = "into-api")]
@@ -180,7 +216,7 @@ impl merge::Merge for Regions {
 }
 
 /// Data about a `BCorp` company.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct BCorpCert {
     /// Name identifying the company.
     pub id: String,
@@ -189,9 +225,17 @@ pub struct BCorpCert {
 #[cfg(feature = "into-api")]
 impl BCorpCert {
     pub fn into_api(self) -> api::Medallion {
+        let bcorp = match api::Id::from_str(&self.id) {
+            Ok(id) => Some(api::BCorpMedallion { id }),
+            Err(err) => {
+                log::error!("Could not convert Id: {err}");
+                None
+            }
+        };
+
         api::Medallion {
             variant: api::MedallionVariant::BCorp,
-            bcorp: Some(api::BCorpMedallion { id: self.id }),
+            bcorp,
             eu_ecolabel: None,
             fti: None,
             sustainity: None,
@@ -200,12 +244,9 @@ impl BCorpCert {
     }
 }
 
-/// Data about a company ccertified by EU Ecolabel.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct EuEcolabelCert {
-    /// Accuracy of match between the comapny name and matched Wikidata item labels.
-    pub match_accuracy: f64,
-}
+/// Data about a company certified by EU Ecolabel.
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub struct EuEcolabelCert;
 
 #[cfg(feature = "into-api")]
 impl EuEcolabelCert {
@@ -213,7 +254,7 @@ impl EuEcolabelCert {
         api::Medallion {
             variant: api::MedallionVariant::EuEcolabel,
             bcorp: None,
-            eu_ecolabel: Some(api::EuEcolabelMedallion { match_accuracy: self.match_accuracy }),
+            eu_ecolabel: Some(api::EuEcolabelMedallion { match_accuracy: None }),
             fti: None,
             sustainity: None,
             tco: None,
@@ -222,10 +263,10 @@ impl EuEcolabelCert {
 }
 
 /// Data about a company scored by Fashion Transparency Index.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct FtiCert {
     /// Score (from 0% to 100%).
-    pub score: i32,
+    pub score: i64,
 }
 
 #[cfg(feature = "into-api")]
@@ -243,7 +284,7 @@ impl FtiCert {
 }
 
 /// Data about a company which products were certified by TCO.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct TcoCert {
     /// Name identifying the company.
     pub brand_name: String,
@@ -252,19 +293,27 @@ pub struct TcoCert {
 #[cfg(feature = "into-api")]
 impl TcoCert {
     pub fn into_api(self) -> api::Medallion {
+        let tco = match api::ShortString::from_str(&self.brand_name) {
+            Ok(brand_name) => Some(api::TcoMedallion { brand_name }),
+            Err(err) => {
+                log::error!("Could not convert a brand name to a ShortString: {err}");
+                None
+            }
+        };
+
         api::Medallion {
             variant: api::MedallionVariant::Tco,
             bcorp: None,
             eu_ecolabel: None,
             fti: None,
             sustainity: None,
-            tco: Some(api::TcoMedallion { brand_name: self.brand_name }),
+            tco,
         }
     }
 }
 
 /// Lists known certifications.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, Merge)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Eq, PartialEq, Merge)]
 pub struct Certifications {
     /// Manufacturer certifiad by BCorp.
     pub bcorp: Option<BCorpCert>,
@@ -280,17 +329,6 @@ pub struct Certifications {
 }
 
 impl Certifications {
-    /// Constructs a new `Certifications` with only `eu_ecolabel` set.
-    #[must_use]
-    pub fn new_with_eu_ecolabel(match_accuracy: f64) -> Self {
-        Self {
-            bcorp: None,
-            eu_ecolabel: Some(EuEcolabelCert { match_accuracy }),
-            tco: None,
-            fti: None,
-        }
-    }
-
     /// Returns number of given certifications.
     ///
     /// TODO: FTI is not a certification.
@@ -307,13 +345,13 @@ impl Certifications {
     /// EU Ecolabel is not inherited - this certification is assigned directly to products, not companies.
     pub fn inherit(&mut self, other: &Self) {
         if other.bcorp.is_some() {
-            self.bcorp = other.bcorp.clone();
+            self.bcorp.clone_from(&other.bcorp);
         }
         if other.fti.is_some() {
-            self.fti = other.fti.clone();
+            self.fti.clone_from(&other.fti);
         }
         if other.tco.is_some() {
-            self.tco = other.tco.clone();
+            self.tco.clone_from(&other.tco);
         }
     }
 }
@@ -351,10 +389,10 @@ impl Certifications {
         badges
     }
 
-    pub fn to_api_scores(&self) -> HashMap<String, i32> {
-        let mut scores = HashMap::new();
+    pub fn to_api_scores(&self) -> Vec<api::Score> {
+        let mut scores = Vec::with_capacity(1);
         if let Some(fti) = &self.fti {
-            scores.insert(api::ScorerName::Fti.to_string(), fti.score);
+            scores.push(api::Score { scorer_name: api::ScorerName::Fti, score: fti.score });
         }
         scores
     }
@@ -362,16 +400,16 @@ impl Certifications {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct IdEntry {
-    /// DB entry ID.
-    #[serde(rename = "_id")]
-    pub db_id: String,
+    /// DB entry key.
+    #[serde(rename = "_key")]
+    pub db_key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Keyword {
     /// DB entry ID.
-    #[serde(rename = "_id")]
-    pub db_id: String,
+    #[serde(rename = "_key")]
+    pub db_key: String,
 
     /// The keyword value.
     #[serde(rename = "keyword")]
@@ -445,7 +483,7 @@ pub struct SustainityScoreBranch {
 
     /// Weight of this branch.
     #[serde(rename = "weight")]
-    pub weight: u32,
+    pub weight: i32,
 
     /// Calculated subscore of this branch.
     #[serde(rename = "score")]
@@ -458,7 +496,7 @@ impl SustainityScoreBranch {
         api::SustainityScoreBranch {
             branches: self.branches.into_iter().map(|b| b.into_api()).collect(),
             category: self.category.into_api(),
-            weight: self.weight as i32,
+            weight: self.weight as i64,
             score: self.score,
         }
     }
@@ -514,23 +552,170 @@ pub struct Edge {
     pub to: String,
 }
 
-/// Represents an organisation (e.g. manufacturer, shop).
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Organisation<O, V>
-where
-    V: std::hash::Hash + std::cmp::Eq,
-{
-    /// DB entry ID.
-    #[serde(rename = "_id")]
-    pub db_id: String,
+/// Represents a set of IDs of an organisation.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GatherOrganisationIds {
+    /// VAT IDs.
+    pub vat_ids: BTreeSet<GatherVatId>,
 
     /// Organisation ID.
-    #[serde(rename = "id")]
-    pub id: O,
+    pub wiki: BTreeSet<ids::WikiId>,
+
+    /// Web domains.
+    pub domains: BTreeSet<GatherDomain>,
+}
+
+impl GatherOrganisationIds {
+    pub fn store(self) -> StoreOrganisationIds {
+        let mut vat_ids: Vec<String> =
+            self.vat_ids.into_iter().map(|id| id.as_str().to_owned()).collect();
+        let mut wiki: Vec<String> =
+            self.wiki.into_iter().map(|id| id.get_value().to_string()).collect();
+        let mut domains: Vec<String> = self.domains.into_iter().collect();
+
+        vat_ids.sort();
+        wiki.sort();
+        domains.sort();
+
+        StoreOrganisationIds { vat_ids, wiki, domains }
+    }
+}
+
+impl merge::Merge for GatherOrganisationIds {
+    fn merge(&mut self, other: Self) {
+        self.wiki.extend(other.wiki);
+        self.vat_ids.extend(other.vat_ids);
+        self.domains.extend(other.domains);
+    }
+}
+
+#[cfg(feature = "from-substrate")]
+impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
+    type Error = ids::ParseIdError;
+
+    fn try_from(ids: schema::ProducerIds) -> Result<GatherOrganisationIds, Self::Error> {
+        let mut vat_ids = BTreeSet::<GatherVatId>::new();
+        if let Some(ids) = ids.vat {
+            for id in ids {
+                vat_ids.insert(GatherVatId::try_from(&id)?);
+            }
+        }
+
+        let mut wiki = BTreeSet::<ids::WikiId>::new();
+        if let Some(ids) = ids.wiki {
+            for id in ids {
+                wiki.insert(ids::WikiId::try_from(&id)?);
+            }
+        }
+
+        let mut domains = BTreeSet::<GatherDomain>::new();
+        if let Some(ids) = ids.domains {
+            for id in ids {
+                domains.insert(id);
+            }
+        }
+
+        Ok(Self { vat_ids, wiki, domains })
+    }
+}
+
+/// Represents a set of IDs of an organisation.
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct StoreOrganisationIds {
+    /// Organisation ID.
+    #[serde(rename = "wiki")]
+    pub wiki: Vec<String>,
 
     /// VAT IDs.
     #[serde(rename = "vat_ids")]
-    pub vat_ids: HashSet<V>,
+    pub vat_ids: Vec<StoreVatId>,
+
+    /// Web domains.
+    #[serde(rename = "domains")]
+    pub domains: Vec<StoreDomain>,
+}
+
+#[allow(clippy::ptr_arg)]
+fn str_to_id(s: &String) -> api::Id {
+    api::Id::from_str(s).expect("Converting IDs")
+}
+
+#[cfg(feature = "into-api")]
+impl StoreOrganisationIds {
+    pub fn to_api(self) -> api::OrganisationIds {
+        api::OrganisationIds {
+            wiki: self.wiki.iter().map(str_to_id).collect(),
+            vat: self.vat_ids.iter().map(str_to_id).collect(),
+            domains: self.domains.iter().map(str_to_id).collect(),
+        }
+    }
+}
+
+/// Represents an organisation (e.g. manufacturer, shop).
+#[derive(Debug, Clone)]
+pub struct GatherOrganisation {
+    /// DB entry ID.
+    pub db_key: GatherOrganisationId,
+
+    /// Organisation IDs.
+    pub ids: GatherOrganisationIds,
+
+    /// Names of the organisation.
+    pub names: BTreeSet<Text>,
+
+    /// Descriptions of the organisation.
+    pub descriptions: BTreeSet<Text>,
+
+    /// Logo images.
+    pub images: BTreeSet<Image>,
+
+    /// Websites.
+    pub websites: BTreeSet<String>,
+
+    /// Known certifications.
+    pub certifications: Certifications,
+}
+
+impl GatherOrganisation {
+    pub fn store(self) -> StoreOrganisation {
+        let db_key = self.db_key.to_string();
+        let ids = self.ids.store();
+        let mut names: Vec<_> = self.names.into_iter().collect();
+        let mut descriptions: Vec<_> = self.descriptions.into_iter().collect();
+        let mut images: Vec<_> = self.images.into_iter().collect();
+        let mut websites: Vec<_> = self.websites.into_iter().collect();
+        let certifications = self.certifications;
+
+        names.sort();
+        descriptions.sort();
+        images.sort();
+        websites.sort();
+
+        StoreOrganisation { db_key, ids, names, descriptions, images, websites, certifications }
+    }
+}
+
+impl merge::Merge for GatherOrganisation {
+    fn merge(&mut self, other: Self) {
+        self.ids.merge(other.ids);
+        self.names.extend(other.names);
+        self.descriptions.extend(other.descriptions);
+        self.images.extend(other.images);
+        self.websites.extend(other.websites);
+        self.certifications.merge(other.certifications);
+    }
+}
+
+/// Represents an organisation (e.g. manufacturer, shop).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StoreOrganisation {
+    /// DB entry ID.
+    #[serde(rename = "_key")]
+    pub db_key: StoreOrganisationId,
+
+    /// Organisation IDs.
+    #[serde(rename = "ids")]
+    pub ids: StoreOrganisationIds,
 
     /// Names of the organisation.
     #[serde(rename = "names")]
@@ -546,37 +731,44 @@ where
 
     /// Websites.
     #[serde(rename = "websites")]
-    pub websites: HashSet<String>,
+    pub websites: Vec<String>,
 
     /// Known certifications.
     #[serde(rename = "certifications")]
     pub certifications: Certifications,
 }
 
-pub type ReadOrganisation = Organisation<String, String>;
-pub type WriteOrganisation = Organisation<ids::OrganisationId, ids::VatId>;
+fn default_short_string() -> api::ShortString {
+    api::ShortString::from_str("").expect("ShortString from an empty string")
+}
 
-impl merge::Merge for WriteOrganisation {
-    fn merge(&mut self, other: Self) {
-        if self.id != other.id {
-            return;
-        }
-        self.vat_ids.extend(other.vat_ids);
-        self.names.extend_from_slice(&other.names);
-        self.descriptions.extend_from_slice(&other.descriptions);
-        self.images.extend_from_slice(&other.images);
-        self.websites.extend(other.websites);
-        self.certifications.merge(other.certifications);
-    }
+fn default_long_string() -> api::LongString {
+    api::LongString::from_str("").expect("LongString from an empty string")
+}
+
+fn str_to_short_string(s: String) -> api::ShortString {
+    api::ShortString::from_str(&s).expect("Converting strings")
+}
+
+fn str_to_long_string(s: String) -> api::LongString {
+    api::LongString::from_str(&s).expect("Converting strings")
+}
+
+fn text_to_short_string(text: &Text) -> api::ShortString {
+    api::ShortString::from_str(&text.text).expect("Converting texts")
+}
+
+fn text_to_long_string(text: &Text) -> api::LongString {
+    api::LongString::from_str(&text.text).expect("Converting texts")
 }
 
 #[cfg(feature = "into-api")]
-impl ReadOrganisation {
+impl StoreOrganisation {
     pub fn into_api_short(self) -> api::OrganisationShort {
         api::OrganisationShort {
-            organisation_id: self.id,
-            name: self.names.first().map_or_else(String::default, |n| n.text.clone()),
-            description: self.descriptions.first().map(|d| d.text.clone()),
+            organisation_ids: self.ids.to_api(),
+            name: self.names.first().map_or_else(default_short_string, text_to_short_string),
+            description: self.descriptions.first().map(text_to_long_string),
             badges: self.certifications.to_api_badges(),
             scores: self.certifications.to_api_scores(),
         }
@@ -584,35 +776,222 @@ impl ReadOrganisation {
 
     pub fn into_api_full(self, products: Vec<api::ProductShort>) -> api::OrganisationFull {
         api::OrganisationFull {
-            organisation_id: self.id,
-            names: Some(self.names.into_iter().map(|n| n.into_api_short()).collect()),
-            descriptions: Some(self.descriptions.into_iter().map(|d| d.into_api_long()).collect()),
+            organisation_ids: self.ids.to_api(),
+            names: self.names.into_iter().map(|n| n.into_api_short()).collect(),
+            descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
-            websites: self.websites.into_iter().map(From::from).collect(),
+            websites: self.websites.into_iter().map(str_to_short_string).collect(),
             medallions: self.certifications.into_api_medallions(),
             products,
         }
     }
 }
 
+/// Represents a set of product IDs.
+#[derive(Serialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GatherProductIds {
+    /// GTIN of the product.
+    #[serde(rename = "eans")]
+    pub eans: BTreeSet<ids::Ean>,
+
+    /// GTIN of the product.
+    #[serde(rename = "gtins")]
+    pub gtins: BTreeSet<ids::Gtin>,
+
+    /// Wiki ID.
+    #[serde(rename = "wiki")]
+    pub wiki: BTreeSet<ids::WikiId>,
+}
+
+impl GatherProductIds {
+    pub fn is_empty(&self) -> bool {
+        self.eans.is_empty() && self.gtins.is_empty() && self.wiki.is_empty()
+    }
+
+    pub fn store(self) -> StoreProductIds {
+        let mut eans: Vec<_> = self.eans.into_iter().map(|id| id.to_string()).collect();
+        let mut gtins: Vec<_> = self.gtins.into_iter().map(|id| id.to_string()).collect();
+        let mut wiki: Vec<_> = self.wiki.into_iter().map(|id| id.get_value().to_string()).collect();
+
+        eans.sort();
+        gtins.sort();
+        wiki.sort();
+
+        StoreProductIds { eans, gtins, wiki }
+    }
+}
+
+impl merge::Merge for GatherProductIds {
+    fn merge(&mut self, other: Self) {
+        self.eans.extend(other.eans);
+        self.gtins.extend(other.gtins);
+        self.wiki.extend(other.wiki);
+    }
+}
+
+#[cfg(feature = "from-substrate")]
+impl TryFrom<schema::ProductIds> for GatherProductIds {
+    type Error = ids::ParseIdError;
+
+    fn try_from(ids: schema::ProductIds) -> Result<Self, Self::Error> {
+        let mut eans = BTreeSet::<ids::Ean>::new();
+        if let Some(ids) = ids.ean {
+            for id in ids {
+                eans.insert(ids::Ean::try_from(&id)?);
+            }
+        }
+
+        let mut gtins = BTreeSet::<ids::Gtin>::new();
+        if let Some(ids) = ids.gtin {
+            for id in ids {
+                gtins.insert(ids::Gtin::try_from(&id)?);
+            }
+        }
+
+        let mut wiki = BTreeSet::<ids::WikiId>::new();
+        if let Some(ids) = ids.wiki {
+            for id in ids {
+                wiki.insert(ids::WikiId::try_from(&id)?);
+            }
+        }
+
+        Ok(Self { eans, gtins, wiki })
+    }
+}
+
+/// Represents a set of product IDs.
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct StoreProductIds {
+    /// GTIN of the product.
+    #[serde(rename = "eans")]
+    pub eans: Vec<String>,
+
+    /// GTIN of the product.
+    #[serde(rename = "gtins")]
+    pub gtins: Vec<String>,
+
+    /// Wiki ID.
+    #[serde(rename = "wiki")]
+    pub wiki: Vec<String>,
+}
+
+#[cfg(feature = "into-api")]
+impl StoreProductIds {
+    pub fn to_api(self) -> api::ProductIds {
+        api::ProductIds {
+            eans: self.eans.iter().map(str_to_id).collect(),
+            gtins: self.gtins.iter().map(str_to_id).collect(),
+            wiki: self.wiki.iter().map(str_to_id).collect(),
+        }
+    }
+}
+
 /// Represents a product.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Product<P, G>
-where
-    P: std::hash::Hash + std::cmp::Eq,
-    G: std::hash::Hash + std::cmp::Eq,
-{
+#[derive(Debug, Clone)]
+pub struct GatherProduct {
     /// DB entry ID.
-    #[serde(rename = "_id")]
-    pub db_id: String,
+    pub db_key: GatherProductId,
 
     /// Product ID.
-    #[serde(rename = "id")]
-    pub id: P,
+    pub ids: GatherProductIds,
 
-    /// GTIN or the product.
-    #[serde(rename = "gtins")]
-    pub gtins: HashSet<G>,
+    /// Names of the product.
+    pub names: BTreeSet<Text>,
+
+    /// Descriptions of the product.
+    pub descriptions: BTreeSet<Text>,
+
+    /// Product images.
+    pub images: BTreeSet<Image>,
+
+    /// Product categories.
+    pub categories: BTreeSet<String>,
+
+    /// Regions where the product is available.
+    pub regions: Regions,
+
+    /// Known certifications.
+    pub certifications: Certifications,
+
+    /// DB IDs of manufacturers.
+    pub manufacturer_ids: BTreeSet<GatherOrganisationId>,
+
+    /// Wikidata IDs newer version products.
+    pub follows: BTreeSet<GatherProductId>,
+
+    /// Wikidata IDs older version products.
+    pub followed_by: BTreeSet<GatherProductId>,
+
+    /// The Sustainity score.
+    pub sustainity_score: SustainityScore,
+}
+
+impl GatherProduct {
+    pub fn store(self) -> StoreProduct {
+        let db_key = self.db_key.to_string();
+        let ids = self.ids.store();
+        let mut names: Vec<_> = self.names.into_iter().collect();
+        let descriptions = self.descriptions.into_iter().collect();
+        let mut images: Vec<_> = self.images.into_iter().collect();
+        let mut categories: Vec<_> = self.categories.into_iter().collect();
+        let regions = self.regions;
+        let certifications = self.certifications;
+        let mut manufacturer_ids: Vec<_> =
+            self.manufacturer_ids.into_iter().map(|id| id.to_string()).collect();
+        let mut follows: Vec<_> = self.follows.into_iter().map(|id| id.to_string()).collect();
+        let mut followed_by: Vec<_> =
+            self.followed_by.into_iter().map(|id| id.to_string()).collect();
+        let sustainity_score = self.sustainity_score;
+
+        names.sort();
+        images.sort();
+        categories.sort();
+        manufacturer_ids.sort();
+        follows.sort();
+        followed_by.sort();
+
+        StoreProduct {
+            db_key,
+            ids,
+            names,
+            descriptions,
+            images,
+            categories,
+            regions,
+            certifications,
+            manufacturer_ids,
+            follows,
+            followed_by,
+            sustainity_score,
+        }
+    }
+}
+
+impl merge::Merge for GatherProduct {
+    fn merge(&mut self, other: Self) {
+        self.ids.merge(other.ids);
+        self.names.extend(other.names);
+        self.descriptions.extend(other.descriptions);
+        self.images.extend(other.images);
+        self.categories.extend(other.categories);
+        self.regions.merge(other.regions);
+        self.certifications.merge(other.certifications);
+        self.manufacturer_ids.extend(other.manufacturer_ids);
+        self.follows.extend(other.follows);
+        self.followed_by.extend(other.followed_by);
+    }
+}
+
+/// Represents a product.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StoreProduct {
+    /// DB entry ID.
+    #[serde(rename = "_key")]
+    pub db_key: StoreProductId,
+
+    /// Product ID.
+    #[serde(rename = "ids")]
+    pub ids: StoreProductIds,
 
     /// Names of the product.
     #[serde(rename = "names")]
@@ -626,52 +1005,42 @@ where
     #[serde(rename = "images")]
     pub images: Vec<Image>,
 
-    /// Known certifications.
-    #[serde(rename = "certifications")]
-    pub certifications: Certifications,
-
-    /// Wikidata IDs newer version products.
-    #[serde(rename = "follows")]
-    pub follows: HashSet<P>,
-
-    /// Wikidata IDs older version products.
-    #[serde(rename = "followed_by")]
-    pub followed_by: HashSet<P>,
+    /// Product categories.
+    #[serde(rename = "categories")]
+    pub categories: Vec<String>,
 
     /// Regions where the product is available.
     #[serde(rename = "regions")]
     pub regions: Regions,
+
+    /// Known certifications.
+    #[serde(rename = "certifications")]
+    pub certifications: Certifications,
+
+    /// DB IDs of manufacturers.
+    #[serde(rename = "manufacturer_ids")]
+    pub manufacturer_ids: Vec<StoreOrganisationId>,
+
+    /// Wikidata IDs newer version products.
+    #[serde(rename = "follows")]
+    pub follows: Vec<StoreProductId>,
+
+    /// Wikidata IDs older version products.
+    #[serde(rename = "followed_by")]
+    pub followed_by: Vec<StoreProductId>,
 
     /// The Sustainity score.
     #[serde(rename = "sustainity_score")]
     pub sustainity_score: SustainityScore,
 }
 
-pub type ReadProduct = Product<ReadProductId, ReadGtin>;
-pub type WriteProduct = Product<ids::ProductId, ids::Gtin>;
-
-impl merge::Merge for WriteProduct {
-    fn merge(&mut self, other: Self) {
-        if self.id != other.id {
-            return;
-        }
-        self.gtins.extend(other.gtins);
-        self.names.extend_from_slice(&other.names);
-        self.descriptions.extend_from_slice(&other.descriptions);
-        self.images.extend_from_slice(&other.images);
-        self.certifications.merge(other.certifications);
-        self.follows.extend(other.follows);
-        self.followed_by.extend(other.followed_by);
-    }
-}
-
 #[cfg(feature = "into-api")]
-impl ReadProduct {
+impl StoreProduct {
     pub fn into_api_short(self) -> api::ProductShort {
         api::ProductShort {
-            product_id: self.id,
-            name: self.names.first().map_or_else(String::default, |n| n.text.clone()),
-            description: self.descriptions.first().map(|d| d.text.clone()),
+            product_ids: self.ids.to_api(),
+            name: self.names.first().map_or_else(default_short_string, text_to_short_string),
+            description: self.descriptions.first().map(text_to_long_string),
             badges: self.certifications.to_api_badges(),
             scores: self.certifications.to_api_scores(),
         }
@@ -686,10 +1055,9 @@ impl ReadProduct {
         medallions.push(self.sustainity_score.into_api_medallion());
 
         api::ProductFull {
-            product_id: self.id,
-            gtins: Some(self.gtins.into_iter().map(|gtin| gtin.to_string().into()).collect()),
-            names: Some(self.names.into_iter().map(|n| n.into_api_short()).collect()),
-            descriptions: Some(self.descriptions.into_iter().map(|d| d.into_api_long()).collect()),
+            product_ids: self.ids.to_api(),
+            names: self.names.into_iter().map(|n| n.into_api_short()).collect(),
+            descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
             manufacturers,
             alternatives,
@@ -700,10 +1068,10 @@ impl ReadProduct {
 
 /// One enttry in `PresentationData::Scored`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ScoredPresentationEntry<O> {
+pub struct ScoredPresentationEntry<W> {
     /// Organisation ID.
-    #[serde(rename = "id")]
-    pub id: O,
+    #[serde(rename = "wiki_id")]
+    pub wiki_id: W,
 
     /// Name of the organisation (as originally listed by the certifier).
     #[serde(rename = "name")]
@@ -711,16 +1079,20 @@ pub struct ScoredPresentationEntry<O> {
 
     /// Score from the certifier.
     #[serde(rename = "score")]
-    pub score: i32,
+    pub score: i64,
 }
 
-pub type ReadScoredPresentationEntry = ScoredPresentationEntry<ReadOrganisationId>;
-pub type WriteScoredPresentationEntry = ScoredPresentationEntry<ids::OrganisationId>;
+pub type GatherScoredPresentationEntry = ScoredPresentationEntry<ids::WikiId>;
+pub type StoreScoredPresentationEntry = ScoredPresentationEntry<String>;
 
 #[cfg(feature = "into-api")]
-impl ReadScoredPresentationEntry {
+impl StoreScoredPresentationEntry {
     pub fn into_api(self) -> api::PresentationEntry {
-        api::PresentationEntry { id: self.id, name: self.name, score: self.score }
+        api::PresentationEntry {
+            wiki_id: api::Id::from_str(&self.wiki_id).expect("Converting to Wikidata ID"),
+            name: str_to_short_string(self.name),
+            score: self.score,
+        }
     }
 }
 
@@ -730,11 +1102,11 @@ pub enum PresentationData<O> {
     Scored(Vec<ScoredPresentationEntry<O>>),
 }
 
-pub type ReadPresentationData = PresentationData<ReadOrganisationId>;
-pub type WritePresentationData = PresentationData<ids::OrganisationId>;
+pub type GatherPresentationData = PresentationData<ids::WikiId>;
+pub type StorePresentationData = PresentationData<String>;
 
 #[cfg(feature = "into-api")]
-impl ReadPresentationData {
+impl StorePresentationData {
     fn into_api(self) -> Vec<api::PresentationEntry> {
         match self {
             PresentationData::Scored(entries) => {
@@ -753,11 +1125,11 @@ pub struct Presentation<O> {
     pub data: PresentationData<O>,
 }
 
-pub type ReadPresentation = Presentation<ReadOrganisationId>;
-pub type WritePresentation = Presentation<ids::OrganisationId>;
+pub type GatherPresentation = Presentation<ids::WikiId>;
+pub type StorePresentation = Presentation<String>;
 
 #[cfg(feature = "into-api")]
-impl ReadPresentation {
+impl StorePresentation {
     pub fn into_api(self) -> api::Presentation {
         api::Presentation { data: self.data.into_api() }
     }
@@ -784,8 +1156,8 @@ impl LibraryItem {
     pub fn try_into_api_short(self) -> Result<api::LibraryItemShort, IntoApiError> {
         Ok(api::LibraryItemShort {
             id: api::LibraryTopic::from_str(&self.id).map_err(IntoApiError::to_library_topic)?,
-            title: self.title,
-            summary: self.summary,
+            title: str_to_short_string(self.title),
+            summary: str_to_short_string(self.summary),
         })
     }
 
@@ -795,9 +1167,9 @@ impl LibraryItem {
     ) -> Result<api::LibraryItemFull, IntoApiError> {
         Ok(api::LibraryItemFull {
             id: api::LibraryTopic::from_str(&self.id).map_err(IntoApiError::to_library_topic)?,
-            title: self.title,
-            summary: self.summary,
-            article: self.article,
+            title: str_to_short_string(self.title),
+            summary: str_to_short_string(self.summary),
+            article: str_to_long_string(self.article),
             presentation,
         })
     }

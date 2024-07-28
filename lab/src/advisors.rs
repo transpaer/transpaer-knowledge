@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use sustainity_collecting::{
     bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, sustainity, tco,
 };
-use sustainity_models::write as models;
+use sustainity_models::gather as models;
 
 use crate::{cache, convert, errors, utils, wikidata::WikiId};
 
@@ -51,25 +51,6 @@ impl BCorpAdvisor {
         }
         false
     }
-
-    /// Returns company certification data if a company with such domain was certified..
-    #[must_use]
-    pub fn get_cert_from_domains(&self, domains: &HashSet<String>) -> Option<models::BCorpCert> {
-        for domain in domains {
-            if let Some(name) = self.domain_to_name.get(domain) {
-                return Some(models::BCorpCert { id: Self::guess_link_id_from_company_name(name) });
-            }
-        }
-        None
-    }
-
-    /// The IDs of companies used in links to company profiles on the `BCorp` web page
-    /// are not provided in the Bcorp data.
-    /// Here we make a guess of how that ID looks like basing on company name.
-    #[must_use]
-    pub fn guess_link_id_from_company_name(name: &str) -> String {
-        name.to_lowercase().replace(['.', '.'], "").replace(' ', "-")
-    }
 }
 
 /// Represents a company extracted to EU Ecolabel data.
@@ -97,7 +78,7 @@ pub struct EuEcolabelProduct {
 
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
-    /// Map from companies Vat ID to their WIkidata IDs.
+    /// Map from companies Vat ID to their Wikidata IDs.
     vat_to_wiki: HashMap<models::VatId, sustainity::data::Match>,
 }
 
@@ -226,7 +207,7 @@ impl TcoAdvisor {
         Self {
             companies: entries
                 .iter()
-                .map(|entry| ((&entry.wikidata_id).into(), entry.company_name.clone()))
+                .map(|entry| (entry.wikidata_id, entry.company_name.clone()))
                 .collect(),
         }
     }
@@ -251,14 +232,6 @@ impl TcoAdvisor {
     pub fn has_company(&self, company_id: &WikiId) -> bool {
         self.companies.contains_key(company_id)
     }
-
-    /// Returns company certification data if it was certified.
-    #[must_use]
-    pub fn get_company_cert(&self, company_id: &WikiId) -> Option<models::TcoCert> {
-        self.companies
-            .get(company_id)
-            .map(|brand_name| models::TcoCert { brand_name: brand_name.clone() })
-    }
 }
 
 /// Holds the information read from the `Fashion Transparency Index` data.
@@ -278,8 +251,7 @@ impl FashionTransparencyIndexAdvisor {
         let mut repeated_ids = HashSet::<WikiId>::new();
         let mut entries = HashMap::<WikiId, fashion_transparency_index::data::Entry>::new();
         for entry in source {
-            if let Some(id) = &entry.wikidata_id {
-                let wiki_id = id.into();
+            if let Some(wiki_id) = entry.wikidata_id {
                 if let std::collections::hash_map::Entry::Vacant(e) = entries.entry(wiki_id) {
                     e.insert(entry.clone());
                 } else {
@@ -320,22 +292,16 @@ impl FashionTransparencyIndexAdvisor {
         self.entries.contains_key(company_id)
     }
 
-    /// Get the score for the given company.
-    #[must_use]
-    pub fn get_cert(&self, company_id: &WikiId) -> Option<models::FtiCert> {
-        self.entries.get(company_id).map(|e| models::FtiCert { score: e.score })
-    }
-
     /// Prepares Fashion Transparency Index to be presented on the Library page.
     #[must_use]
     pub fn prepare_presentation(&self) -> models::Presentation {
         let mut data = Vec::with_capacity(self.entries.len());
         for entry in self.entries.values() {
-            if let Some(wikidata_id) = &entry.wikidata_id {
+            if let Some(wikidata_id) = entry.wikidata_id {
                 data.push(models::ScoredPresentationEntry {
-                    id: convert::to_org_id(wikidata_id),
+                    wiki_id: wikidata_id.into(),
                     name: entry.name.clone(),
-                    score: entry.score,
+                    score: i64::from(entry.score),
                 });
             }
         }
@@ -361,8 +327,8 @@ impl WikidataAdvisor {
     #[must_use]
     pub fn new(cache: &cache::Wikidata) -> Self {
         Self {
-            manufacturer_ids: cache.manufacturer_ids.iter().map(From::from).collect(),
-            class_ids: cache.classes.iter().map(From::from).collect(),
+            manufacturer_ids: cache.manufacturer_ids.iter().copied().collect(),
+            class_ids: cache.classes.iter().copied().collect(),
         }
     }
 
@@ -453,7 +419,7 @@ impl SustainityMatchesAdvisor {
         let mut name_to_wiki = HashMap::<String, WikiId>::new();
         for entry in map {
             if let Some(wiki_id) = entry.matched() {
-                name_to_wiki.insert(entry.name.clone(), wiki_id.wiki_id.into());
+                name_to_wiki.insert(entry.name.clone(), wiki_id.wiki_id);
             }
         }
 

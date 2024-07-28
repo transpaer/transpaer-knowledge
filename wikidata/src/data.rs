@@ -46,7 +46,7 @@ impl StrId {
     ///
     /// Returns error if the parsing failed.
     pub fn to_num_id(&self) -> Result<Id, ParseIdError> {
-        Id::try_from(self.0.as_ref())
+        Id::try_from(&self.0)
     }
 }
 
@@ -72,13 +72,13 @@ impl PartialEq<StrId> for &str {
 ///
 /// Compare to `StrId`. Numenric ID takes less memory and is easier to compare, but string form is
 /// sometimes easier to handle.
-#[derive(Debug, Clone, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct Id(usize);
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Id(u64);
 
 impl Id {
     /// Constructs a new `Id`.
     #[must_use]
-    pub const fn new(id: usize) -> Self {
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
@@ -89,8 +89,13 @@ impl Id {
     }
 
     #[must_use]
-    pub fn get_value(&self) -> usize {
+    pub fn get_value(&self) -> u64 {
         self.0
+    }
+
+    #[must_use]
+    pub fn to_id(&self) -> String {
+        self.get_value().to_string()
     }
 }
 
@@ -109,10 +114,18 @@ impl TryFrom<&str> for Id {
             }
         }
 
-        match string[1..].parse::<usize>() {
+        match string[1..].parse::<u64>() {
             Ok(num) => Ok(Self(num)),
             Err(err) => Err(ParseIdError::Num(string.to_string(), err)),
         }
+    }
+}
+
+impl TryFrom<&String> for Id {
+    type Error = ParseIdError;
+
+    fn try_from(string: &String) -> Result<Self, Self::Error> {
+        Self::try_from(string.as_str())
     }
 }
 
@@ -121,14 +134,85 @@ impl Serialize for Id {
     where
         S: Serializer,
     {
-        serializer.serialize_str(self.to_str_id().as_str())
+        serializer.serialize_u64(self.get_value())
     }
 }
 
-impl<'de> Deserialize<'de> for Id {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+impl Id {
+    /// Deserializes the `Id` from a string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID is not valid.
+    pub fn deserialize_from_string<'de, D>(d: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         let s = String::deserialize(d)?;
         Self::try_from(s.as_str()).map_err(serde::de::Error::custom)
+    }
+
+    /// Deserializes the `Id` from an integer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID is not valid.
+    pub fn deserialize_from_integer<'de, D>(d: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = u64::deserialize(d)?;
+        Ok(Self::new(value))
+    }
+}
+
+/// Deserializes a vector of `Id`s from an array of string.
+///
+/// # Errors
+///
+/// Returns an error if any of the IDs in the array is invalid.
+pub fn deserialize_vec_id_from_vec_string<'de, D>(d: D) -> Result<Vec<Id>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let vec_string = Vec::<String>::deserialize(d)?;
+    let mut vec_id = Vec::new();
+    for string in vec_string {
+        vec_id.push(Id::try_from(&string).map_err(serde::de::Error::custom)?);
+    }
+    Ok(vec_id)
+}
+
+/// Deserializes a vector of `Id`s from an array of integers.
+///
+/// # Errors
+///
+/// Returns an error if any of the IDs in the array is invalid.
+pub fn deserialize_vec_id_from_vec_integer<'de, D>(d: D) -> Result<Vec<Id>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let vec_integer = Vec::<u64>::deserialize(d)?;
+    let mut vec_id = Vec::new();
+    for integer in vec_integer {
+        vec_id.push(Id::new(integer));
+    }
+    Ok(vec_id)
+}
+
+/// Deserializes an optional `Id` from an optional string.
+///
+/// # Errors
+///
+/// Returns an error if the ID is not valid.
+pub fn deserialize_option_id_from_option_string<'de, D>(d: D) -> Result<Option<Id>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if let Some(string) = Option::<String>::deserialize(d)? {
+        Ok(Some(Id::try_from(&string).map_err(serde::de::Error::custom)?))
+    } else {
+        Ok(None)
     }
 }
 
@@ -425,6 +509,7 @@ pub struct Sitelink {
 #[serde(deny_unknown_fields)]
 pub struct Item {
     /// Item ID.
+    #[serde(deserialize_with = "Id::deserialize_from_string")]
     pub id: Id,
 
     pub title: Option<String>,

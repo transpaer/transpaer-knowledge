@@ -1,46 +1,120 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug)]
-pub enum SearchResultVariant {
-    Organisation,
-    Product,
-}
+use sustainity_api::models as api;
 
-impl SearchResultVariant {
-    pub fn convert(
-        self,
-        input: Vec<SearchResult>,
-    ) -> Vec<sustainity_api::models::TextSearchResult> {
-        let variant = sustainity_api::models::TextSearchResultVariant::from(self);
-        let mut output = Vec::with_capacity(input.len());
-        for result in input {
-            output.push(sustainity_api::models::TextSearchResult {
-                id: result.id,
-                label: result.name.map_or_else(String::default, |t| t.text),
-                variant,
-            });
-        }
-        output
+fn hack(link: api::TextSearchLink) -> api::TextSearchLinkHack {
+    match link {
+        api::TextSearchLink::ProductLink(link) => api::TextSearchLinkHack {
+            id: link.id,
+            product_id_variant: Some(link.product_id_variant),
+            organisation_id_variant: None,
+        },
+        api::TextSearchLink::OrganisationLink(link) => api::TextSearchLinkHack {
+            id: link.id,
+            organisation_id_variant: Some(link.organisation_id_variant),
+            product_id_variant: None,
+        },
     }
 }
 
-impl From<SearchResultVariant> for sustainity_api::models::TextSearchResultVariant {
-    fn from(value: SearchResultVariant) -> Self {
-        match value {
-            SearchResultVariant::Organisation => Self::Organisation,
-            SearchResultVariant::Product => Self::Product,
-        }
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum SearchResultId {
+    Organisation(String),
+    Product(String),
+}
+
+/// Represents a search result.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OrganisationSearchResult {
+    /// DB entry ID.
+    #[serde(rename = "id")]
+    pub id: String,
+
+    /// IDs of the organisation.
+    #[serde(rename = "ids")]
+    pub ids: sustainity_models::store::OrganisationIds,
+
+    /// Product name.
+    #[serde(rename = "name")]
+    pub name: Option<sustainity_models::store::Text>,
+}
+
+impl OrganisationSearchResult {
+    pub fn convert(self) -> Option<(SearchResultId, api::TextSearchResult)> {
+        // TODO: perhaps we can somehow ensure that the code will stop compiling if
+        // a new field is added to `ids`.
+        let (variant, id) = if let Some(id) = self.ids.vat_ids.first() {
+            (api::OrganisationIdVariant::Vat, id)
+        } else if let Some(id) = self.ids.wiki.first() {
+            (api::OrganisationIdVariant::Wiki, id)
+        } else if let Some(id) = self.ids.domains.first() {
+            (api::OrganisationIdVariant::Www, id)
+        } else {
+            // TODO: perhaps we should default to the database ID
+            return None;
+        };
+
+        Some((
+            SearchResultId::Organisation(self.id),
+            api::TextSearchResult {
+                link: hack(api::TextSearchLink::OrganisationLink(api::OrganisationLink {
+                    organisation_id_variant: variant,
+                    id: api::Id::from_str(id).expect("create ID"),
+                })),
+                label: api::ShortString::from_str(
+                    &self.name.map(|t| t.text.clone()).unwrap_or_default(),
+                )
+                .expect("create ShortString"),
+            },
+        ))
     }
 }
 
 /// Represents a search result.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SearchResult {
+pub struct ProductSearchResult {
     /// DB entry ID.
     #[serde(rename = "id")]
     pub id: String,
 
+    /// IDs of the product.
+    #[serde(rename = "ids")]
+    pub ids: sustainity_models::store::ProductIds,
+
     /// Product name.
     #[serde(rename = "name")]
-    pub name: Option<sustainity_models::read::Text>,
+    pub name: Option<sustainity_models::store::Text>,
+}
+
+impl ProductSearchResult {
+    pub fn convert(self) -> Option<(SearchResultId, api::TextSearchResult)> {
+        // TODO: perhaps we can somehow ensure that the code will stop compiling if
+        // a new field is added to `ids`.
+        let (variant, id) = if let Some(id) = self.ids.gtins.first() {
+            (api::ProductIdVariant::Gtin, id)
+        } else if let Some(id) = self.ids.eans.first() {
+            (api::ProductIdVariant::Ean, id)
+        } else if let Some(id) = self.ids.wiki.first() {
+            (api::ProductIdVariant::Wiki, id)
+        } else {
+            // TODO: perhaps we should default to the database ID
+            return None;
+        };
+
+        Some((
+            SearchResultId::Product(self.id),
+            api::TextSearchResult {
+                link: hack(api::TextSearchLink::ProductLink(api::ProductLink {
+                    product_id_variant: variant,
+                    id: api::Id::from_str(id).expect("create ID"),
+                })),
+                label: api::ShortString::from_str(
+                    &self.name.map(|t| t.text.clone()).unwrap_or_default(),
+                )
+                .expect("create ShortString"),
+            },
+        ))
+    }
 }

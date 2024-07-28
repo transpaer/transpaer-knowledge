@@ -96,17 +96,17 @@ pub mod reader {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub async fn load<C, F>(path: std::path::PathBuf, callback: C) -> Result<usize, IoOrSerdeError>
+    pub async fn load<C, F>(path: &std::path::Path, callback: C) -> Result<usize, IoOrSerdeError>
     where
         C: Fn(csv::StringRecord, csv::StringRecord) -> F,
         F: std::future::Future<Output = ()>,
     {
         let mut result: usize = 0;
         let mut reader =
-            csv::ReaderBuilder::new().delimiter(b';').from_path(&path).map_with_path(&path)?;
-        let headers = reader.headers().map_with_path(&path)?.clone();
+            csv::ReaderBuilder::new().delimiter(b';').from_path(path).map_with_path(path)?;
+        let headers = reader.headers().map_with_path(path)?.clone();
         for record in reader.into_records() {
-            callback(headers.clone(), record.map_with_path(&path)?).await;
+            callback(headers.clone(), record.map_with_path(path)?).await;
             result += 1;
         }
         Ok(result)

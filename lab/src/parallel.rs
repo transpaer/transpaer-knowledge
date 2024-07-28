@@ -23,6 +23,26 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct SplitSender<T>
+where
+    T: Clone + Send,
+{
+    senders: Vec<async_channel::Sender<T>>,
+}
+
+impl<T> SplitSender<T>
+where
+    T: Clone + Send,
+{
+    pub async fn send(&self, split: usize, message: T) {
+        let split = split % self.senders.len();
+        if let Err(err) = self.senders[split].send(message).await {
+            log::error!("Flow sender: {err}");
+        }
+    }
+}
+
 pub enum Recv<T>
 where
     T: Clone + Send,
@@ -60,12 +80,58 @@ where
     (Sender { sender }, Receiver { receiver })
 }
 
+#[must_use]
+pub fn bounded_split<T>() -> (SplitSender<T>, Vec<Receiver<T>>)
+where
+    T: Clone + Send,
+{
+    let cpus = num_cpus::get();
+    let mut senders = Vec::with_capacity(cpus);
+    let mut receivers = Vec::with_capacity(cpus);
+    for _ in 0..num_cpus::get() {
+        let (sender, receiver) = async_channel::bounded(CHANNEL_CAP);
+        senders.push(sender);
+        receivers.push(Receiver { receiver });
+    }
+
+    (SplitSender { senders }, receivers)
+}
+
 #[async_trait]
 pub trait Producer: Send + Sync {
     type Output: Clone + Send;
     type Error: std::error::Error;
 
     async fn produce(self, tx: Sender<Self::Output>) -> Result<(), Self::Error>;
+}
+
+#[async_trait]
+pub trait SplitProducer: Send + Sync {
+    type Output: Clone + Send;
+    type Error: std::error::Error;
+
+    async fn produce(self, tx: SplitSender<Self::Output>) -> Result<(), Self::Error>;
+}
+
+#[async_trait]
+pub trait Producer2: Send + Sync {
+    type Output1: Clone + Send;
+    type Output2: Clone + Send;
+    type Error: std::error::Error;
+
+    async fn produce(
+        self,
+        tx1: Sender<Self::Output1>,
+        tx2: Sender<Self::Output2>,
+    ) -> Result<(), Self::Error>;
+}
+
+#[async_trait]
+pub trait RefProducer: Send + Sync {
+    type Output: Clone + Send;
+    type Error: std::error::Error;
+
+    async fn produce(&self, tx: Sender<Self::Output>) -> Result<(), Self::Error>;
 }
 
 #[async_trait]
@@ -131,6 +197,43 @@ impl Flow {
         Ok(self)
     }
 
+    pub fn spawn_producers<O, E>(
+        mut self,
+        producers: Vec<Box<dyn RefProducer<Output = O, Error = E>>>,
+        tx: Sender<O>,
+    ) -> Result<Self, errors::ProcessingError>
+    where
+        O: Clone + Send + 'static,
+        E: std::error::Error + 'static,
+    {
+        let name =
+            self.name.as_ref().map_or_else(|| "flow-prod".to_string(), |n| format!("fprod-{n}"));
+        let handler: std::thread::JoinHandle<()> =
+            std::thread::Builder::new().name(name).spawn(move || {
+                for producer in producers {
+                    if let Err(err) = futures::executor::block_on(producer.produce(tx.clone())) {
+                        log::error!("Flow producer: {err}");
+                    }
+                }
+            })?;
+        self.handlers.push(handler);
+        Ok(self)
+    }
+
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn spawn_processor<P>(
+        mut self,
+        processor: P,
+        rx: Receiver<P::Input>,
+        tx: Sender<P::Output>,
+    ) -> Result<Self, errors::ProcessingError>
+    where
+        P: Processor + 'static,
+    {
+        self.inner_spawn_processor(processor, rx, tx, 0)?;
+        Ok(self)
+    }
+
     #[allow(clippy::needless_pass_by_value)]
     pub fn spawn_processors<P>(
         mut self,
@@ -142,35 +245,7 @@ impl Flow {
         P: Processor + 'static,
     {
         for i in 0..num_cpus::get() {
-            let name = self
-                .name
-                .as_ref()
-                .map_or_else(|| format!("flow-proc-{i}"), |n| format!("fproc-{n}-{i}"));
-            let mut processor2 = processor.clone();
-            let tx2 = tx.clone();
-            let rx2 = rx.clone();
-            let handler: std::thread::JoinHandle<()> =
-                std::thread::Builder::new().name(name).spawn(move || {
-                    futures::executor::block_on(async {
-                        loop {
-                            match rx2.recv().await {
-                                Recv::Value(input) => {
-                                    if let Err(err) = processor2.process(input, tx2.clone()).await {
-                                        log::error!("Flow processor: {err}");
-                                    }
-                                    continue;
-                                }
-                                Recv::Closed => {
-                                    if let Err(err) = processor2.finish(tx2).await {
-                                        log::error!("Flow processor (finish): {err}");
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    });
-                })?;
-            self.handlers.push(handler);
+            self.inner_spawn_processor(processor.clone(), rx.clone(), tx.clone(), i)?;
         }
         Ok(self)
     }
@@ -210,12 +285,55 @@ impl Flow {
         Ok(self)
     }
 
+    // TODO return vec of errors
     pub fn join(self) {
         for handler in self.handlers {
             if let Err(err) = handler.join() {
                 log::error!("Flow join: {err:?}");
             }
         }
+    }
+}
+
+impl Flow {
+    #[allow(clippy::needless_pass_by_value)]
+    fn inner_spawn_processor<P>(
+        &mut self,
+        mut processor: P,
+        rx: Receiver<P::Input>,
+        tx: Sender<P::Output>,
+        i: usize,
+    ) -> Result<(), errors::ProcessingError>
+    where
+        P: Processor + 'static,
+    {
+        let name = self
+            .name
+            .as_ref()
+            .map_or_else(|| format!("flow-proc-{i}"), |n| format!("fproc-{n}-{i}"));
+        let handler: std::thread::JoinHandle<()> =
+            std::thread::Builder::new().name(name).spawn(move || {
+                futures::executor::block_on(async {
+                    loop {
+                        match rx.recv().await {
+                            Recv::Value(input) => {
+                                if let Err(err) = processor.process(input, tx.clone()).await {
+                                    log::error!("Flow processor: {err}");
+                                }
+                                continue;
+                            }
+                            Recv::Closed => {
+                                if let Err(err) = processor.finish(tx).await {
+                                    log::error!("Flow processor (finish): {err}");
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            })?;
+        self.handlers.push(handler);
+        Ok(())
     }
 }
 

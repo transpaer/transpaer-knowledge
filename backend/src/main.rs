@@ -1,3 +1,7 @@
+// TODO:
+// #[deny(clippy::unwrap_used)]
+// #[deny(clippy::expect_used)]
+
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 mod config;

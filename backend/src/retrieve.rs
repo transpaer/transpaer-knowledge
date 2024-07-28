@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 
 use sustainity_api::models as api;
+use sustainity_models::ids;
 
-use crate::{db::Db, errors::BackendError, models::SearchResultVariant};
+use crate::{
+    db::Db,
+    errors::BackendError,
+    models::{OrganisationSearchResult, ProductSearchResult, SearchResultId},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 struct ScoredResult {
@@ -18,7 +23,7 @@ impl ScoredResult {
 
 #[derive(Clone, Debug, Default)]
 struct ResultCollector {
-    results: HashMap<String, ScoredResult>,
+    results: HashMap<SearchResultId, ScoredResult>,
 }
 
 impl ResultCollector {
@@ -27,18 +32,45 @@ impl ResultCollector {
     // The score is better if:
     // - the matched keyword is closer to the beginning of the query
     // - the matched keyword constitutes the longer part of the whole label
-    pub fn add(&mut self, results: &[api::TextSearchResult], matching: &str, index: Option<usize>) {
+    pub fn add(
+        &mut self,
+        results: &[(SearchResultId, api::TextSearchResult)],
+        matching: &str,
+        index: Option<usize>,
+    ) {
         let index_score = if let Some(index) = index { 1.0 / (index + 1) as f64 } else { 10.0 };
 
-        for result in results {
+        for (id, result) in results {
             let item_score = matching.len() as f64 / result.label.len() as f64;
             let total_score = 1.0 + index_score + item_score;
 
             self.results
-                .entry(result.id.clone())
+                .entry(id.clone())
                 .and_modify(|e| e.with_added_score(total_score))
                 .or_insert_with(|| ScoredResult { score: total_score, result: result.clone() });
         }
+    }
+
+    pub fn add_organisations(
+        &mut self,
+        results: Vec<OrganisationSearchResult>,
+        matching: &str,
+        index: Option<usize>,
+    ) {
+        let results: Vec<(SearchResultId, api::TextSearchResult)> =
+            results.into_iter().filter_map(|r| r.convert()).collect();
+        self.add(&results, matching, index)
+    }
+
+    pub fn add_products(
+        &mut self,
+        results: Vec<ProductSearchResult>,
+        matching: &str,
+        index: Option<usize>,
+    ) {
+        let results: Vec<(SearchResultId, api::TextSearchResult)> =
+            results.into_iter().filter_map(|r| r.convert()).collect();
+        self.add(&results, matching, index)
     }
 
     pub fn gather_scored_results(self) -> Vec<ScoredResult> {
@@ -46,7 +78,7 @@ impl ResultCollector {
 
         let mut results: Vec<ScoredResult> = self.results.into_values().collect();
         results.sort_by(|a, b| match PartialOrd::partial_cmp(&b.score, &a.score) {
-            None | Some(Ordering::Equal) => Ord::cmp(&a.result.id, &b.result.id),
+            None | Some(Ordering::Equal) => Ord::cmp(&a.result.label, &b.result.label),
             Some(ordering) => ordering,
         });
         results
@@ -81,12 +113,13 @@ pub async fn library_item(
 }
 
 pub async fn organisation(
+    id_variant: api::OrganisationIdVariant,
     id: &str,
     db: &Db,
 ) -> Result<Option<api::OrganisationFull>, BackendError> {
-    if let Some(org) = db.get_organisation(id).await? {
+    if let Some(org) = db.get_organisation(id_variant, id).await? {
         let products = db
-            .find_organisation_products(id)
+            .find_organisation_products(&org.db_key)
             .await?
             .into_iter()
             .map(|p| p.into_api_short())
@@ -99,22 +132,29 @@ pub async fn organisation(
 }
 
 pub async fn product(
+    id_variant: api::ProductIdVariant,
     id: &str,
     region: Option<&str>,
     db: &Db,
 ) -> Result<Option<api::ProductFull>, BackendError> {
-    if let Some(prod) = db.get_product(id).await? {
-        let manufacturers = db
-            .find_product_manufacturers(id)
-            .await?
-            .into_iter()
-            .map(|m| m.into_api_short())
-            .collect();
-        let alternatives = product_alternatives(id, region, db).await?;
-        let prod = prod.into_api_full(manufacturers, alternatives);
-        Ok(Some(prod))
-    } else {
-        Ok(None)
+    match ids::Gtin::try_from(id) {
+        Ok(gtin) => {
+            let gtin = gtin.as_number().to_string();
+            if let Some(prod) = db.get_product(id_variant, &gtin).await? {
+                let manufacturers = db
+                    .find_product_manufacturers(&prod.db_key)
+                    .await?
+                    .into_iter()
+                    .map(|m| m.into_api_short())
+                    .collect();
+                let alternatives = product_alternatives(id, region, db).await?;
+                let prod = prod.into_api_full(manufacturers, alternatives);
+                Ok(Some(prod))
+            } else {
+                Ok(None)
+            }
+        }
+        Err(_) => Ok(None),
     }
 }
 
@@ -152,23 +192,21 @@ pub async fn search_by_text(
         // Search organisation by VAT
         {
             let items = db.search_organisations_substring_by_vat_number(&uppercase_match).await?;
-            let items = SearchResultVariant::Organisation.convert(items);
-            collector.add(&items, &uppercase_match, None);
+            collector.add_organisations(items, &uppercase_match, None);
         }
 
         // Search product by GTIN
         if lowercase_match.len() < 15 {
-            let gtin = format!("{lowercase_match:0>14}");
-            let items = db.search_products_exact_by_gtin(&gtin).await?;
-            let items = SearchResultVariant::Product.convert(items);
-            collector.add(&items, &lowercase_match, None);
+            // TODO: search only if the match can be a valid GTIN
+            // let gtin = format!("{lowercase_match:0>14}");
+            let items = db.search_products_exact_by_gtin(&lowercase_match).await?;
+            collector.add_products(items, &lowercase_match, None);
         }
 
         // Search organisation by website
         {
             let items = db.search_organisations_substring_by_website(&lowercase_match).await?;
-            let items = SearchResultVariant::Organisation.convert(items);
-            collector.add(&items, &lowercase_match, None);
+            collector.add_organisations(items, &lowercase_match, None);
         }
     }
 
@@ -176,13 +214,11 @@ pub async fn search_by_text(
     let lowercase_matches: Vec<String> = matches.into_iter().map(|m| m.to_lowercase()).collect();
     for (i, m) in lowercase_matches.iter().enumerate() {
         let items = db.search_organisations_exact_by_keyword(m).await?;
-        let items = SearchResultVariant::Organisation.convert(items);
-        collector.add(&items, m, Some(i));
+        collector.add_organisations(items, m, Some(i));
     }
     for (i, m) in lowercase_matches.iter().enumerate() {
         let items = db.search_products_exact_by_keyword(m).await?;
-        let items = SearchResultVariant::Product.convert(items);
-        collector.add(&items, m, Some(i));
+        collector.add_products(items, m, Some(i));
     }
 
     Ok(collector.gather_results())
@@ -190,27 +226,50 @@ pub async fn search_by_text(
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
-    use sustainity_api::models as api;
 
-    fn prepare_data() -> (api::TextSearchResult, api::TextSearchResult, api::TextSearchResult) {
-        let r1 = api::TextSearchResult {
-            variant: api::TextSearchResultVariant::Product,
-            label: "Fairphone 4".into(),
-            id: "1".into(),
-        };
+    fn prepare_data() -> (
+        (SearchResultId, api::TextSearchResult),
+        (SearchResultId, api::TextSearchResult),
+        (SearchResultId, api::TextSearchResult),
+    ) {
+        let r1 = (
+            SearchResultId::Product("1".to_owned()),
+            api::TextSearchResult {
+                link: api::TextSearchLinkHack {
+                    id: api::Id::from_str("1").unwrap(),
+                    product_id_variant: Some(api::ProductIdVariant::Wiki),
+                    organisation_id_variant: None,
+                },
+                label: api::ShortString::from_str("Fairphone 4").unwrap(),
+            },
+        );
 
-        let r2 = api::TextSearchResult {
-            variant: api::TextSearchResultVariant::Product,
-            label: "Samsung 4".into(),
-            id: "2".into(),
-        };
+        let r2 = (
+            SearchResultId::Product("2".to_owned()),
+            api::TextSearchResult {
+                link: api::TextSearchLinkHack {
+                    id: api::Id::from_str("2").unwrap(),
+                    product_id_variant: Some(api::ProductIdVariant::Wiki),
+                    organisation_id_variant: None,
+                },
+                label: api::ShortString::from_str("Samsung 4").unwrap(),
+            },
+        );
 
-        let r3 = api::TextSearchResult {
-            variant: api::TextSearchResultVariant::Product,
-            label: "Fairphone 3".into(),
-            id: "3".into(),
-        };
+        let r3 = (
+            SearchResultId::Product("3".to_owned()),
+            api::TextSearchResult {
+                link: api::TextSearchLinkHack {
+                    id: api::Id::from_str("3").unwrap(),
+                    product_id_variant: Some(api::ProductIdVariant::Wiki),
+                    organisation_id_variant: None,
+                },
+                label: api::ShortString::from_str("Fairphone 3").unwrap(),
+            },
+        );
 
         (r1, r2, r3)
     }
@@ -222,9 +281,9 @@ mod tests {
     fn simple() {
         let (r1, r2, r3) = prepare_data();
 
-        let s1 = ScoredResult { result: r1.clone(), score: (1.0 + 10.0) + (1.0 + 10.0) };
-        let s2 = ScoredResult { result: r2.clone(), score: (1.0 + 10.0) };
-        let s3 = ScoredResult { result: r3.clone(), score: (1.0 + 10.0) };
+        let s1 = ScoredResult { result: r1.1.clone(), score: (1.0 + 10.0) + (1.0 + 10.0) };
+        let s2 = ScoredResult { result: r3.1.clone(), score: (1.0 + 10.0) };
+        let s3 = ScoredResult { result: r2.1.clone(), score: (1.0 + 10.0) };
 
         let expected_results = [s1, s2, s3];
 
@@ -250,9 +309,9 @@ mod tests {
     fn index() {
         let (r1, r2, r3) = prepare_data();
 
-        let s1 = ScoredResult { result: r1.clone(), score: (1.0 + 1.0) + (1.0 + 0.5) };
-        let s2 = ScoredResult { result: r2.clone(), score: (1.0 + 0.5) };
-        let s3 = ScoredResult { result: r3.clone(), score: (1.0 + 1.0) };
+        let s1 = ScoredResult { result: r1.1.clone(), score: (1.0 + 1.0) + (1.0 + 0.5) };
+        let s2 = ScoredResult { result: r2.1.clone(), score: (1.0 + 0.5) };
+        let s3 = ScoredResult { result: r3.1.clone(), score: (1.0 + 1.0) };
 
         let expected_results = [s1, s3, s2];
 
@@ -270,9 +329,9 @@ mod tests {
         let (r1, r2, r3) = prepare_data();
 
         let s1 =
-            ScoredResult { result: r1.clone(), score: (11.0 + 9.0 / 11.0) + (11.0 + 1.0 / 11.0) };
-        let s2 = ScoredResult { result: r2.clone(), score: (11.0 + 1.0 / 9.0) };
-        let s3 = ScoredResult { result: r3.clone(), score: (11.0 + 9.0 / 11.0) };
+            ScoredResult { result: r1.1.clone(), score: (11.0 + 9.0 / 11.0) + (11.0 + 1.0 / 11.0) };
+        let s2 = ScoredResult { result: r2.1.clone(), score: (11.0 + 1.0 / 9.0) };
+        let s3 = ScoredResult { result: r3.1.clone(), score: (11.0 + 9.0 / 11.0) };
 
         let expected_results = [s1, s3, s2];
 

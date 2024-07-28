@@ -44,7 +44,7 @@ pub mod data {
     impl Record {
         /// Extracts brand owner names and brand names.
         #[must_use]
-        pub fn extract_labels(&self) -> Vec<String> {
+        pub fn extract_brand_labels(&self) -> Vec<String> {
             let mut labels = HashSet::<String>::new();
             if !self.brand_owner.is_empty() {
                 labels.insert(self.brand_owner.clone());

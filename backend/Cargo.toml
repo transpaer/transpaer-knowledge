@@ -4,20 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arangors = { version = "0.5.4", default-features = false, features=["reqwest_async"] }
-async-trait = { version = "0.1.24" }
-fern = { version = "0.6" }
-futures = { version = "0.3.29" }
-humantime = { version = "2.1.0" }
-hyper = { version = "0.14", features = ["server"] }
-log = { version = "0.4.0" }
-serde = { version = "1.0", features = ["derive"] }
-serde_variant = { version = "0.1.2" }
-serde_json = { version = "1.0" }
-snafu = { version = "0.7.5" }
-swagger = { version = "6.4", features = ["serdejson", "server"] }
-tokio = { version = "1.24", features = ["full"] }
+arangors = { workspace = true, features = ["reqwest_async"] }
+async-trait = { workspace = true }
+fern = { workspace = true }
+futures = { workspace = true }
+humantime = { workspace = true }
+hyper = { workspace = true, features = ["server"] }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_variant = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+swagger = { workspace = true, features = ["serdejson", "server"] }
+tokio = { workspace = true, features = ["full"] }
 
-sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false, features = ["server"] }
-sustainity-models = { path = "../models", features = ["into-api"] }
+sustainity-api = { workspace = true, features = ["server"] }
+sustainity-models = { workspace = true, features = ["into-api"] }
 

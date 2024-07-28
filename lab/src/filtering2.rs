@@ -61,26 +61,24 @@ impl runners::WikidataWorker for FilteringWorker {
 pub struct FilteringStash {
     /// Filtered Wikidata entries.
     entries: Vec<String>,
-    x: usize,
 
     /// Configuration.
-    config: config::FilteringConfig,
+    config: config::Filtering2Config,
 }
 
 impl FilteringStash {
     #[must_use]
-    pub fn new(config: config::FilteringConfig) -> Self {
-        Self { entries: Vec::new(), x: 0, config }
+    pub fn new(config: config::Filtering2Config) -> Self {
+        Self { entries: Vec::new(), config }
     }
 
     pub fn add_entry(&mut self, entry: String) {
-        self.x += 1;
         self.entries.push(entry);
     }
 
     #[must_use]
     pub fn is_full(&self) -> bool {
-        self.entries.len() >= 10000
+        self.entries.len() >= 100_000
     }
 
     #[allow(clippy::unused_self)]
@@ -128,7 +126,7 @@ impl runners::Stash for FilteringStash {
 pub struct FilteringRunner;
 
 impl FilteringRunner {
-    pub fn run(config: &config::FilteringConfig) -> Result<(), errors::ProcessingError> {
+    pub fn run(config: &config::Filtering2Config) -> Result<(), errors::ProcessingError> {
         let sources = Arc::new(sources::FullSources::load(&config.into())?);
 
         let worker = FilteringWorker::new(sources);

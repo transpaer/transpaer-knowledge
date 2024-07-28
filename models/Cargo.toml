@@ -4,16 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-isocountry = { version = "0.3.2" }
-merge = { version = "0.1.0" }
-serde = { version = "1.0", features = ["derive"] }
-snafu = { version = "0.7.5" }
+isocountry = { workspace = true }
+log = { workspace = true, optional = true }
+md5 = { workspace = true }
+merge = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+snafu = { workspace = true }
 
-sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false, optional = true }
+sustainity-api = { workspace = true, optional = true }
+sustainity-schema = { workspace = true, optional = true }
+sustainity-wikidata = { workspace = true }
 
 [dev-dependencies]
-indoc = { version = "2" }
-serde_json = { version = "1.0" }
+indoc = { workspace = true }
+serde_json = { workspace = true }
+pretty_assertions = { workspace = true }
 
 [features]
-into-api = ["dep:sustainity-api"]
+# TODO: move to the backend for better error handling
+into-api = ["dep:sustainity-api", "dep:log"]
+from-substrate = ["dep:sustainity-schema"]
