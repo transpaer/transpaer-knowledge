@@ -632,6 +632,9 @@ impl ConnectionConfig {
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct SamplingTargetConfig {
+    /// Path to the category edges data file.
+    pub category_edges_path: std::path::PathBuf,
+
     /// Path to the product Wiki IDs data file.
     pub product_wiki_ids_path: std::path::PathBuf,
 
@@ -676,6 +679,7 @@ impl SamplingConfig {
         let target = if let Some(target) = &args.target {
             let target = std::path::PathBuf::from(target);
             Some(SamplingTargetConfig {
+                category_edges_path: target.join("category_edges.jsonl"),
                 product_wiki_ids_path: target.join("product_wiki_ids.jsonl"),
                 product_wiki_id_edges_path: target.join("product_wiki_id_edges.jsonl"),
                 products_path: target.join("products.jsonl"),
