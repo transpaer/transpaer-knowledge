@@ -147,7 +147,7 @@ pub async fn product(
                     .into_iter()
                     .map(|m| m.into_api_short())
                     .collect();
-                let alternatives = product_alternatives(id, region, db).await?;
+                let alternatives = product_alternatives(&prod.db_key, region, db).await?;
                 let prod = prod.into_api_full(manufacturers, alternatives);
                 Ok(Some(prod))
             } else {

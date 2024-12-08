@@ -398,7 +398,7 @@ pub struct Bucket<'a, K, V> {
     phantom: std::marker::PhantomData<(K, V)>,
 }
 
-impl<'a, K, V> Bucket<'a, K, V> {
+impl<K, V> Bucket<'_, K, V> {
     #[must_use]
     pub fn len(&self) -> usize {
         self.bucket.len()
@@ -1151,8 +1151,9 @@ impl Processor {
             .map_err(|id| id.to_error_not_found(substrate, "processing catalog product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
-            self.extract_related_products(&product.related, groups, substrate);
-        let manufacturer_ids = self.extract_manufacturer_ids(&product.origins, groups, substrate);
+            self.extract_related_products(product.related.as_ref(), groups, substrate);
+        let manufacturer_ids =
+            self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
             unique_id.clone(),
@@ -1201,8 +1202,9 @@ impl Processor {
             .map_err(|id| id.to_error_not_found(substrate, "processing producer product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
-            self.extract_related_products(&product.related, groups, substrate);
-        let manufacturer_ids = self.extract_manufacturer_ids(&product.origins, groups, substrate);
+            self.extract_related_products(product.related.as_ref(), groups, substrate);
+        let manufacturer_ids =
+            self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
             unique_id.clone(),
@@ -1292,8 +1294,9 @@ impl Processor {
             .map_err(|id| id.to_error_not_found(substrate, "processing review product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
-            self.extract_related_products(&product.related, groups, substrate);
-        let manufacturer_ids = self.extract_manufacturer_ids(&product.origins, groups, substrate);
+            self.extract_related_products(product.related.as_ref(), groups, substrate);
+        let manufacturer_ids =
+            self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
             unique_id.clone(),
@@ -1329,7 +1332,7 @@ impl Processor {
     #[allow(clippy::unused_self)]
     fn extract_manufacturer_ids(
         &mut self,
-        origins: &Option<schema::ProductOrigins>,
+        origins: Option<&schema::ProductOrigins>,
         groups: &GroupedIds,
         substrate: &Substrate,
     ) -> BTreeSet<gather::OrganisationId> {
@@ -1350,7 +1353,7 @@ impl Processor {
 
     fn extract_related_products(
         &mut self,
-        related: &Option<schema::RelatedProducts>,
+        related: Option<&schema::RelatedProducts>,
         groups: &GroupedIds,
         substrate: &Substrate,
     ) -> (BTreeSet<gather::ProductId>, BTreeSet<gather::ProductId>) {
@@ -2330,7 +2333,7 @@ mod test {
 
         pub fn get_external_to_individuals_bucket<'a>(
             &'a self,
-        ) -> Bucket<ExternalId, Vec<IndividualTestId>> {
+        ) -> Bucket<'a, ExternalId, Vec<IndividualTestId>> {
             let bucket =
                 self.store.bucket::<Vec<u8>, Vec<u8>>(Some("external_to_individuals")).unwrap();
             Bucket { bucket, phantom: std::marker::PhantomData }
@@ -2338,7 +2341,7 @@ mod test {
 
         pub fn get_individual_to_externals_bucket<'a>(
             &'a self,
-        ) -> Bucket<IndividualTestId, Vec<ExternalId>> {
+        ) -> Bucket<'a, IndividualTestId, Vec<ExternalId>> {
             let bucket =
                 self.store.bucket::<Vec<u8>, Vec<u8>>(Some("individual_to_externals")).unwrap();
             Bucket { bucket, phantom: std::marker::PhantomData }

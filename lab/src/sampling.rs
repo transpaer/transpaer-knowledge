@@ -123,6 +123,7 @@ impl SamplingRunner {
         findings.consider(Self::check_json_product_ids(config));
         match Self::check_json_product_id_edges(config) {
             Ok(fairphone_4_uid) => {
+                findings.consider(Self::check_json_category_edges(&fairphone_4_uid, config));
                 match Self::check_json_products(&fairphone_4_uid, config) {
                     Ok(fairphone_org_uid_1) => {
                         findings.consider(Self::check_json_organisation_ids(config));
@@ -192,6 +193,31 @@ impl SamplingRunner {
             None => {
                 Err(Finding::Other(format!("Fairphone 4 ({FAIRPHONE_4_WIKI_ID}) edge not found")))
             }
+        }
+    }
+
+    fn check_json_category_edges(
+        fairphone_4_uid: &str,
+        config: &config::SamplingTargetConfig,
+    ) -> Result<(), Finding> {
+        log::info!("Iterating category edges");
+
+        let fairphone_4_uid = format!("products/{fairphone_4_uid}");
+
+        let mut found: usize = 0;
+        for entry in serde_jsonlines::json_lines::<models::Edge, _>(&config.category_edges_path)? {
+            let entry = entry?;
+            if entry.to == fairphone_4_uid {
+                found += 1;
+            }
+        }
+
+        if found == 1 {
+            Ok(())
+        } else {
+            Err(Finding::Other(format!(
+                "Fairphone 4 ({FAIRPHONE_4_WIKI_ID}) had wrong numer of categories: {found}"
+            )))
         }
     }
 
@@ -477,6 +503,17 @@ impl SamplingRunner {
                     "wrong certification"
                 );
                 ensure!(product.medallions[2].sustainity.is_some(), "wrong certification");
+                ensure_eq!(product.alternatives.len(), 1, "wrong number of alternatives");
+                ensure_eq!(
+                    product.alternatives[0].category,
+                    "smartphone",
+                    "unwexpected category name"
+                );
+                ensure_eq!(
+                    product.alternatives[0].alternatives.len(),
+                    10,
+                    "wrong number of alternatives"
+                );
                 ensure_eq!(product.manufacturers.len(), 1, "wrong number of manufacturers");
             }
             api::GetProductResponse::NotFound { .. } => {
