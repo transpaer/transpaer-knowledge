@@ -4,7 +4,10 @@ use merge::Merge;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use sustainity_models::{collections, gather, ids, store};
+use sustainity_models::{
+    buckets::{Bucket, BucketError, DbStore},
+    gather, ids, store,
+};
 use sustainity_schema as schema;
 
 use crate::{config, errors, utils};
@@ -302,21 +305,6 @@ impl ExternalId {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
-pub struct RawExternalId(Vec<u8>);
-
-impl AsRef<[u8]> for RawExternalId {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl<'a> kv::Key<'a> for RawExternalId {
-    fn from_raw_key(r: &'a kv::Raw) -> Result<Self, kv::Error> {
-        Ok(Self(r.to_vec()))
-    }
-}
-
 trait UniqueId: Clone + Eq + Ord + std::hash::Hash {
     fn zero() -> Self;
     fn increment(&mut self);
@@ -328,7 +316,7 @@ impl UniqueId for gather::OrganisationId {
     }
 
     fn increment(&mut self) {
-        *self = Self::from_value(self.get_value() + 1);
+        *self = Self::from_value(self.as_value() + 1);
     }
 }
 
@@ -338,7 +326,7 @@ impl UniqueId for gather::ProductId {
     }
 
     fn increment(&mut self) {
-        *self = Self::from_value(self.get_value() + 1);
+        *self = Self::from_value(self.as_value() + 1);
     }
 }
 
@@ -393,101 +381,37 @@ where
     }
 }
 
-pub struct Bucket<'a, K, V> {
-    bucket: kv::Bucket<'a, Vec<u8>, Vec<u8>>,
-    phantom: std::marker::PhantomData<(K, V)>,
-}
-
-impl<K, V> Bucket<'_, K, V> {
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.bucket.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.bucket.is_empty()
-    }
-
-    pub fn get(&self, key: &K) -> Result<Option<V>, errors::KvStoreError>
-    where
-        K: Serialize,
-        V: DeserializeOwned,
-    {
-        let key_data = postcard::to_stdvec(key)?;
-        let value_data = self.bucket.get(&key_data)?;
-        Ok(if let Some(value_data) = value_data {
-            Some(postcard::from_bytes(&value_data)?)
-        } else {
-            None
-        })
-    }
-
-    pub fn remove(&self, key: &K) -> Result<Option<V>, errors::KvStoreError>
-    where
-        K: Serialize,
-        V: DeserializeOwned,
-    {
-        let key_data = postcard::to_stdvec(key)?;
-        let value_data = self.bucket.remove(&key_data)?;
-        Ok(if let Some(value_data) = value_data {
-            Some(postcard::from_bytes(&value_data)?)
-        } else {
-            None
-        })
-    }
-
-    pub fn insert(&self, key: &K, value: &V) -> Result<(), errors::KvStoreError>
-    where
-        K: Serialize,
-        V: Serialize,
-    {
-        let key_data = postcard::to_stdvec(key)?;
-        let value_data = postcard::to_stdvec(value)?;
-        self.bucket.set(&key_data, &value_data)?;
-        Ok(())
-    }
-}
-
-struct KvStore {
+struct GroupingStore {
     store: kv::Store,
 }
 
-impl KvStore {
-    pub fn new(path: &std::path::Path) -> Result<Self, errors::KvStoreError> {
+impl GroupingStore {
+    pub fn new(path: &std::path::Path) -> Result<Self, BucketError> {
         Ok(Self { store: kv::Store::new(kv::Config::new(path))? })
     }
 
     pub fn get_producer_external_to_individuals_bucket(
         &self,
-    ) -> Result<Bucket<ExternalId, Vec<IndividualProducerId>>, errors::KvStoreError> {
-        let bucket =
-            self.store.bucket::<Vec<u8>, Vec<u8>>(Some("producers_external_to_individuals"))?;
-        Ok(Bucket { bucket, phantom: std::marker::PhantomData })
+    ) -> Result<Bucket<ExternalId, Vec<IndividualProducerId>>, BucketError> {
+        Bucket::obtain(&self.store, "producers_external_to_individuals")
     }
 
     pub fn get_producer_individual_to_externals_bucket(
         &self,
-    ) -> Result<Bucket<IndividualProducerId, Vec<ExternalId>>, errors::KvStoreError> {
-        let bucket =
-            self.store.bucket::<Vec<u8>, Vec<u8>>(Some("producers_individual_to_externals"))?;
-        Ok(Bucket { bucket, phantom: std::marker::PhantomData })
+    ) -> Result<Bucket<IndividualProducerId, Vec<ExternalId>>, BucketError> {
+        Bucket::obtain(&self.store, "producers_individual_to_externals")
     }
 
     pub fn get_product_external_to_individuals_bucket(
         &self,
-    ) -> Result<Bucket<ExternalId, Vec<IndividualProductId>>, errors::KvStoreError> {
-        let bucket =
-            self.store.bucket::<Vec<u8>, Vec<u8>>(Some("products_external_to_individuals"))?;
-        Ok(Bucket { bucket, phantom: std::marker::PhantomData })
+    ) -> Result<Bucket<ExternalId, Vec<IndividualProductId>>, BucketError> {
+        Bucket::obtain(&self.store, "products_external_to_individuals")
     }
 
     pub fn get_product_individual_to_externals_bucket(
         &self,
-    ) -> Result<Bucket<IndividualProductId, Vec<ExternalId>>, errors::KvStoreError> {
-        let bucket =
-            self.store.bucket::<Vec<u8>, Vec<u8>>(Some("products_individual_to_externals"))?;
-        Ok(Bucket { bucket, phantom: std::marker::PhantomData })
+    ) -> Result<Bucket<IndividualProductId, Vec<ExternalId>>, BucketError> {
+        Bucket::obtain(&self.store, "products_individual_to_externals")
     }
 }
 
@@ -747,13 +671,13 @@ impl IdStructure for ProducerIds {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 enum IndividualProductId {
     /// EAN.
-    Ean(String),
+    Ean(ids::Ean),
 
     /// GTIN.
-    Gtin(String),
+    Gtin(ids::Gtin),
 
     /// Wikidata ID.
-    Wiki(String),
+    Wiki(ids::WikiId),
 }
 
 impl IndividualId for IndividualProductId {}
@@ -804,7 +728,7 @@ impl ProductIds {
         if let Some(ean) = &ids.ean {
             for id in ean {
                 match ids::Ean::try_from(id) {
-                    Ok(id) => individual.push(IndividualProductId::Ean(id.to_canonical_string())),
+                    Ok(id) => individual.push(IndividualProductId::Ean(id)),
                     Err(_) => warnings.push(CrystalizationWarning::InvalidIndividualId {
                         data_set_id,
                         individual_id: id.clone(),
@@ -815,7 +739,7 @@ impl ProductIds {
         if let Some(gtin) = &ids.gtin {
             for id in gtin {
                 match ids::Gtin::try_from(id) {
-                    Ok(id) => individual.push(IndividualProductId::Gtin(id.to_canonical_string())),
+                    Ok(id) => individual.push(IndividualProductId::Gtin(id)),
                     Err(_) => warnings.push(CrystalizationWarning::InvalidIndividualId {
                         data_set_id,
                         individual_id: id.clone(),
@@ -826,7 +750,7 @@ impl ProductIds {
         if let Some(wiki) = &ids.wiki {
             for id in wiki {
                 match ids::WikiId::try_from(id) {
-                    Ok(id) => individual.push(IndividualProductId::Wiki(id.to_canonical_string())),
+                    Ok(id) => individual.push(IndividualProductId::Wiki(id)),
                     Err(_) => warnings.push(CrystalizationWarning::InvalidIndividualId {
                         data_set_id,
                         individual_id: id.clone(),
@@ -932,12 +856,11 @@ impl Grouper {
         log::info!("Gathering IDs");
         let (summary, report) = Self::summarize(substrates)?;
 
-        if config.local_storage_runtime.exists() {
-            std::fs::remove_dir_all(&config.local_storage_runtime).map_err(|e| {
-                errors::CrystalizationError::Io(e, config.local_storage_runtime.clone())
-            })?;
+        if config.runtime_storage.exists() {
+            std::fs::remove_dir_all(&config.runtime_storage)
+                .map_err(|e| errors::CrystalizationError::Io(e, config.runtime_storage.clone()))?;
         }
-        let store = KvStore::new(&config.local_storage_runtime)?;
+        let store = GroupingStore::new(&config.runtime_storage)?;
 
         log::info!("Grouping producer IDs");
         let producer = {
@@ -1114,7 +1037,6 @@ impl Processor {
         self.collector.update_organisation(
             unique_id.clone(),
             gather::Organisation {
-                db_key: unique_id,
                 ids,
                 names: producer
                     .names
@@ -1133,6 +1055,7 @@ impl Processor {
                     .collect(),
                 websites: producer.websites.into_iter().collect(),
                 certifications: gather::Certifications::default(),
+                products: BTreeSet::new(), //< filled later
             },
         );
 
@@ -1152,13 +1075,12 @@ impl Processor {
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), groups, substrate);
-        let manufacturer_ids =
+        let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
-            unique_id.clone(),
+            unique_id,
             gather::Product {
-                db_key: unique_id,
                 ids,
                 names: product
                     .names
@@ -1179,7 +1101,7 @@ impl Processor {
                     c.categories.iter().map(|c| c.join("/")).collect()
                 }),
                 regions: extract_regions(product.availability.as_ref())?,
-                manufacturer_ids,
+                manufacturers,
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
@@ -1203,13 +1125,12 @@ impl Processor {
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), groups, substrate);
-        let manufacturer_ids =
+        let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
-            unique_id.clone(),
+            unique_id,
             gather::Product {
-                db_key: unique_id,
                 ids,
                 names: product
                     .names
@@ -1224,7 +1145,7 @@ impl Processor {
                     .collect(),
                 categories: product.categorisation.categories.iter().map(|c| c.join("/")).collect(),
                 regions: extract_regions(product.availability.as_ref())?,
-                manufacturer_ids,
+                manufacturers,
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
@@ -1257,7 +1178,6 @@ impl Processor {
         self.collector.update_organisation(
             unique_id.clone(),
             gather::Organisation {
-                db_key: unique_id,
                 ids,
                 names: producer
                     .names
@@ -1276,6 +1196,7 @@ impl Processor {
                     .collect(),
                 websites: producer.websites.into_iter().collect(),
                 certifications,
+                products: BTreeSet::new(), //< filled later
             },
         );
 
@@ -1295,13 +1216,12 @@ impl Processor {
         let ids = self.convert_product_ids(product.ids, substrate);
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), groups, substrate);
-        let manufacturer_ids =
+        let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), groups, substrate);
 
         self.collector.update_product(
             unique_id.clone(),
             gather::Product {
-                db_key: unique_id,
                 ids,
                 names: product
                     .names
@@ -1318,7 +1238,7 @@ impl Processor {
                     c.categories.iter().map(|c| c.join("/")).collect()
                 }),
                 regions: extract_regions(product.availability.as_ref())?,
-                manufacturer_ids,
+                manufacturers,
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
@@ -1522,8 +1442,7 @@ impl Processor {
 
 #[derive(Debug, derive_new::new)]
 pub struct Saver {
-    /// Target configuration.
-    config: config::TargetConfig,
+    store: DbStore,
 }
 
 impl Saver {
@@ -1540,18 +1459,22 @@ impl Saver {
     }
 
     fn finalize(
-        organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut BTreeMap<gather::OrganisationId, gather::Organisation>,
         products: &mut BTreeMap<gather::ProductId, gather::Product>,
     ) {
         log::info!("Finalizing products");
 
-        // Assign certifications to products
+        // Assign
+        //  - certifications to products
+        //  - product to organisations
         log::info!(" -> assigning certifications");
-        for product in products.values_mut() {
-            for manufacturer_id in &product.manufacturer_ids {
-                if let Some(organisation) = organisations.get(manufacturer_id) {
+        for (product_id, product) in products.iter_mut() {
+            for manufacturer_id in &product.manufacturers {
+                if let Some(organisation) = organisations.get_mut(manufacturer_id) {
                     product.certifications.inherit(&organisation.certifications);
+                    organisation.products.insert(product_id.clone());
                 }
+
                 // TODO: There are many organisations that cannot be found.
                 //       It seems like all of them are bugs in Wikidata.
                 //       Make sure all organisations are found.
@@ -1566,9 +1489,9 @@ impl Saver {
     }
 
     /// Runs a quick sanity check: the `unique` should contain as many elements as `all`.
-    fn uniqueness_check<T1, T2>(
+    fn uniqueness_check<T1, T2, T3>(
         unique: &HashSet<T1>,
-        all: &[T2],
+        all: &Bucket<T2, T3>,
         comment: &'static str,
     ) -> Result<(), errors::CrystalizationError> {
         if unique.len() == all.len() {
@@ -1582,655 +1505,325 @@ impl Saver {
         }
     }
 
-    /// Prepares organsation data.
+    /// Stores organsation data.
     ///
     /// - fills left-over certifications
     /// - converts into a vector
-    fn prepare_organisations(
+    fn store_organisations(
+        &self,
         organisations: BTreeMap<gather::OrganisationId, gather::Organisation>,
-    ) -> Vec<store::Organisation> {
-        log::info!("Preparing organisations");
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "organisation.id => organisation";
+        log::info!(" -> `{COMMENT}`");
 
-        organisations.into_values().map(|o| o.clone().store()).collect()
+        let bucket = self.store.get_organisation_bucket()?;
+        for (id, organisation) in organisations {
+            bucket.insert(&id, &organisation.store())?;
+        }
+
+        Ok(())
     }
 
-    /// Prepares organsation keywords data.
+    /// Stores organsation keywords data.
     ///
     /// This data is needed to implement an efficient text search index.
-    /// Data is composed from keyword vertex collection and edge collection connecting them to organisations.
-    fn prepare_organisation_keywords(
+    fn store_organisation_keywords(
+        &self,
         organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
-    ) -> Result<(Vec<gather::Keyword>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "organisation keywords";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "keywords => [organisation.id]";
+        log::info!(" -> `{COMMENT}`");
 
-        log::info!("Preparing {COMMENT}");
-
-        let mut keywords = BTreeMap::<String, BTreeSet<gather::OrganisationId>>::new();
-        for organisation in organisations.values() {
+        let mut data = BTreeMap::<String, Vec<store::OrganisationId>>::new();
+        for (unique_id, organisation) in organisations {
             for keyword in Self::extract_keywords(&organisation.names) {
-                keywords
-                    .entry(keyword)
-                    .and_modify(|ids| {
-                        ids.insert(organisation.db_key.clone());
-                    })
-                    .or_insert_with(|| [organisation.db_key.clone()].into());
+                data.entry(keyword)
+                    .and_modify(|ids| ids.push(unique_id.clone()))
+                    .or_insert_with(|| vec![unique_id.clone()]);
             }
         }
 
-        let mut uniqueness_check = HashSet::new();
-        let mut organisation_keywords = Vec::<gather::Keyword>::with_capacity(keywords.len());
-        let mut organisation_keyword_edges = Vec::<gather::Edge>::new();
-        for (keyword, organisation_ids) in keywords {
-            let ki = collections::organisation_keyword(&keyword);
-            uniqueness_check.insert(ki.key.clone());
-            organisation_keywords
-                .push(gather::Keyword { db_key: ki.key, keyword: keyword.clone() });
-            for organisation_id in organisation_ids {
-                organisation_keyword_edges.push(gather::Edge {
-                    from: ki.id.clone(),
-                    to: collections::organisation(&organisation_id).id,
-                });
-            }
+        let bucket = self.store.get_keyword_to_organisation_ids_bucket()?;
+        for (keyword, ids) in data {
+            bucket.insert(&keyword, &ids)?;
         }
 
-        // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &organisation_keywords, COMMENT)?;
-
-        Ok((organisation_keywords, organisation_keyword_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares VAT data.
+    /// Stores VAT data.
     ///
     /// This data is needed to implement an efficient VAT search index.
-    /// Data is composed from VAT vertex collection and edge collection connecting them to organisation.
-    fn prepare_organisation_vat_ids(
+    fn store_organisation_vat_ids(
+        &self,
         organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "organisation VAT IDs";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "organisation.vat_id => organisation.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_vat_id_to_organisation_id_bucket()?;
+
         let mut uniqueness_check = HashSet::new();
-        let mut ids = Vec::<gather::IdEntry>::new();
-        let mut id_edges = Vec::<gather::Edge>::new();
-        for organisation in organisations.values() {
-            for id in &organisation.ids.vat_ids {
-                let vat_ki = collections::organisation_vat(id);
-                let organisation_ki = collections::organisation(&organisation.db_key);
-                uniqueness_check.insert(vat_ki.key.clone());
-                ids.push(gather::IdEntry { db_key: vat_ki.key });
-                id_edges.push(gather::Edge { from: vat_ki.id, to: organisation_ki.id });
+        for (organisation_id, organisation) in organisations {
+            for vat_id in &organisation.ids.vat_ids {
+                bucket.insert(vat_id, organisation_id)?;
+                uniqueness_check.insert(vat_id);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &ids, COMMENT)?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((ids, id_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares Wikidata ID data.
+    /// Stores Wikidata ID data.
     ///
     /// This data is needed to implement an efficient Wikidata ID search index.
-    /// Data is composed from Wikidata ID vertex collection and edge collection connecting them to organisations.
-    fn prepare_organisation_wiki_ids(
+    fn store_organisation_wiki_ids(
+        &self,
         organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "organisation Wiki IDs";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "organisation.wiki_id => organisation.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_wiki_id_to_organisation_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        let mut ids = Vec::<gather::IdEntry>::new();
-        let mut id_edges = Vec::<gather::Edge>::new();
-        for organisation in organisations.values() {
-            for id in &organisation.ids.wiki {
-                let wiki_ki = collections::organisation_wiki(id);
-                let organisation_ki = collections::organisation(&organisation.db_key);
-                uniqueness_check.insert(wiki_ki.key.clone());
-                ids.push(gather::IdEntry { db_key: wiki_ki.key });
-                id_edges.push(gather::Edge { from: wiki_ki.id, to: organisation_ki.id });
+        for (organisation_id, organisation) in organisations {
+            for wiki_id in &organisation.ids.wiki {
+                bucket.insert(wiki_id, organisation_id)?;
+                uniqueness_check.insert(wiki_id);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &ids, COMMENT)?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((ids, id_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares organisation WWW domain data.
+    /// Stores organisation WWW domain data.
     ///
     /// This data is needed to implement an efficient WWW domain search index.
-    /// Data is composed from WWW domain vertex collection and edge collection connecting them to organisations.
-    fn prepare_organisation_wwws(
+    fn store_organisation_www_domains(
+        &self,
         organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "organisation WWW domains";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "organisation.WWW_domain => organisation.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_www_domain_to_organisation_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        let mut ids = Vec::<gather::IdEntry>::new();
-        let mut id_edges = Vec::<gather::Edge>::new();
-        for organisation in organisations.values() {
-            for id in &organisation.ids.domains {
-                let www_ki = collections::organisation_www(id);
-                let organisation_ki = collections::organisation(&organisation.db_key);
-                uniqueness_check.insert(www_ki.key.clone());
-                ids.push(gather::IdEntry { db_key: www_ki.key });
-                id_edges.push(gather::Edge { from: www_ki.id, to: organisation_ki.id });
+        for (organisation_id, organisation) in organisations {
+            for domain in &organisation.ids.domains {
+                bucket.insert(domain, organisation_id)?;
+                uniqueness_check.insert(domain);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &ids, "COMMENT")?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((ids, id_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares product data.
-    ///
-    /// - fills left-over certifications
-    /// - converts into a vector
-    fn prepare_products(
+    /// Stores product data.
+    fn store_products(
+        &self,
         products: BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Vec<store::Product> {
-        log::info!("Preparing products");
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "product.id => product";
+        log::info!(" -> `{COMMENT}`");
 
-        products.into_values().map(|p| p.clone().store()).collect()
+        let bucket = self.store.get_product_bucket()?;
+        for (id, product) in products {
+            let product = product.clone().store();
+            bucket.insert(&id, &product)?;
+
+            // Make sure that the DB can be deserialized
+            assert!(bucket.get(&id).is_ok(), "DB integrity: {id:?} => {product:?}");
+        }
+
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares product keywords data.
+    /// Stores product keywords data.
     ///
     /// This data is needed to implement an efficient text search index.
-    /// Data is composed from keyword vertex collection and edge collection connecting them to products.
-    fn prepare_product_keywords(
+    fn store_product_keywords(
+        &self,
         products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Result<(Vec<gather::Keyword>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "product keywords";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "keywords => [product.id]";
+        log::info!(" -> `{COMMENT}`");
 
-        log::info!("Preparing {COMMENT}");
-
-        let mut keywords = BTreeMap::<String, BTreeSet<gather::ProductId>>::new();
-        for product in products.values() {
+        let mut data = BTreeMap::<String, Vec<store::ProductId>>::new();
+        for (unique_id, product) in products {
             for keyword in Self::extract_keywords(&product.names) {
-                keywords
-                    .entry(keyword)
-                    .and_modify(|ids| {
-                        ids.insert(product.db_key.clone());
-                    })
-                    .or_insert_with(|| [product.db_key.clone()].into());
+                data.entry(keyword)
+                    .and_modify(|ids| ids.push(unique_id.clone()))
+                    .or_insert_with(|| vec![unique_id.clone()]);
             }
         }
 
-        let mut uniqueness_check = HashSet::new();
-        let mut product_keywords = Vec::<gather::Keyword>::with_capacity(keywords.len());
-        let mut product_keyword_edges = Vec::<gather::Edge>::new();
-        for (keyword, product_ids) in keywords {
-            let product_keyword_ki = collections::product_keyword(&keyword);
-            uniqueness_check.insert(product_keyword_ki.key.clone());
-            product_keywords
-                .push(gather::Keyword { db_key: product_keyword_ki.key, keyword: keyword.clone() });
-            for product_id in product_ids {
-                let product_ki = collections::product(&product_id);
-                product_keyword_edges
-                    .push(gather::Edge { from: product_keyword_ki.id.clone(), to: product_ki.id });
-            }
+        let bucket = self.store.get_keyword_to_product_ids_bucket()?;
+        for (keyword, ids) in data {
+            bucket.insert(&keyword, &ids)?;
         }
 
-        // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &product_keywords, COMMENT)?;
-
-        Ok((product_keywords, product_keyword_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares EAN data.
+    /// Stores EAN data.
     ///
     /// This data is needed to implement an efficient EAN search index.
-    /// Data is composed from EAN vertex collection and edge collection connecting them to products.
-    fn prepare_eans(
+    fn store_product_eans(
+        &self,
         products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "EANs";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "product.ean => product.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_ean_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        let mut eans = Vec::<gather::IdEntry>::new();
-        let mut ean_edges = Vec::<gather::Edge>::new();
-        for product in products.values() {
+        for (product_id, product) in products {
             for ean in &product.ids.eans {
-                let ean_ki = collections::product_ean(ean);
-                let product_ki = collections::product(&product.db_key);
-                uniqueness_check.insert(ean_ki.key.clone());
-                eans.push(gather::IdEntry { db_key: ean_ki.key });
-                ean_edges.push(gather::Edge { from: ean_ki.id, to: product_ki.id });
+                bucket.insert(ean, product_id)?;
+                uniqueness_check.insert(ean);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &eans, COMMENT)?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((eans, ean_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares GTIN data.
+    /// Stores GTIN data.
     ///
     /// This data is needed to implement an efficient GTIN search index.
-    /// Data is composed from GTIN vertex collection and edge collection connecting them to products.
-    fn prepare_gtins(
+    fn store_product_gtins(
+        &self,
         products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "GTINs";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "product.gtin => product.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_gtin_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        let mut gtins = Vec::<gather::IdEntry>::new();
-        let mut gtin_edges = Vec::<gather::Edge>::new();
-        for product in products.values() {
+        for (product_id, product) in products {
             for gtin in &product.ids.gtins {
-                let gtin_ki = collections::product_gtin(gtin);
-                let product_ki = collections::product(&product.db_key);
-                uniqueness_check.insert(gtin_ki.key.clone());
-                gtins.push(gather::IdEntry { db_key: gtin_ki.key });
-                gtin_edges.push(gather::Edge { from: gtin_ki.id, to: product_ki.id });
+                bucket.insert(gtin, product_id)?;
+                uniqueness_check.insert(gtin);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &gtins, COMMENT)?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((gtins, gtin_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares Wikidata ID data.
+    /// Stores Wikidata ID data.
     ///
     /// This data is needed to implement an efficient Wikidata ID search index.
     /// Data is composed from Wikidata ID vertex collection and edge collection connecting them to products.
-    fn prepare_product_wiki_ids(
+    fn store_product_wiki_ids(
+        &self,
         products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "product Wiki IDs";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "product.wiki_id => product.id";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
+
+        let bucket = self.store.get_wiki_id_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        let mut ids = Vec::<gather::IdEntry>::new();
-        let mut id_edges = Vec::<gather::Edge>::new();
-        for product in products.values() {
-            for id in &product.ids.wiki {
-                let wiki_ki = collections::product_wiki(id);
-                let product_ki = collections::product(&product.db_key);
-                uniqueness_check.insert(wiki_ki.key.clone());
-                ids.push(gather::IdEntry { db_key: wiki_ki.key });
-                id_edges.push(gather::Edge { from: wiki_ki.id, to: product_ki.id });
+        for (product_id, product) in products {
+            for wiki_id in &product.ids.wiki {
+                bucket.insert(wiki_id, product_id)?;
+                uniqueness_check.insert(wiki_id);
             }
         }
 
         // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &ids, COMMENT)?;
+        Self::uniqueness_check(&uniqueness_check, &bucket, COMMENT)?;
 
-        Ok((ids, id_edges))
+        bucket.flush()?;
+        Ok(())
     }
 
-    /// Prepares category data.
+    /// Stores category data.
     ///
     /// This data is needed to implement an efficient alternative product search index.
     /// Data is composed from category vertex collection and edge collection connecting them to products.
-    fn prepare_categories(
+    fn store_categories(
+        &self,
         products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Result<(Vec<gather::IdEntry>, Vec<gather::Edge>), errors::CrystalizationError> {
-        const COMMENT: &str = "categories";
+    ) -> Result<(), errors::CrystalizationError> {
+        const COMMENT: &str = "product.category => [product.id]";
 
-        log::info!("Preparing {COMMENT}");
+        log::info!(" -> `{COMMENT}`");
 
-        let mut category_to_products = BTreeMap::<String, BTreeSet<gather::ProductId>>::new();
-        for product in products.values() {
+        let mut data = BTreeMap::<String, Vec<store::ProductId>>::new();
+        for (unique_id, product) in products {
             for category in &product.categories {
-                category_to_products
-                    .entry(category.clone())
-                    .and_modify(|e| {
-                        e.insert(product.db_key.clone());
-                    })
-                    .or_insert_with(|| {
-                        let mut set = BTreeSet::new();
-                        set.insert(product.db_key.clone());
-                        set
-                    });
+                data.entry(category.clone())
+                    .and_modify(|ids| ids.push(unique_id.clone()))
+                    .or_insert_with(|| vec![unique_id.clone()]);
             }
         }
 
-        let mut uniqueness_check = HashSet::new();
-        let mut categories = Vec::<gather::IdEntry>::new();
-        let mut category_edges = Vec::<gather::Edge>::new();
-        for (category, product_ids) in category_to_products {
-            if product_ids.len() < MAX_CATEGORY_PRODUCT_NUM {
-                let category_ki = collections::category(&category);
-                uniqueness_check.insert(category_ki.key.clone());
-                categories.push(gather::IdEntry { db_key: category_ki.key });
-                for product_id in product_ids {
-                    let product_ki = collections::product(&product_id);
-                    category_edges
-                        .push(gather::Edge { from: category_ki.id.clone(), to: product_ki.id });
-                }
-            } else {
-                log::info!(
-                    " - skipping category `{}` with {} products",
-                    category,
-                    product_ids.len()
-                );
+        let bucket = self.store.get_categories_bucket()?;
+        for (keyword, ids) in data {
+            if ids.len() < MAX_CATEGORY_PRODUCT_NUM {
+                bucket.insert(&keyword, &ids)?;
             }
         }
 
-        // Sanity check: all keys should be unique
-        Self::uniqueness_check(&uniqueness_check, &categories, COMMENT)?;
-
-        Ok((categories, category_edges))
-    }
-
-    /// Prepares manufacturing data.
-    ///
-    /// Data is composed from edges connecting produects to their manufacturers.
-    fn prepare_manufacturing(
-        products: &BTreeMap<gather::ProductId, gather::Product>,
-    ) -> Vec<gather::Edge> {
-        log::info!("Preparing manufacturing");
-        let mut manufacturing_edges = Vec::<gather::Edge>::new();
-        for product in products.values() {
-            let product_ki = collections::product(&product.db_key);
-            for organisation_id in &product.manufacturer_ids {
-                let organisation_ki = collections::organisation(organisation_id);
-                manufacturing_edges
-                    .push(gather::Edge { from: organisation_ki.id, to: product_ki.id.clone() });
-            }
-        }
-        manufacturing_edges
-    }
-
-    /// Saves organisations.
-    fn save_organisations(
-        &self,
-        mut organisations: Vec<store::Organisation>,
-    ) -> Result<(), errors::ProcessingError> {
-        log::info!("Saving {} organisations", organisations.len());
-        organisations.sort_by(|a, b| a.ids.cmp(&b.ids));
-        serde_jsonlines::write_json_lines(&self.config.organisations_path, &organisations)?;
+        bucket.flush()?;
         Ok(())
     }
 
-    /// Saves organisation keywords.
-    fn save_organisation_keywords(
-        &self,
-        organisation_keywords: (Vec<gather::Keyword>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut organisation_keywords, mut organisation_keyword_edges) = organisation_keywords;
-
-        log::info!("Saving {} organisation keywords", organisation_keywords.len());
-        organisation_keywords.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_keywords_path,
-            &organisation_keywords,
-        )?;
-
-        log::info!("Saving {} organisation keyword edges", organisation_keyword_edges.len());
-        organisation_keyword_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_keyword_edges_path,
-            &organisation_keyword_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves VAT numbers.
-    fn save_organisation_vat_ids(
-        &self,
-        vat_ids: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut vat_ids, mut vat_id_edges) = vat_ids;
-
-        log::info!("Saving {} VAT IDs", vat_ids.len());
-        vat_ids.sort();
-        serde_jsonlines::write_json_lines(&self.config.organisation_vat_ids_path, &vat_ids)?;
-
-        log::info!("Saving {} VAT ID edges", vat_id_edges.len());
-        vat_id_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_vat_id_edges_path,
-            &vat_id_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves organisation Wikidata IDs.
-    fn save_organisation_wiki_ids(
-        &self,
-        organisation_wiki_ids: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut organisation_wiki_ids, mut organisation_wiki_id_edges) = organisation_wiki_ids;
-
-        log::info!("Saving {} organisation Wiki IDs", organisation_wiki_ids.len());
-        organisation_wiki_ids.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_wiki_ids_path,
-            &organisation_wiki_ids,
-        )?;
-
-        log::info!("Saving {} organisation Wiki ID edges", organisation_wiki_id_edges.len());
-        organisation_wiki_id_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_wiki_id_edges_path,
-            &organisation_wiki_id_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves organisation WWW domains.
-    fn save_organisation_wwws(
-        &self,
-        organisation_wwws: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut organisation_wwws, mut organisation_www_edges) = organisation_wwws;
-
-        log::info!("Saving {} organisation WWW domains", organisation_wwws.len());
-        organisation_wwws.sort();
-        serde_jsonlines::write_json_lines(&self.config.organisation_wwws_path, &organisation_wwws)?;
-
-        log::info!("Saving {} organisation WWW domain edges", organisation_www_edges.len());
-        organisation_www_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.organisation_www_edges_path,
-            &organisation_www_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves products.
-    fn save_products(
-        &self,
-        mut products: Vec<store::Product>,
-    ) -> Result<(), errors::ProcessingError> {
-        log::info!("Saving {} products.", products.len());
-        products.sort_by(|a, b| a.ids.cmp(&b.ids));
-        serde_jsonlines::write_json_lines(&self.config.products_path, &products)?;
-        Ok(())
-    }
-
-    /// Saves product keywords.
-    fn save_product_keywords(
-        &self,
-        product_keywords: (Vec<gather::Keyword>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut product_keywords, mut product_keyword_edges) = product_keywords;
-
-        log::info!("Saving {} product keywords", product_keywords.len());
-        product_keywords.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_keywords_path, &product_keywords)?;
-
-        log::info!("Saving {} product keyword edges", product_keyword_edges.len());
-        product_keyword_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.product_keyword_edges_path,
-            &product_keyword_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves EANs.
-    fn save_eans(
-        &self,
-        eans: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut eans, mut ean_edges) = eans;
-
-        log::info!("Saving {} product EANs", eans.len());
-        eans.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_eans_path, &eans)?;
-
-        log::info!("Saving {} product EAN edges", ean_edges.len());
-        ean_edges.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_ean_edges_path, &ean_edges)?;
-
-        Ok(())
-    }
-
-    /// Saves GTINs.
-    fn save_gtins(
-        &self,
-        gtins: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut gtins, mut gtin_edges) = gtins;
-
-        log::info!("Saving {} product GTINs", gtins.len());
-        gtins.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_gtins_path, &gtins)?;
-
-        log::info!("Saving {} product GTIN edges", gtin_edges.len());
-        gtin_edges.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_gtin_edges_path, &gtin_edges)?;
-
-        Ok(())
-    }
-
-    /// Saves product Wikidata IDs.
-    fn save_product_wiki_ids(
-        &self,
-        product_wiki_ids: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut product_wiki_ids, mut product_wiki_id_edges) = product_wiki_ids;
-
-        log::info!("Saving {} product Wiki IDs", product_wiki_ids.len());
-        product_wiki_ids.sort();
-        serde_jsonlines::write_json_lines(&self.config.product_wiki_ids_path, &product_wiki_ids)?;
-
-        log::info!("Saving {} product Wiki ID edges", product_wiki_id_edges.len());
-        product_wiki_id_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.product_wiki_id_edges_path,
-            &product_wiki_id_edges,
-        )?;
-
-        Ok(())
-    }
-
-    /// Saves categories.
-    fn save_categories(
-        &self,
-        categories: (Vec<gather::IdEntry>, Vec<gather::Edge>),
-    ) -> Result<(), errors::ProcessingError> {
-        let (mut categories, mut category_edges) = categories;
-
-        log::info!("Saving {} product categories", categories.len());
-        categories.sort();
-        serde_jsonlines::write_json_lines(&self.config.categories_path, &categories)?;
-
-        log::info!("Saving {} product category edges", category_edges.len());
-        category_edges.sort();
-        serde_jsonlines::write_json_lines(&self.config.category_edges_path, &category_edges)?;
-
-        Ok(())
-    }
-
-    /// Saves product to organisation edges.
-    fn save_manufacturing(
-        &self,
-        mut manufacturing_edges: Vec<gather::Edge>,
-    ) -> Result<(), errors::ProcessingError> {
-        log::info!("Saving {} manufacturing edges", manufacturing_edges.len());
-        manufacturing_edges.sort();
-        serde_jsonlines::write_json_lines(
-            &self.config.manufacturing_edges_path,
-            &manufacturing_edges,
-        )?;
-        Ok(())
-    }
-
-    fn save_all(
+    fn store_all(
         self,
         mut collector: CrystalizationCollector,
     ) -> Result<(), errors::ProcessingError> {
-        log::info!("Saving");
+        Self::finalize(&mut collector.organisations, &mut collector.products);
 
-        Self::finalize(&collector.organisations, &mut collector.products);
+        log::info!("Storing:");
 
-        {
-            let manufacturing_edges = Self::prepare_manufacturing(&collector.products);
-            self.save_manufacturing(manufacturing_edges)?;
-        }
-        {
-            let organisation_keywords =
-                Self::prepare_organisation_keywords(&collector.organisations)?;
-            self.save_organisation_keywords(organisation_keywords)?;
-        }
-        {
-            let organisation_vat_ids =
-                Self::prepare_organisation_vat_ids(&collector.organisations)?;
-            self.save_organisation_vat_ids(organisation_vat_ids)?;
-        }
-        {
-            let organisation_wiki_ids =
-                Self::prepare_organisation_wiki_ids(&collector.organisations)?;
-            self.save_organisation_wiki_ids(organisation_wiki_ids)?;
-        }
-        {
-            let organisation_wwws = Self::prepare_organisation_wwws(&collector.organisations)?;
-            self.save_organisation_wwws(organisation_wwws)?;
-        }
-        {
-            let organisations = Self::prepare_organisations(collector.organisations);
-            self.save_organisations(organisations)?;
-        }
-        {
-            let product_keywords = Self::prepare_product_keywords(&collector.products)?;
-            self.save_product_keywords(product_keywords)?;
-        }
-        {
-            let eans = Self::prepare_eans(&collector.products)?;
-            self.save_eans(eans)?;
-        }
-        {
-            let gtins = Self::prepare_gtins(&collector.products)?;
-            self.save_gtins(gtins)?;
-        }
-        {
-            let product_wiki_ids = Self::prepare_product_wiki_ids(&collector.products)?;
-            self.save_product_wiki_ids(product_wiki_ids)?;
-        }
-        {
-            let categories = Self::prepare_categories(&collector.products)?;
-            self.save_categories(categories)?;
-        }
-        {
-            let products = Self::prepare_products(collector.products);
-            self.save_products(products)?;
-        }
+        self.store_organisation_keywords(&collector.organisations)?;
+        self.store_organisation_vat_ids(&collector.organisations)?;
+        self.store_organisation_wiki_ids(&collector.organisations)?;
+        self.store_organisation_www_domains(&collector.organisations)?;
+        self.store_organisations(collector.organisations)?;
 
-        log::info!("Condensation finished");
+        self.store_product_keywords(&collector.products)?;
+        self.store_product_eans(&collector.products)?;
+        self.store_product_gtins(&collector.products)?;
+        self.store_product_wiki_ids(&collector.products)?;
+        self.store_categories(&collector.products)?;
+        self.store_products(collector.products)?;
+
+        log::info!("Crystalisation finished");
 
         Ok(())
     }
@@ -2247,7 +1840,8 @@ impl Crystalizer {
             report1.merge(report2);
             report1.merge(report3);
             report1.report(&substrates);
-            Saver::new((*config.target).clone()).save_all(collector)?;
+            let store = DbStore::new(&config.db_storage)?;
+            Saver::new(store).store_all(collector)?;
             Ok(())
         })
     }
@@ -2334,38 +1928,34 @@ mod test {
         pub fn get_external_to_individuals_bucket<'a>(
             &'a self,
         ) -> Bucket<'a, ExternalId, Vec<IndividualTestId>> {
-            let bucket =
-                self.store.bucket::<Vec<u8>, Vec<u8>>(Some("external_to_individuals")).unwrap();
-            Bucket { bucket, phantom: std::marker::PhantomData }
+            Bucket::obtain(&self.store, "external_to_individuals").unwrap()
         }
 
         pub fn get_individual_to_externals_bucket<'a>(
             &'a self,
         ) -> Bucket<'a, IndividualTestId, Vec<ExternalId>> {
-            let bucket =
-                self.store.bucket::<Vec<u8>, Vec<u8>>(Some("individual_to_externals")).unwrap();
-            Bucket { bucket, phantom: std::marker::PhantomData }
+            Bucket::obtain(&self.store, "individual_to_externals").unwrap()
         }
     }
 
     #[test]
     fn organisation_id() {
         let mut id = gather::OrganisationId::zero();
-        assert_eq!(id.get_value(), 0);
+        assert_eq!(id.as_value(), 0);
         id.increment();
-        assert_eq!(id.get_value(), 1);
+        assert_eq!(id.as_value(), 1);
         id.increment();
-        assert_eq!(id.get_value(), 2);
+        assert_eq!(id.as_value(), 2);
     }
 
     #[test]
     fn product_id() {
         let mut id = gather::ProductId::zero();
-        assert_eq!(id.get_value(), 0);
+        assert_eq!(id.as_value(), 0);
         id.increment();
-        assert_eq!(id.get_value(), 1);
+        assert_eq!(id.as_value(), 1);
         id.increment();
-        assert_eq!(id.get_value(), 2);
+        assert_eq!(id.as_value(), 2);
     }
 
     #[test]

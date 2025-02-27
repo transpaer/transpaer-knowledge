@@ -1,4 +1,4 @@
-pub mod collections;
+pub mod buckets;
 pub mod gather;
 pub mod ids;
 pub mod models;

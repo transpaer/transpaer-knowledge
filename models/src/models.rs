@@ -15,15 +15,33 @@ use sustainity_schema as schema;
 use crate::ids;
 
 pub type LibraryTopic = String;
-pub type StoreGtin = usize;
-pub type GatherProductId = ids::ProductId;
-pub type StoreProductId = String;
-pub type GatherOrganisationId = ids::OrganisationId;
-pub type StoreOrganisationId = String;
-pub type GatherVatId = ids::VatId;
-pub type StoreVatId = String;
-pub type GatherDomain = String;
-pub type StoreDomain = String;
+pub type Domain = String;
+
+#[cfg(feature = "into-api")]
+#[allow(clippy::ptr_arg)]
+fn domain_to_id(s: &String) -> api::Id {
+    api::Id::from_str(s).expect("Converting a domain")
+}
+
+#[cfg(feature = "into-api")]
+fn wiki_to_id(id: &ids::WikiId) -> api::Id {
+    api::Id::from_str(&id.to_canonical_string()).expect("Converting Wiki ID")
+}
+
+#[cfg(feature = "into-api")]
+fn vat_to_id(id: &ids::VatId) -> api::Id {
+    api::Id::from_str(&id.to_canonical_string()).expect("Converting Vat ID")
+}
+
+#[cfg(feature = "into-api")]
+fn ean_to_id(id: &ids::Ean) -> api::Id {
+    api::Id::from_str(&id.to_canonical_string()).expect("Converting EAN")
+}
+
+#[cfg(feature = "into-api")]
+fn gtin_to_id(id: &ids::Gtin) -> api::Id {
+    api::Id::from_str(&id.to_canonical_string()).expect("Converting GTIN")
+}
 
 #[cfg(feature = "into-api")]
 #[derive(Debug, Snafu)]
@@ -42,32 +60,26 @@ impl IntoApiError {
 
 /// Points to a source of some data.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
 pub enum Source {
     /// Wikidata.
-    #[serde(rename = "wiki")]
     Wikidata,
 
     /// Open Food Facts.
-    #[serde(rename = "off")]
     OpenFoodFacts,
 
     /// EU Ecolabel.
-    #[serde(rename = "eu")]
     EuEcolabel,
 
     /// BCorp.
-    #[serde(rename = "bcorp")]
     BCorp,
 
     /// Fashion Transparency Index.
-    #[serde(rename = "fti")]
     Fti,
 
     /// TCO.
-    #[serde(rename = "tco")]
     Tco,
 
-    #[serde(rename = "other")]
     Other,
 }
 
@@ -120,11 +132,9 @@ impl Source {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Text {
     /// Text.
-    #[serde(rename = "text")]
     pub text: String,
 
     /// Source of the text.
-    #[serde(rename = "source")]
     pub source: Source,
 }
 
@@ -161,11 +171,9 @@ pub struct Image {
     /// Name of the images.
     ///
     /// Together with the source it's possible to reconstruct images URL.
-    #[serde(rename = "image")]
     pub image: String,
 
     /// Source of the image.
-    #[serde(rename = "source")]
     pub source: Source,
 }
 
@@ -176,21 +184,28 @@ impl Image {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-#[serde(tag = "variant", content = "content")]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Regions {
     /// Available world-wide
-    #[serde(rename = "all")]
     World,
 
     /// Region could not be identified
-    #[serde(rename = "unknown")]
-    #[default]
     Unknown,
 
     /// List of regions
-    #[serde(rename = "list")]
     List(Vec<isocountry::CountryCode>),
+}
+
+impl Regions {
+    pub fn is_available_in(&self, region: Option<&str>) -> bool {
+        match self {
+            Self::World => true,
+            Self::Unknown => false,
+            Self::List(codes) => region
+                .map(|region| codes.iter().any(|code| code.alpha3() == region))
+                .unwrap_or(false),
+        }
+    }
 }
 
 impl merge::Merge for Regions {
@@ -398,57 +413,19 @@ impl Certifications {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct IdEntry {
-    /// DB entry key.
-    #[serde(rename = "_key")]
-    pub db_key: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Keyword {
-    /// DB entry ID.
-    #[serde(rename = "_key")]
-    pub db_key: String,
-
-    /// The keyword value.
-    #[serde(rename = "keyword")]
-    pub keyword: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u8)]
 pub enum SustainityScoreCategory {
-    #[serde(rename = "root")]
     Root,
-
-    #[serde(rename = "data_availability")]
     DataAvailability,
-
-    #[serde(rename = "producer_known")]
     ProducerKnown,
-
-    #[serde(rename = "production_place_known")]
     ProductionPlaceKnown,
-
-    #[serde(rename = "id_known")]
     IdKnown,
-
-    #[serde(rename = "category_assigned")]
     CategoryAssigned,
-
-    #[serde(rename = "category")]
     Category,
-
-    #[serde(rename = "warranty_length")]
     WarrantyLength,
-
-    #[serde(rename = "num_certs")]
     NumCerts,
-
-    #[serde(rename = "at_least_one_cert")]
     AtLeastOneCert,
-
-    #[serde(rename = "at_least_two_certs")]
     AtLeastTwoCerts,
 }
 
@@ -474,19 +451,15 @@ impl SustainityScoreCategory {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SustainityScoreBranch {
     /// Subbranches of the tree.
-    #[serde(rename = "branches")]
     pub branches: Vec<SustainityScoreBranch>,
 
     /// Category representing this branch.
-    #[serde(rename = "category")]
     pub category: SustainityScoreCategory,
 
     /// Weight of this branch.
-    #[serde(rename = "weight")]
     pub weight: i32,
 
     /// Calculated subscore of this branch.
-    #[serde(rename = "score")]
     pub score: f64,
 }
 
@@ -505,11 +478,9 @@ impl SustainityScoreBranch {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SustainityScore {
     /// Score tree.
-    #[serde(rename = "tree")]
     pub tree: Vec<SustainityScoreBranch>,
 
     /// Total calculated score.
-    #[serde(rename = "total")]
     pub total: f64,
 }
 
@@ -540,38 +511,24 @@ impl Default for SustainityScore {
     }
 }
 
-/// Represents an edge in a graph database.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Edge {
-    /// The "from" vertex ID.
-    #[serde(rename = "_from")]
-    pub from: String,
-
-    /// The "to" vertex ID.
-    #[serde(rename = "_to")]
-    pub to: String,
-}
-
 /// Represents a set of IDs of an organisation.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct GatherOrganisationIds {
     /// VAT IDs.
-    pub vat_ids: BTreeSet<GatherVatId>,
+    pub vat_ids: BTreeSet<ids::VatId>,
 
     /// Organisation ID.
     pub wiki: BTreeSet<ids::WikiId>,
 
     /// Web domains.
-    pub domains: BTreeSet<GatherDomain>,
+    pub domains: BTreeSet<Domain>,
 }
 
 impl GatherOrganisationIds {
     pub fn store(self) -> StoreOrganisationIds {
-        let mut vat_ids: Vec<String> =
-            self.vat_ids.into_iter().map(|id| id.as_str().to_owned()).collect();
-        let mut wiki: Vec<String> =
-            self.wiki.into_iter().map(|id| id.get_value().to_string()).collect();
-        let mut domains: Vec<String> = self.domains.into_iter().collect();
+        let mut vat_ids: Vec<_> = self.vat_ids.into_iter().collect();
+        let mut wiki: Vec<_> = self.wiki.into_iter().collect();
+        let mut domains: Vec<_> = self.domains.into_iter().collect();
 
         vat_ids.sort();
         wiki.sort();
@@ -593,11 +550,11 @@ impl merge::Merge for GatherOrganisationIds {
 impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
     type Error = ids::ParseIdError;
 
-    fn try_from(ids: schema::ProducerIds) -> Result<GatherOrganisationIds, Self::Error> {
-        let mut vat_ids = BTreeSet::<GatherVatId>::new();
+    fn try_from(ids: schema::ProducerIds) -> Result<Self, Self::Error> {
+        let mut vat_ids = BTreeSet::<ids::VatId>::new();
         if let Some(ids) = ids.vat {
             for id in ids {
-                vat_ids.insert(GatherVatId::try_from(&id)?);
+                vat_ids.insert(ids::VatId::try_from(&id)?);
             }
         }
 
@@ -608,7 +565,7 @@ impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
             }
         }
 
-        let mut domains = BTreeSet::<GatherDomain>::new();
+        let mut domains = BTreeSet::<Domain>::new();
         if let Some(ids) = ids.domains {
             for id in ids {
                 domains.insert(id);
@@ -623,30 +580,22 @@ impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct StoreOrganisationIds {
     /// Organisation ID.
-    #[serde(rename = "wiki")]
-    pub wiki: Vec<String>,
+    pub wiki: Vec<ids::WikiId>,
 
     /// VAT IDs.
-    #[serde(rename = "vat_ids")]
-    pub vat_ids: Vec<StoreVatId>,
+    pub vat_ids: Vec<ids::VatId>,
 
     /// Web domains.
-    #[serde(rename = "domains")]
-    pub domains: Vec<StoreDomain>,
-}
-
-#[allow(clippy::ptr_arg)]
-fn str_to_id(s: &String) -> api::Id {
-    api::Id::from_str(s).expect("Converting IDs")
+    pub domains: Vec<Domain>,
 }
 
 #[cfg(feature = "into-api")]
 impl StoreOrganisationIds {
     pub fn to_api(self) -> api::OrganisationIds {
         api::OrganisationIds {
-            wiki: self.wiki.iter().map(str_to_id).collect(),
-            vat: self.vat_ids.iter().map(str_to_id).collect(),
-            domains: self.domains.iter().map(str_to_id).collect(),
+            wiki: self.wiki.iter().map(wiki_to_id).collect(),
+            vat: self.vat_ids.iter().map(vat_to_id).collect(),
+            domains: self.domains.iter().map(domain_to_id).collect(),
         }
     }
 }
@@ -654,9 +603,6 @@ impl StoreOrganisationIds {
 /// Represents an organisation (e.g. manufacturer, shop).
 #[derive(Debug, Clone)]
 pub struct GatherOrganisation {
-    /// DB entry ID.
-    pub db_key: GatherOrganisationId,
-
     /// Organisation IDs.
     pub ids: GatherOrganisationIds,
 
@@ -672,26 +618,30 @@ pub struct GatherOrganisation {
     /// Websites.
     pub websites: BTreeSet<String>,
 
+    /// Products of this organistion.
+    pub products: BTreeSet<ids::ProductId>,
+
     /// Known certifications.
     pub certifications: Certifications,
 }
 
 impl GatherOrganisation {
     pub fn store(self) -> StoreOrganisation {
-        let db_key = self.db_key.to_string();
         let ids = self.ids.store();
         let mut names: Vec<_> = self.names.into_iter().collect();
         let mut descriptions: Vec<_> = self.descriptions.into_iter().collect();
         let mut images: Vec<_> = self.images.into_iter().collect();
         let mut websites: Vec<_> = self.websites.into_iter().collect();
+        let mut products: Vec<_> = self.products.into_iter().collect();
         let certifications = self.certifications;
 
         names.sort();
         descriptions.sort();
         images.sort();
+        products.sort();
         websites.sort();
 
-        StoreOrganisation { db_key, ids, names, descriptions, images, websites, certifications }
+        StoreOrganisation { ids, names, descriptions, images, websites, products, certifications }
     }
 }
 
@@ -709,55 +659,54 @@ impl merge::Merge for GatherOrganisation {
 /// Represents an organisation (e.g. manufacturer, shop).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoreOrganisation {
-    /// DB entry ID.
-    #[serde(rename = "_key")]
-    pub db_key: StoreOrganisationId,
-
     /// Organisation IDs.
-    #[serde(rename = "ids")]
     pub ids: StoreOrganisationIds,
 
     /// Names of the organisation.
-    #[serde(rename = "names")]
     pub names: Vec<Text>,
 
     /// Descriptions of the organisation.
-    #[serde(rename = "descriptions")]
     pub descriptions: Vec<Text>,
 
     /// Logo images.
-    #[serde(rename = "images")]
     pub images: Vec<Image>,
 
     /// Websites.
-    #[serde(rename = "websites")]
     pub websites: Vec<String>,
 
+    /// Products of this organistion.
+    pub products: Vec<ids::ProductId>,
+
     /// Known certifications.
-    #[serde(rename = "certifications")]
     pub certifications: Certifications,
 }
 
+#[cfg(feature = "into-api")]
 fn default_short_string() -> api::ShortString {
     api::ShortString::from_str("").expect("ShortString from an empty string")
 }
 
+#[cfg(feature = "into-api")]
 fn default_long_string() -> api::LongString {
     api::LongString::from_str("").expect("LongString from an empty string")
 }
 
+#[cfg(feature = "into-api")]
 fn str_to_short_string(s: String) -> api::ShortString {
     api::ShortString::from_str(&s).expect("Converting strings")
 }
 
+#[cfg(feature = "into-api")]
 fn str_to_long_string(s: String) -> api::LongString {
     api::LongString::from_str(&s).expect("Converting strings")
 }
 
+#[cfg(feature = "into-api")]
 fn text_to_short_string(text: &Text) -> api::ShortString {
     api::ShortString::from_str(&text.text).expect("Converting texts")
 }
 
+#[cfg(feature = "into-api")]
 fn text_to_long_string(text: &Text) -> api::LongString {
     api::LongString::from_str(&text.text).expect("Converting texts")
 }
@@ -791,15 +740,12 @@ impl StoreOrganisation {
 #[derive(Serialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct GatherProductIds {
     /// GTIN of the product.
-    #[serde(rename = "eans")]
     pub eans: BTreeSet<ids::Ean>,
 
     /// GTIN of the product.
-    #[serde(rename = "gtins")]
     pub gtins: BTreeSet<ids::Gtin>,
 
     /// Wiki ID.
-    #[serde(rename = "wiki")]
     pub wiki: BTreeSet<ids::WikiId>,
 }
 
@@ -809,9 +755,9 @@ impl GatherProductIds {
     }
 
     pub fn store(self) -> StoreProductIds {
-        let mut eans: Vec<_> = self.eans.into_iter().map(|id| id.to_string()).collect();
-        let mut gtins: Vec<_> = self.gtins.into_iter().map(|id| id.to_string()).collect();
-        let mut wiki: Vec<_> = self.wiki.into_iter().map(|id| id.get_value().to_string()).collect();
+        let mut eans: Vec<_> = self.eans.into_iter().collect();
+        let mut gtins: Vec<_> = self.gtins.into_iter().collect();
+        let mut wiki: Vec<_> = self.wiki.into_iter().collect();
 
         eans.sort();
         gtins.sort();
@@ -863,25 +809,22 @@ impl TryFrom<schema::ProductIds> for GatherProductIds {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct StoreProductIds {
     /// GTIN of the product.
-    #[serde(rename = "eans")]
-    pub eans: Vec<String>,
+    pub eans: Vec<ids::Ean>,
 
     /// GTIN of the product.
-    #[serde(rename = "gtins")]
-    pub gtins: Vec<String>,
+    pub gtins: Vec<ids::Gtin>,
 
     /// Wiki ID.
-    #[serde(rename = "wiki")]
-    pub wiki: Vec<String>,
+    pub wiki: Vec<ids::WikiId>,
 }
 
 #[cfg(feature = "into-api")]
 impl StoreProductIds {
     pub fn to_api(self) -> api::ProductIds {
         api::ProductIds {
-            eans: self.eans.iter().map(str_to_id).collect(),
-            gtins: self.gtins.iter().map(str_to_id).collect(),
-            wiki: self.wiki.iter().map(str_to_id).collect(),
+            eans: self.eans.iter().map(ean_to_id).collect(),
+            gtins: self.gtins.iter().map(gtin_to_id).collect(),
+            wiki: self.wiki.iter().map(wiki_to_id).collect(),
         }
     }
 }
@@ -889,9 +832,6 @@ impl StoreProductIds {
 /// Represents a product.
 #[derive(Debug, Clone)]
 pub struct GatherProduct {
-    /// DB entry ID.
-    pub db_key: GatherProductId,
-
     /// Product ID.
     pub ids: GatherProductIds,
 
@@ -914,13 +854,13 @@ pub struct GatherProduct {
     pub certifications: Certifications,
 
     /// DB IDs of manufacturers.
-    pub manufacturer_ids: BTreeSet<GatherOrganisationId>,
+    pub manufacturers: BTreeSet<ids::OrganisationId>,
 
     /// Wikidata IDs newer version products.
-    pub follows: BTreeSet<GatherProductId>,
+    pub follows: BTreeSet<ids::ProductId>,
 
     /// Wikidata IDs older version products.
-    pub followed_by: BTreeSet<GatherProductId>,
+    pub followed_by: BTreeSet<ids::ProductId>,
 
     /// The Sustainity score.
     pub sustainity_score: SustainityScore,
@@ -928,7 +868,6 @@ pub struct GatherProduct {
 
 impl GatherProduct {
     pub fn store(self) -> StoreProduct {
-        let db_key = self.db_key.to_string();
         let ids = self.ids.store();
         let mut names: Vec<_> = self.names.into_iter().collect();
         let descriptions = self.descriptions.into_iter().collect();
@@ -936,22 +875,19 @@ impl GatherProduct {
         let mut categories: Vec<_> = self.categories.into_iter().collect();
         let regions = self.regions;
         let certifications = self.certifications;
-        let mut manufacturer_ids: Vec<_> =
-            self.manufacturer_ids.into_iter().map(|id| id.to_string()).collect();
-        let mut follows: Vec<_> = self.follows.into_iter().map(|id| id.to_string()).collect();
-        let mut followed_by: Vec<_> =
-            self.followed_by.into_iter().map(|id| id.to_string()).collect();
+        let mut manufacturers: Vec<_> = self.manufacturers.into_iter().collect();
+        let mut follows: Vec<_> = self.follows.into_iter().collect();
+        let mut followed_by: Vec<_> = self.followed_by.into_iter().collect();
         let sustainity_score = self.sustainity_score;
 
         names.sort();
         images.sort();
         categories.sort();
-        manufacturer_ids.sort();
+        manufacturers.sort();
         follows.sort();
         followed_by.sort();
 
         StoreProduct {
-            db_key,
             ids,
             names,
             descriptions,
@@ -959,7 +895,7 @@ impl GatherProduct {
             categories,
             regions,
             certifications,
-            manufacturer_ids,
+            manufacturers,
             follows,
             followed_by,
             sustainity_score,
@@ -976,7 +912,7 @@ impl merge::Merge for GatherProduct {
         self.categories.extend(other.categories);
         self.regions.merge(other.regions);
         self.certifications.merge(other.certifications);
-        self.manufacturer_ids.extend(other.manufacturer_ids);
+        self.manufacturers.extend(other.manufacturers);
         self.follows.extend(other.follows);
         self.followed_by.extend(other.followed_by);
     }
@@ -985,52 +921,37 @@ impl merge::Merge for GatherProduct {
 /// Represents a product.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoreProduct {
-    /// DB entry ID.
-    #[serde(rename = "_key")]
-    pub db_key: StoreProductId,
-
     /// Product ID.
-    #[serde(rename = "ids")]
     pub ids: StoreProductIds,
 
     /// Names of the product.
-    #[serde(rename = "names")]
     pub names: Vec<Text>,
 
     /// Descriptions of the product.
-    #[serde(rename = "descriptions")]
     pub descriptions: Vec<Text>,
 
     /// Product images.
-    #[serde(rename = "images")]
     pub images: Vec<Image>,
 
     /// Product categories.
-    #[serde(rename = "categories")]
     pub categories: Vec<String>,
 
     /// Regions where the product is available.
-    #[serde(rename = "regions")]
     pub regions: Regions,
 
     /// Known certifications.
-    #[serde(rename = "certifications")]
     pub certifications: Certifications,
 
     /// DB IDs of manufacturers.
-    #[serde(rename = "manufacturer_ids")]
-    pub manufacturer_ids: Vec<StoreOrganisationId>,
+    pub manufacturers: Vec<ids::OrganisationId>,
 
     /// Wikidata IDs newer version products.
-    #[serde(rename = "follows")]
-    pub follows: Vec<StoreProductId>,
+    pub follows: Vec<ids::ProductId>,
 
     /// Wikidata IDs older version products.
-    #[serde(rename = "followed_by")]
-    pub followed_by: Vec<StoreProductId>,
+    pub followed_by: Vec<ids::ProductId>,
 
     /// The Sustainity score.
-    #[serde(rename = "sustainity_score")]
     pub sustainity_score: SustainityScore,
 }
 
@@ -1064,72 +985,63 @@ impl StoreProduct {
             medallions,
         }
     }
+
+    pub fn score(&self) -> f64 {
+        0.0 + 0.9 * self.certifications.bcorp.is_some() as u32 as f64
+            + 0.9 * self.certifications.eu_ecolabel.is_some() as u32 as f64
+            + 0.6 * self.certifications.fti.as_ref().map(|c| 0.01 * c.score as f64).unwrap_or(0.0)
+            + 0.3 * self.certifications.tco.is_some() as u32 as f64
+    }
 }
 
 /// One enttry in `PresentationData::Scored`.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ScoredPresentationEntry<W> {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ScoredPresentationEntry {
     /// Organisation ID.
-    #[serde(rename = "wiki_id")]
-    pub wiki_id: W,
+    pub wiki_id: ids::WikiId,
 
     /// Name of the organisation (as originally listed by the certifier).
-    #[serde(rename = "name")]
     pub name: String,
 
     /// Score from the certifier.
-    #[serde(rename = "score")]
     pub score: i64,
 }
 
-pub type GatherScoredPresentationEntry = ScoredPresentationEntry<ids::WikiId>;
-pub type StoreScoredPresentationEntry = ScoredPresentationEntry<String>;
-
 #[cfg(feature = "into-api")]
-impl StoreScoredPresentationEntry {
+impl ScoredPresentationEntry {
     pub fn into_api(self) -> api::PresentationEntry {
         api::PresentationEntry {
-            wiki_id: api::Id::from_str(&self.wiki_id).expect("Converting to Wikidata ID"),
+            wiki_id: api::Id::from_str(&self.wiki_id.to_canonical_string())
+                .expect("Converting to Wikidata ID"),
             name: str_to_short_string(self.name),
             score: self.score,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum PresentationData<O> {
-    Scored(Vec<ScoredPresentationEntry<O>>),
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct PresentationData {
+    pub entries: Vec<ScoredPresentationEntry>,
 }
 
-pub type GatherPresentationData = PresentationData<ids::WikiId>;
-pub type StorePresentationData = PresentationData<String>;
-
 #[cfg(feature = "into-api")]
-impl StorePresentationData {
+impl PresentationData {
     fn into_api(self) -> Vec<api::PresentationEntry> {
-        match self {
-            PresentationData::Scored(entries) => {
-                entries.into_iter().map(|e| e.into_api()).collect()
-            }
-        }
+        self.entries.into_iter().map(|e| e.into_api()).collect()
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Presentation<O> {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Presentation {
     /// Topic ID.
     pub id: LibraryTopic,
 
     /// Data to be presented.
-    pub data: PresentationData<O>,
+    pub data: PresentationData,
 }
 
-pub type GatherPresentation = Presentation<ids::WikiId>;
-pub type StorePresentation = Presentation<String>;
-
 #[cfg(feature = "into-api")]
-impl StorePresentation {
+impl Presentation {
     pub fn into_api(self) -> api::Presentation {
         api::Presentation { data: self.data.into_api() }
     }
@@ -1172,5 +1084,66 @@ impl LibraryItem {
             article: str_to_long_string(self.article),
             presentation,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_presentation_with_scored_data_json() {
+        let original_presentation = Presentation {
+            id: "topic".to_owned(),
+            data: PresentationData {
+                entries: vec![
+                    ScoredPresentationEntry {
+                        wiki_id: ids::WikiId::new(1),
+                        name: "name1".to_owned(),
+                        score: 80,
+                    },
+                    ScoredPresentationEntry {
+                        wiki_id: ids::WikiId::new(2),
+                        name: "name2".to_owned(),
+                        score: 20,
+                    },
+                ],
+            },
+        };
+
+        let original_string = r#"{"id":"topic","data":{"entries":[{"wiki_id":1,"name":"name1","score":80},{"wiki_id":2,"name":"name2","score":20}]}}"#.to_owned();
+
+        let serialized_string = serde_json::to_string(&original_presentation).unwrap();
+        assert_eq!(serialized_string, original_string);
+
+        let deserialized_presentation: Presentation =
+            serde_json::from_str(&original_string).unwrap();
+        assert_eq!(deserialized_presentation, original_presentation);
+    }
+
+    #[test]
+    fn serde_presentation_with_scored_data_postcard() {
+        let original_presentation = Presentation {
+            id: "topic".to_owned(),
+            data: PresentationData {
+                entries: vec![
+                    ScoredPresentationEntry {
+                        wiki_id: ids::WikiId::new(1),
+                        name: "name1".to_owned(),
+                        score: 80,
+                    },
+                    ScoredPresentationEntry {
+                        wiki_id: ids::WikiId::new(2),
+                        name: "name2".to_owned(),
+                        score: 20,
+                    },
+                ],
+            },
+        };
+
+        let serialized_presentation = postcard::to_stdvec(&original_presentation).unwrap();
+        let deserialized_presentation: Presentation =
+            postcard::from_bytes(&serialized_presentation).unwrap();
+        assert_eq!(deserialized_presentation, original_presentation);
     }
 }

@@ -1,7 +1,10 @@
 use std::str::FromStr;
 
 use sustainity_api as api;
-use sustainity_models::{ids, store as models};
+use sustainity_models::{
+    buckets::{BucketError, DbStore},
+    ids, store as models,
+};
 
 use swagger::XSpanIdString;
 
@@ -14,9 +17,9 @@ struct Context {}
 
 swagger::new_context_type!(SustainityContext, EmptyContext, XSpanIdString);
 
-const TONYS_GTIN: usize = 8_717_677_339_556;
-const FAIRPHONE_4_WIKI_ID: usize = 109_851_604;
-const FAIRPHONE_ORG_WIKI_ID: usize = 5_019_402;
+const TONYS_GTIN: ids::Gtin = ids::Gtin::new(8_717_677_339_556);
+const FAIRPHONE_4_WIKI_ID: ids::WikiId = ids::WikiId::new(109_851_604);
+const FAIRPHONE_ORG_WIKI_ID: ids::WikiId = ids::WikiId::new(5_019_402);
 const BCORP_FAIRPHONE_ID: &str = "001C000001Dz6afIAB";
 
 #[derive(thiserror::Error, Debug)]
@@ -32,6 +35,9 @@ enum Finding {
 
     #[error(" => IO: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error(" => Bucket: {0}")]
+    Bucket(#[from] BucketError),
 
     #[error(" => API: {0}")]
     Api(#[from] swagger::ApiError),
@@ -49,10 +55,6 @@ pub struct Findings {
 }
 
 impl Findings {
-    fn add(&mut self, finding: Finding) {
-        self.findings.push(finding);
-    }
-
     fn consider(&mut self, finding: Result<(), Finding>) {
         if let Err(finding) = finding {
             self.findings.push(finding);
@@ -104,7 +106,7 @@ pub struct SamplingRunner;
 impl SamplingRunner {
     pub async fn run(config: &config::SamplingConfig) -> Result<(), errors::ProcessingError> {
         if let Some(config) = &config.target {
-            Self::run_with_json(config);
+            Self::run_with_store(config);
         }
         if let Some(config) = &config.backend {
             Self::run_with_backend(config).await;
@@ -115,254 +117,85 @@ impl SamplingRunner {
         Ok(())
     }
 
-    pub fn run_with_json(config: &config::SamplingTargetConfig) {
-        log::info!("Verifying the JSON DB");
+    pub fn run_with_store(config: &config::SamplingTargetConfig) {
+        log::info!("Verifying the kv store");
 
         let mut findings = Findings::default();
 
-        findings.consider(Self::check_json_product_ids(config));
-        match Self::check_json_product_id_edges(config) {
-            Ok(fairphone_4_uid) => {
-                findings.consider(Self::check_json_category_edges(&fairphone_4_uid, config));
-                match Self::check_json_products(&fairphone_4_uid, config) {
-                    Ok(fairphone_org_uid_1) => {
-                        findings.consider(Self::check_json_organisation_ids(config));
-                        match Self::check_json_organisation_id_edges(config) {
-                            Ok(fairphone_org_uid_2) => {
-                                findings.consider(Self::check_json_organisations(
-                                    &fairphone_org_uid_1,
-                                    &fairphone_org_uid_2,
-                                    config,
-                                ));
-                            }
-                            Err(finding) => findings.add(finding),
-                        }
-                    }
-                    Err(finding) => findings.add(finding),
-                };
-            }
-            Err(finding) => findings.add(finding),
-        }
+        findings.consider(Self::check_store_prod_by_wiki_id(config));
+        findings.consider(Self::check_store_org_by_wiki_id(config));
 
         findings.report();
     }
 
-    fn check_json_product_ids(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
-        log::info!("Iterating product IDs");
+    fn check_store_prod_by_wiki_id(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
+        let fairphone_4_ids = [FAIRPHONE_4_WIKI_ID];
 
-        let fairphone_4_wiki_id = FAIRPHONE_4_WIKI_ID.to_string();
+        let store = DbStore::new(&config.db_storage)?;
+        let product_wiki_ids = store.get_wiki_id_to_product_id_bucket()?;
+        let products = store.get_product_bucket()?;
 
-        let mut found = false;
-        for entry in
-            serde_jsonlines::json_lines::<models::IdEntry, _>(&config.product_wiki_ids_path)?
-        {
-            let entry = entry?;
-            if entry.db_key == fairphone_4_wiki_id {
-                found = true;
-                break;
-            }
-        }
+        let unique_id = product_wiki_ids
+            .get(&FAIRPHONE_4_WIKI_ID)?
+            .ok_or(Finding::Other(format!("Product {FAIRPHONE_4_WIKI_ID:?} not found")))?;
+        let entry = products
+            .get(&unique_id)?
+            .ok_or(Finding::Other(format!("Product with unique ID `{unique_id}` not found")))?;
 
-        if found {
-            Ok(())
-        } else {
-            Err(Finding::Other(format!("Fairphone 4 ID ({fairphone_4_wiki_id}) not found")))
-        }
-    }
-
-    fn check_json_product_id_edges(
-        config: &config::SamplingTargetConfig,
-    ) -> Result<String, Finding> {
-        log::info!("Iterating product ID edges");
-
-        let fairphone_4_wiki_id = format!("product_wiki_ids/{FAIRPHONE_4_WIKI_ID}");
-
-        let mut found_fairphone_4_uid = None;
-        for entry in
-            serde_jsonlines::json_lines::<models::Edge, _>(&config.product_wiki_id_edges_path)?
-        {
-            let entry = entry?;
-            if entry.from == fairphone_4_wiki_id {
-                found_fairphone_4_uid = entry.to.split('/').nth(1).map(str::to_owned);
-                break;
-            }
-        }
-
-        match found_fairphone_4_uid {
-            Some(found_fairphone_4_uid) => Ok(found_fairphone_4_uid),
-            None => {
-                Err(Finding::Other(format!("Fairphone 4 ({FAIRPHONE_4_WIKI_ID}) edge not found")))
-            }
-        }
-    }
-
-    fn check_json_category_edges(
-        fairphone_4_uid: &str,
-        config: &config::SamplingTargetConfig,
-    ) -> Result<(), Finding> {
-        log::info!("Iterating category edges");
-
-        let fairphone_4_uid = format!("products/{fairphone_4_uid}");
-
-        let mut found: usize = 0;
-        for entry in serde_jsonlines::json_lines::<models::Edge, _>(&config.category_edges_path)? {
-            let entry = entry?;
-            if entry.to == fairphone_4_uid {
-                found += 1;
-            }
-        }
-
-        if found == 1 {
-            Ok(())
-        } else {
-            Err(Finding::Other(format!(
-                "Fairphone 4 ({FAIRPHONE_4_WIKI_ID}) had wrong numer of categories: {found}"
-            )))
-        }
-    }
-
-    fn check_json_products(
-        fairphone_4_uid: &str,
-        config: &config::SamplingTargetConfig,
-    ) -> Result<String, Finding> {
-        let fairphone_4_ids = [FAIRPHONE_4_WIKI_ID.to_string()];
-
-        log::info!("Iterating products");
-
-        let mut found_fairphone_org_uid = None;
-        for entry in serde_jsonlines::json_lines::<models::Product, _>(&config.products_path)? {
-            let entry = entry?;
-            if entry.db_key == fairphone_4_uid {
-                ensure_eq!(entry.ids.wiki, fairphone_4_ids, "wrong wiki IDs");
-                ensure_eq!(
-                    entry.names,
-                    vec![models::Text {
-                        text: "Fairphone 4".to_owned(),
-                        source: models::Source::Wikidata
-                    }],
-                    "wrong name or source"
-                );
-                ensure_eq!(
-                    entry.certifications,
-                    models::Certifications {
-                        bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
-                        eu_ecolabel: None,
-                        fti: None,
-                        tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
-                    },
-                    "wrong certifications"
-                );
-                ensure_eq!(entry.manufacturer_ids.len(), 1, "wrong number of manufacturers");
-                found_fairphone_org_uid = entry.manufacturer_ids.first().cloned();
-                break;
-            }
-        }
-
-        match found_fairphone_org_uid {
-            Some(fairphone_org_id) => Ok(fairphone_org_id),
-            None => Err(Finding::Other(format!("Fairphone 4 ({FAIRPHONE_4_WIKI_ID}) not found"))),
-        }
-    }
-
-    fn check_json_organisation_ids(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
-        log::info!("Iterating organisation IDs");
-
-        let fairphone_org_wiki_id = FAIRPHONE_ORG_WIKI_ID.to_string();
-
-        let mut found = false;
-        for entry in
-            serde_jsonlines::json_lines::<models::IdEntry, _>(&config.organisation_wiki_ids_path)?
-        {
-            let entry = entry?;
-            if entry.db_key == fairphone_org_wiki_id {
-                found = true;
-                break;
-            }
-        }
-
-        if found {
-            Ok(())
-        } else {
-            Err(Finding::Other(format!(
-                "Fairphone organisation ID ({fairphone_org_wiki_id}) not found"
-            )))
-        }
-    }
-
-    fn check_json_organisation_id_edges(
-        config: &config::SamplingTargetConfig,
-    ) -> Result<String, Finding> {
-        log::info!("Iterating organisation ID edges");
-
-        let fairphone_org_wiki_id = format!("organisation_wiki_ids/{FAIRPHONE_ORG_WIKI_ID}");
-
-        let mut found_fairphone_org_uid = None;
-        for entry in
-            serde_jsonlines::json_lines::<models::Edge, _>(&config.organisation_wiki_id_edges_path)?
-        {
-            let entry = entry?;
-            if entry.from == fairphone_org_wiki_id {
-                found_fairphone_org_uid = entry.to.split('/').nth(1).map(str::to_owned);
-                break;
-            }
-        }
-
-        match found_fairphone_org_uid {
-            Some(found_fairphone_org_uid) => Ok(found_fairphone_org_uid),
-            None => Err(Finding::Other(format!(
-                "Fairphone organisation ({FAIRPHONE_ORG_WIKI_ID}) edge not found"
-            ))),
-        }
-    }
-
-    fn check_json_organisations(
-        fairphone_org_uid_1: &str,
-        fairphone_org_uid_2: &str,
-        config: &config::SamplingTargetConfig,
-    ) -> Result<(), Finding> {
-        let fairphone_org_ids = [FAIRPHONE_ORG_WIKI_ID.to_string()];
-
-        log::info!("Iterating organisations");
-
+        ensure_eq!(entry.ids.wiki, fairphone_4_ids, "wrong wiki IDs");
         ensure_eq!(
-            fairphone_org_uid_1,
-            fairphone_org_uid_2,
-            "Fairphone organisation IDs were different"
+            entry.names,
+            vec![models::Text { text: "Fairphone 4".to_owned(), source: models::Source::Wikidata }],
+            "wrong name or source"
         );
+        ensure_eq!(
+            entry.certifications,
+            models::Certifications {
+                bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
+                eu_ecolabel: None,
+                fti: None,
+                tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
+            },
+            "wrong certifications"
+        );
+        ensure_eq!(entry.manufacturers.len(), 1, "wrong number of manufacturers");
+        Ok(())
+    }
 
-        for entry in
-            serde_jsonlines::json_lines::<models::Organisation, _>(&config.organisations_path)?
-        {
-            let entry = entry?;
-            if entry.db_key == fairphone_org_uid_1 {
-                ensure_eq!(entry.ids.wiki, fairphone_org_ids, "wrong wiki IDs");
-                ensure_eq!(
-                    entry.names,
-                    vec![
-                        models::Text { text: "FAIRPHONE".to_owned(), source: models::Source::Tco },
-                        models::Text {
-                            text: "Fairphone".to_owned(),
-                            source: models::Source::Wikidata,
-                        },
-                        models::Text {
-                            text: "Fairphone".to_owned(),
-                            source: models::Source::BCorp,
-                        }
-                    ],
-                    "wrong name or source"
-                );
-                ensure_eq!(
-                    entry.certifications,
-                    models::Certifications {
-                        bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
-                        eu_ecolabel: None,
-                        fti: None,
-                        tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
-                    },
-                    "wrong certifications"
-                );
-            }
-        }
+    fn check_store_org_by_wiki_id(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
+        let fairphone_org_ids = [FAIRPHONE_ORG_WIKI_ID];
+
+        let store = DbStore::new(&config.db_storage)?;
+        let organisation_wiki_ids = store.get_wiki_id_to_organisation_id_bucket()?;
+        let organisations = store.get_organisation_bucket()?;
+
+        let unique_id = organisation_wiki_ids
+            .get(&FAIRPHONE_ORG_WIKI_ID)?
+            .ok_or(Finding::Other(format!("Organisation {FAIRPHONE_ORG_WIKI_ID:?} not found")))?;
+        let entry = organisations.get(&unique_id)?.ok_or(Finding::Other(format!(
+            "Oranisation with unique ID `{unique_id:?}` not found"
+        )))?;
+
+        ensure_eq!(entry.ids.wiki, fairphone_org_ids, "wrong wiki IDs");
+        ensure_eq!(
+            entry.names,
+            vec![
+                models::Text { text: "FAIRPHONE".to_owned(), source: models::Source::Tco },
+                models::Text { text: "Fairphone".to_owned(), source: models::Source::Wikidata },
+                models::Text { text: "Fairphone".to_owned(), source: models::Source::BCorp }
+            ],
+            "wrong name or source"
+        );
+        ensure_eq!(
+            entry.certifications,
+            models::Certifications {
+                bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
+                eu_ecolabel: None,
+                fti: None,
+                tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
+            },
+            "wrong certifications"
+        );
         Ok(())
     }
 
@@ -391,6 +224,24 @@ impl SamplingRunner {
                 ensure_eq!(library.items.len(), 10, "wrong library length");
             }
         }
+
+        let item = client.get_library_item(api::models::LibraryTopic::CertFti, &context).await?;
+        match item {
+            api::GetLibraryItemResponse::Ok { body: item, .. } => {
+                if item.presentation.is_none() {
+                    return Err(Finding::Other(format!(
+                        "Library item CertFti has no presentation",
+                    )));
+                }
+            }
+            api::GetLibraryItemResponse::NotFound { .. } => {
+                return Err(Finding::Other(format!(
+                    "Library item {:?} not found",
+                    api::models::LibraryTopic::CertFti,
+                )));
+            }
+        }
+
         Ok(())
     }
 
@@ -399,16 +250,16 @@ impl SamplingRunner {
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
         let context = SustainityContext::<_, Context>::default();
-        let gtin = ids::Gtin::new(TONYS_GTIN);
+        let gtin = TONYS_GTIN.to_string();
 
         let product = client
-            .get_product(api::models::ProductIdVariant::Gtin, gtin.to_string(), None, &context)
+            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, &context)
             .await?;
         match product {
             api::GetProductResponse::Ok { body: product, .. } => {
                 ensure_eq!(
                     product.product_ids.gtins,
-                    vec![api::models::Id::from_str(&gtin.to_string())?],
+                    vec![api::models::Id::from_str(&gtin)?],
                     "wrong GTINs"
                 );
                 ensure_eq!(
@@ -448,7 +299,7 @@ impl SamplingRunner {
         let product = client
             .get_product(
                 api::models::ProductIdVariant::Wiki,
-                FAIRPHONE_4_WIKI_ID.to_string(),
+                FAIRPHONE_4_WIKI_ID.to_canonical_string(),
                 None,
                 &context,
             )
@@ -457,7 +308,7 @@ impl SamplingRunner {
             api::GetProductResponse::Ok { body: product, .. } => {
                 ensure_eq!(
                     product.product_ids.wiki,
-                    vec![api::models::Id::from_str(&FAIRPHONE_4_WIKI_ID.to_string())?],
+                    vec![api::models::Id::from_str(&FAIRPHONE_4_WIKI_ID.to_canonical_string())?],
                     "wrong IDs"
                 );
                 ensure_eq!(
@@ -503,7 +354,7 @@ impl SamplingRunner {
                     "wrong certification"
                 );
                 ensure!(product.medallions[2].sustainity.is_some(), "wrong certification");
-                ensure_eq!(product.alternatives.len(), 1, "wrong number of alternatives");
+                ensure_eq!(product.alternatives.len(), 1, "wrong number of category alternatives");
                 ensure_eq!(
                     product.alternatives[0].category,
                     "smartphone",
@@ -518,7 +369,7 @@ impl SamplingRunner {
             }
             api::GetProductResponse::NotFound { .. } => {
                 return Err(Finding::Other(format!(
-                    "Product {:?}:{} not found",
+                    "Product {:?}:{:?} not found",
                     api::models::ProductIdVariant::Wiki,
                     FAIRPHONE_4_WIKI_ID,
                 )));
@@ -536,7 +387,7 @@ impl SamplingRunner {
         let org = client
             .get_organisation(
                 api::models::OrganisationIdVariant::Wiki,
-                FAIRPHONE_ORG_WIKI_ID.to_string(),
+                FAIRPHONE_ORG_WIKI_ID.to_canonical_string(),
                 &context,
             )
             .await?;
@@ -544,7 +395,7 @@ impl SamplingRunner {
             api::GetOrganisationResponse::Ok { body: org, .. } => {
                 ensure_eq!(
                     org.organisation_ids.wiki,
-                    vec![api::models::Id::from_str(&FAIRPHONE_ORG_WIKI_ID.to_string())?],
+                    vec![api::models::Id::from_str(&FAIRPHONE_ORG_WIKI_ID.to_canonical_string())?],
                     "wrong IDS"
                 );
                 ensure_eq!(
@@ -594,7 +445,7 @@ impl SamplingRunner {
             }
             api::GetOrganisationResponse::NotFound { .. } => {
                 return Err(Finding::Other(format!(
-                    "Organisation {:?}:{} not found",
+                    "Organisation {:?}:{:?} not found",
                     api::models::OrganisationIdVariant::Wiki,
                     FAIRPHONE_ORG_WIKI_ID,
                 )));

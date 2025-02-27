@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
+use rand::Rng;
+use snafu::prelude::*;
+
 use sustainity_api::models as api;
-use sustainity_models::ids;
+use sustainity_models::{
+    buckets::{AppStore, DbStore},
+    ids,
+};
 
 use crate::{
-    db::Db,
-    errors::BackendError,
+    errors::{self, BackendError},
     models::{OrganisationSearchResult, ProductSearchResult, SearchResultId},
 };
 
@@ -89,139 +94,386 @@ impl ResultCollector {
     }
 }
 
-pub async fn library_contents(db: &Db) -> Result<Vec<api::LibraryItemShort>, BackendError> {
-    Ok(db
-        .get_library_contents()
-        .await?
-        .into_iter()
-        .filter_map(|i| i.try_into_api_short().ok())
-        .collect())
+#[derive(Debug, Clone)]
+pub struct Retriever {
+    db: DbStore,
+    app: AppStore,
 }
 
-pub async fn library_item(
-    topic: api::LibraryTopic,
-    db: &Db,
-) -> Result<Option<api::LibraryItemFull>, BackendError> {
-    let topic_name = topic.to_string();
-    if let Some(item) = db.get_library_item(&topic_name).await? {
-        let presentation = db.get_presentation(&topic_name).await?.map(|p| p.into_api());
-        let item = item.try_into_api_full(presentation)?;
-        Ok(Some(item))
-    } else {
-        Ok(None)
+impl Retriever {
+    pub fn new(path: &str) -> Result<Self, BackendError> {
+        let path = std::path::Path::new(path);
+        let db = DbStore::new(&path.join("db"))?;
+        let app = AppStore::new(&path.join("app"))?;
+        Ok(Self { db, app })
     }
-}
 
-pub async fn organisation(
-    id_variant: api::OrganisationIdVariant,
-    id: &str,
-    db: &Db,
-) -> Result<Option<api::OrganisationFull>, BackendError> {
-    if let Some(org) = db.get_organisation(id_variant, id).await? {
-        let products = db
-            .find_organisation_products(&org.db_key)
-            .await?
+    pub fn library_contents(&self) -> Result<Vec<api::LibraryItemShort>, BackendError> {
+        let library = self.app.get_library_bucket()?;
+        Ok(library
+            .gather()?
             .into_iter()
-            .map(|p| p.into_api_short())
-            .collect();
-        let org = org.into_api_full(products);
-        Ok(Some(org))
-    } else {
-        Ok(None)
+            .filter_map(|(_topic, item)| item.try_into_api_short().ok())
+            .collect())
     }
-}
 
-pub async fn product(
-    id_variant: api::ProductIdVariant,
-    id: &str,
-    region: Option<&str>,
-    db: &Db,
-) -> Result<Option<api::ProductFull>, BackendError> {
-    match ids::Gtin::try_from(id) {
-        Ok(gtin) => {
-            let gtin = gtin.as_number().to_string();
-            if let Some(prod) = db.get_product(id_variant, &gtin).await? {
-                let manufacturers = db
-                    .find_product_manufacturers(&prod.db_key)
-                    .await?
-                    .into_iter()
-                    .map(|m| m.into_api_short())
-                    .collect();
-                let alternatives = product_alternatives(&prod.db_key, region, db).await?;
+    pub fn library_item(
+        &self,
+        topic: api::LibraryTopic,
+    ) -> Result<Option<api::LibraryItemFull>, BackendError> {
+        let topic_name = topic.to_string();
+        let library = self.app.get_library_bucket()?;
+        if let Some(item) = library.get(&topic_name)? {
+            let presentations = self.app.get_presentation_bucket()?;
+            let presentation = presentations.get(&topic_name)?.map(|p| p.into_api());
+            let item = item.try_into_api_full(presentation)?;
+            Ok(Some(item))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn organisation(
+        &self,
+        id_variant: api::OrganisationIdVariant,
+        id: &str,
+    ) -> Result<Option<api::OrganisationFull>, BackendError> {
+        if let Some(organisation_id) = self.organisation_id(id_variant, id)? {
+            let orgs = self.db.get_organisation_bucket()?;
+            if let Some(org) = orgs.get(&organisation_id)? {
+                let products = self.short_products(&org.products)?;
+                let org = org.into_api_full(products);
+                Ok(Some(org))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn product(
+        &self,
+        id_variant: api::ProductIdVariant,
+        id: &str,
+        region: Option<&str>,
+    ) -> Result<Option<api::ProductFull>, BackendError> {
+        if let Some(product_id) = self.product_id(id_variant, id)? {
+            let prods = self.db.get_product_bucket()?;
+            if let Some(prod) = prods.get(&product_id)? {
+                let manufacturers = self.short_organisations(&prod.manufacturers)?;
+                let alternatives =
+                    self.product_alternatives_impl(product_id, &prod.categories, region)?;
                 let prod = prod.into_api_full(manufacturers, alternatives);
                 Ok(Some(prod))
             } else {
                 Ok(None)
             }
+        } else {
+            Ok(None)
         }
-        Err(_) => Ok(None),
+    }
+
+    pub fn product_alternatives(
+        &self,
+        id_variant: api::ProductIdVariant,
+        id: &str,
+        region: Option<&str>,
+    ) -> Result<Option<Vec<api::CategoryAlternatives>>, BackendError> {
+        if let Some(product_id) = self.product_id(id_variant, id)? {
+            let prods = self.db.get_product_bucket()?;
+            if let Some(prod) = prods.get(&product_id)? {
+                let alternatives =
+                    self.product_alternatives_impl(product_id, &prod.categories, region)?;
+                Ok(Some(alternatives))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn search_by_text(
+        &self,
+        query: String,
+    ) -> Result<Vec<api::TextSearchResult>, BackendError> {
+        let mut collector = ResultCollector::default();
+        let mut tokens: Vec<&str> = query.split(' ').collect();
+        tokens.retain(|m| !m.is_empty());
+
+        if tokens.len() == 1 {
+            let token = tokens.first().unwrap();
+            match token.parse::<u64>() {
+                Ok(number) => {
+                    // Search product by GTIN
+                    // TODO: search only if the match can be a valid GTIN
+                    if token.len() < 15 {
+                        let lowercase_token = token.to_lowercase();
+                        let items = self.products_by_token(number)?;
+                        collector.add_products(items, &lowercase_token, None);
+                    }
+                }
+                Err(_) => {
+                    let items = self.organisations_by_token(token)?;
+                    collector.add_organisations(items, token, None);
+                }
+            }
+        }
+
+        // Search organisations and products by keyword
+        let keywords: Vec<String> = tokens.into_iter().map(|m| m.to_lowercase()).collect();
+        for (i, keyword) in keywords.iter().enumerate() {
+            let items = self.organisations_by_keyword(keyword)?;
+            collector.add_organisations(items, keyword, Some(i));
+        }
+        for (i, keyword) in keywords.iter().enumerate() {
+            let items = self.products_by_keyword(keyword)?;
+            collector.add_products(items, keyword, Some(i));
+        }
+
+        Ok(collector.gather_results())
     }
 }
 
-pub async fn product_alternatives(
-    id: &str,
-    region_code: Option<&str>,
-    db: &Db,
-) -> Result<Vec<api::CategoryAlternatives>, BackendError> {
-    let mut result = Vec::new();
-    let categories = db.find_product_categories(id).await?;
-    for category in categories {
-        let alternatives = db
-            .find_product_alternatives(id, &category, region_code)
-            .await?
-            .into_iter()
-            .map(|a| a.into_api_short())
-            .collect();
-        result.push(api::CategoryAlternatives { category, alternatives });
+impl Retriever {
+    fn organisation_id(
+        &self,
+        id_variant: api::OrganisationIdVariant,
+        id: &str,
+    ) -> Result<Option<ids::OrganisationId>, BackendError> {
+        Ok(match id_variant {
+            api::OrganisationIdVariant::Vat => {
+                let ids = self.db.get_vat_id_to_organisation_id_bucket()?;
+                ids.get(&ids::VatId::try_from(id).context(errors::ParsingInputSnafu {
+                    input: id.to_owned(),
+                    variant: errors::InputVariant::VatId,
+                })?)?
+            }
+            api::OrganisationIdVariant::Wiki => {
+                let ids = self.db.get_wiki_id_to_organisation_id_bucket()?;
+                ids.get(&ids::WikiId::try_from(id).context(errors::ParsingInputSnafu {
+                    input: id.to_owned(),
+                    variant: errors::InputVariant::WikiId,
+                })?)?
+            }
+            api::OrganisationIdVariant::Www => {
+                let ids = self.db.get_www_domain_to_organisation_id_bucket()?;
+                ids.get(&id.to_owned())?
+            }
+        })
     }
-    Ok(result)
-}
 
-pub async fn search_by_text(
-    query: String,
-    db: &Db,
-) -> Result<Vec<api::TextSearchResult>, BackendError> {
-    let mut collector = ResultCollector::default();
-    let mut matches: Vec<&str> = query.split(' ').collect();
-    matches.retain(|m| !m.is_empty());
+    fn product_id(
+        &self,
+        id_variant: api::ProductIdVariant,
+        id: &str,
+    ) -> Result<Option<ids::ProductId>, BackendError> {
+        Ok(match id_variant {
+            api::ProductIdVariant::Ean => {
+                let ids = self.db.get_ean_to_product_id_bucket()?;
+                ids.get(&ids::Ean::try_from(id).context(errors::ParsingInputSnafu {
+                    input: id.to_owned(),
+                    variant: errors::InputVariant::Ean,
+                })?)?
+            }
+            api::ProductIdVariant::Gtin => {
+                let ids = self.db.get_gtin_to_product_id_bucket()?;
+                ids.get(&ids::Gtin::try_from(id).context(errors::ParsingInputSnafu {
+                    input: id.to_owned(),
+                    variant: errors::InputVariant::Gtin,
+                })?)?
+            }
+            api::ProductIdVariant::Wiki => {
+                let ids = self.db.get_wiki_id_to_product_id_bucket()?;
+                ids.get(&ids::WikiId::try_from(id).context(errors::ParsingInputSnafu {
+                    input: id.to_owned(),
+                    variant: errors::InputVariant::WikiId,
+                })?)?
+            }
+        })
+    }
 
-    if matches.len() == 1 {
-        let lowercase_match = matches.first().unwrap().to_lowercase();
-        let uppercase_match = matches.first().unwrap().to_uppercase();
-
-        // Search organisation by VAT
-        {
-            let items = db.search_organisations_substring_by_vat_number(&uppercase_match).await?;
-            collector.add_organisations(items, &uppercase_match, None);
+    fn short_products(
+        &self,
+        ids: &[ids::ProductId],
+    ) -> Result<Vec<api::ProductShort>, BackendError> {
+        let products = self.db.get_product_bucket()?;
+        let mut result = Vec::new();
+        for id in ids {
+            if let Some(product) = products.get(id)? {
+                result.push(product.into_api_short());
+            } else {
+                log::warn!("Product `{id}` not found");
+            }
         }
+        Ok(result)
+    }
 
-        // Search product by GTIN
-        if lowercase_match.len() < 15 {
-            // TODO: search only if the match can be a valid GTIN
-            // let gtin = format!("{lowercase_match:0>14}");
-            let items = db.search_products_exact_by_gtin(&lowercase_match).await?;
-            collector.add_products(items, &lowercase_match, None);
+    fn short_organisations(
+        &self,
+        ids: &[ids::OrganisationId],
+    ) -> Result<Vec<api::OrganisationShort>, BackendError> {
+        let organisations = self.db.get_organisation_bucket()?;
+        let mut result = Vec::new();
+        for id in ids {
+            if let Some(organisation) = organisations.get(id)? {
+                result.push(organisation.into_api_short());
+            } else {
+                log::warn!("Organisation `{id}` not found");
+            }
         }
+        Ok(result)
+    }
 
-        // Search organisation by website
-        {
-            let items = db.search_organisations_substring_by_website(&lowercase_match).await?;
-            collector.add_organisations(items, &lowercase_match, None);
+    fn product_alternatives_impl(
+        &self,
+        id: ids::ProductId,
+        categories: &[String],
+        region_code: Option<&str>,
+    ) -> Result<Vec<api::CategoryAlternatives>, BackendError> {
+        let mut result = Vec::new();
+        for category in categories.iter().cloned() {
+            let excluded = vec![id.clone()];
+            let alternatives =
+                self.product_category_alternatives(&category, region_code, &excluded)?;
+            result.push(api::CategoryAlternatives { category, alternatives });
+        }
+        Ok(result)
+    }
+
+    fn product_category_alternatives(
+        &self,
+        category: &String,
+        region_code: Option<&str>,
+        excluded: &[ids::ProductId],
+    ) -> Result<Vec<api::ProductShort>, BackendError> {
+        let categories = self.db.get_categories_bucket()?;
+        let products = self.db.get_product_bucket()?;
+        if let Some(category) = categories.get(category)? {
+            let mut rng = rand::rng();
+            // TODO: Do this during precomputation and here only filter by region
+            let mut results = Vec::new();
+            for product_id in &category {
+                if excluded.contains(product_id) {
+                    continue;
+                }
+                if let Some(product) = products.get(product_id)? {
+                    if product.regions.is_available_in(region_code) {
+                        continue;
+                    }
+
+                    let score = product.score();
+                    let randomized_score = score + rng.random_range(0.0..0.01);
+                    results.push((randomized_score, product));
+                }
+            }
+            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            Ok(results
+                .chunks(10)
+                .next()
+                .unwrap_or(&results)
+                .iter()
+                .map(|r| r.1.clone().into_api_short())
+                .collect())
+        } else {
+            log::warn!("Category `{category}` not found");
+            Ok(Vec::new())
         }
     }
 
-    // Search organisations and products by keyword
-    let lowercase_matches: Vec<String> = matches.into_iter().map(|m| m.to_lowercase()).collect();
-    for (i, m) in lowercase_matches.iter().enumerate() {
-        let items = db.search_organisations_exact_by_keyword(m).await?;
-        collector.add_organisations(items, m, Some(i));
-    }
-    for (i, m) in lowercase_matches.iter().enumerate() {
-        let items = db.search_products_exact_by_keyword(m).await?;
-        collector.add_products(items, m, Some(i));
+    fn products_by_token(&self, token: u64) -> Result<Vec<ProductSearchResult>, BackendError> {
+        let gtins = self.db.get_gtin_to_product_id_bucket()?;
+        if let Some(product_id) = gtins.get(&ids::Gtin::new(token))? {
+            let products = self.db.get_product_bucket()?;
+            if let Some(product) = products.get(&product_id)? {
+                Ok(vec![ProductSearchResult::from_db(product_id, product)])
+            } else {
+                Ok(Vec::new())
+            }
+        } else {
+            Ok(Vec::new())
+        }
     }
 
-    Ok(collector.gather_results())
+    fn organisations_by_token(
+        &self,
+        token: &str,
+    ) -> Result<Vec<OrganisationSearchResult>, BackendError> {
+        let mut results = Vec::new();
+        let lowercase_token = token.to_lowercase();
+        let uppercase_token = token.to_uppercase();
+
+        // TODO: prepare index of not full VAT numbers to speedup search.
+        // TODO: extract domain from token to speedup search
+        let organisations = self.db.get_organisation_bucket()?;
+        for (organisation_id, organisation) in organisations.gather()? {
+            let mut matched = false;
+
+            for vat in &organisation.ids.vat_ids {
+                if vat.as_str().contains(&uppercase_token) {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if !matched {
+                for domain in &organisation.ids.domains {
+                    if domain.contains(&lowercase_token) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if matched {
+                results.push(OrganisationSearchResult::from_db(organisation_id, organisation));
+            }
+        }
+        Ok(results)
+    }
+
+    fn products_by_keyword(
+        &self,
+        keyword: &String,
+    ) -> Result<Vec<ProductSearchResult>, BackendError> {
+        let mut results = Vec::new();
+        let product_keywords = self.db.get_keyword_to_product_ids_bucket()?;
+        let products = self.db.get_product_bucket()?;
+        if let Some(product_ids) = product_keywords.get(keyword)? {
+            for product_id in product_ids {
+                if let Some(product) = products.get(&product_id)? {
+                    let result = ProductSearchResult::from_db(product_id, product);
+                    results.push(result);
+                } else {
+                    log::warn!("Product `{product_id}` from keyword `{keyword}` not found");
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    fn organisations_by_keyword(
+        &self,
+        keyword: &String,
+    ) -> Result<Vec<OrganisationSearchResult>, BackendError> {
+        let mut results = Vec::new();
+        let organisation_keywords = self.db.get_keyword_to_organisation_ids_bucket()?;
+        let organisations = self.db.get_organisation_bucket()?;
+        if let Some(organisation_ids) = organisation_keywords.get(keyword)? {
+            for organisation_id in organisation_ids {
+                if let Some(organisation) = organisations.get(&organisation_id)? {
+                    let result = OrganisationSearchResult::from_db(organisation_id, organisation);
+                    results.push(result);
+                } else {
+                    log::warn!(
+                        "Organisation `{organisation_id}` from keyword `{keyword}` not found"
+                    );
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 
 #[cfg(test)]

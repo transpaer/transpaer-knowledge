@@ -7,37 +7,32 @@ use futures::future::BoxFuture;
 use hyper::{service::Service, Request};
 use swagger::{Push, XSpanIdString};
 
-use crate::{config::SecretConfig, db::Db};
-
-swagger::new_context_type!(SustainityContext, EmptyContext, swagger::XSpanIdString, Db);
+swagger::new_context_type!(SustainityContext, EmptyContext, swagger::XSpanIdString);
 
 pub struct MakeAddContext<T, A> {
     inner: T,
-    config: SecretConfig,
     marker: PhantomData<A>,
 }
 
-impl<T, A, B, Z> MakeAddContext<T, A>
+impl<T, A, Z> MakeAddContext<T, A>
 where
-    A: Default + Push<XSpanIdString, Result = B>,
-    B: Push<Db, Result = Z>,
+    A: Default + Push<XSpanIdString, Result = Z>,
 {
-    pub fn new(inner: T, config: SecretConfig) -> MakeAddContext<T, A> {
-        MakeAddContext { inner, config, marker: PhantomData }
+    pub fn new(inner: T) -> MakeAddContext<T, A> {
+        MakeAddContext { inner, marker: PhantomData }
     }
 }
 
-impl<Target, T, A, B, Z> Service<Target> for MakeAddContext<T, A>
+impl<Target, T, A, Z> Service<Target> for MakeAddContext<T, A>
 where
     Target: Send,
-    A: Default + Push<XSpanIdString, Result = B> + Send,
-    B: Push<Db, Result = Z>,
+    A: Default + Push<XSpanIdString, Result = Z> + Send,
     Z: Send + 'static,
     T: Service<Target> + Send,
     T::Future: Send + 'static,
 {
     type Error = T::Error;
-    type Response = AddContext<T::Response, A, B, Z>;
+    type Response = AddContext<T::Response, A, Z>;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -46,35 +41,30 @@ where
 
     fn call(&mut self, target: Target) -> Self::Future {
         let service = self.inner.call(target);
-        let config = self.config.clone();
-        Box::pin(async move { Ok(AddContext::new(service.await?, config)) })
+        Box::pin(async move { Ok(AddContext::new(service.await?)) })
     }
 }
 
-pub struct AddContext<T, A, B, Z>
+pub struct AddContext<T, A, Z>
 where
-    A: Default + Push<XSpanIdString, Result = B>,
-    B: Push<Db, Result = Z>,
+    A: Default + Push<XSpanIdString, Result = Z>,
 {
     inner: T,
-    config: SecretConfig,
     marker: PhantomData<A>,
 }
 
-impl<T, A, B, Z> AddContext<T, A, B, Z>
+impl<T, A, Z> AddContext<T, A, Z>
 where
-    A: Default + Push<XSpanIdString, Result = B>,
-    B: Push<Db, Result = Z>,
+    A: Default + Push<XSpanIdString, Result = Z>,
 {
-    pub fn new(inner: T, config: SecretConfig) -> Self {
-        AddContext { inner, config, marker: PhantomData }
+    pub fn new(inner: T) -> Self {
+        AddContext { inner, marker: PhantomData }
     }
 }
 
-impl<T, A, B, Z, ReqBody> Service<Request<ReqBody>> for AddContext<T, A, B, Z>
+impl<T, A, Z, ReqBody> Service<Request<ReqBody>> for AddContext<T, A, Z>
 where
-    A: Default + Push<XSpanIdString, Result = B>,
-    B: Push<Db, Result = Z>,
+    A: Default + Push<XSpanIdString, Result = Z>,
     Z: Send + 'static,
     T: Service<(Request<ReqBody>, Z)>,
 {
@@ -89,7 +79,6 @@ where
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         log::info!("Request: {} {}", request.method(), request.uri());
         let context = A::default().push(XSpanIdString::get_or_generate(&request));
-        let context = context.push(Db::new(self.config.clone()));
         self.inner.call((request, context))
     }
 }

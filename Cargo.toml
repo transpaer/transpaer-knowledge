@@ -10,7 +10,6 @@ members = [
 ]
 
 [workspace.dependencies]
-arangors = { version = "0.5", default-features = false }
 async-channel = { version = "1.8" }
 async-trait = { version = "0.1.68" }
 bzip2 = { version = "0.4" }
@@ -30,8 +29,9 @@ maplit = { version = "1.0.2" }
 md5 = { version = "0.7.0" }
 merge = { version = "0.1" }
 num_cpus = { version = "1.0" }
-postcard = { version = "1.0", features = ["use-std"] }
+postcard = { version = "1.1", features = ["use-std"] }
 pretty_assertions = { version = "1.4.0" }
+rand = { version = "0.9" }
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
 serde-jsonlines = { version = "0.4" }

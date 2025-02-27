@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub use sustainity_collecting::errors::IoOrSerdeError;
+pub use sustainity_models::buckets::BucketError;
 pub use sustainity_wikidata::dump::LoaderError;
 
 use crate::wikidata::WikiId;
@@ -56,21 +57,11 @@ pub enum CrystalizationError {
     #[error("IO error: {0} ({1:?})")]
     Io(std::io::Error, std::path::PathBuf),
 
-    #[error("KV storage: {0}")]
-    KvStorage(#[from] KvStoreError),
+    #[error("Bocket: {0}")]
+    Bucket(#[from] BucketError),
 
     #[error("Keys are not unique for: {comment} (only {unique} unique out of {all})")]
     NotUniqueKeys { comment: String, unique: usize, all: usize },
-}
-
-/// Errors related to key-value store.
-#[derive(Error, Debug)]
-pub enum KvStoreError {
-    #[error("Failed fo serde the entry: {0}")]
-    Serde(#[from] postcard::Error),
-
-    #[error("KV operation failed: {0}")]
-    Store(#[from] kv::Error),
 }
 
 /// Error returned when a problem with processing.
@@ -102,6 +93,9 @@ pub enum ProcessingError {
 
     #[error("Saving Substrate error: {0}")]
     WriteSubstrate(#[from] sustainity_schema::errors::SaveError),
+
+    #[error("Bucket: {0}")]
+    Bucket(#[from] BucketError),
 
     #[error("Variant parsing error: {0}")]
     Variant(#[from] serde_variant::UnsupportedType),

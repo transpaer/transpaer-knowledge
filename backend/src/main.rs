@@ -4,13 +4,20 @@
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-mod config;
+use clap::Parser;
+
 mod context;
-mod db;
 mod errors;
 mod models;
 mod retrieve;
 mod server;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    db_path: String,
+}
 
 #[tokio::main]
 async fn main() {
@@ -33,11 +40,12 @@ async fn main() {
 
     log::info!("Starting Sustainity backend!");
 
-    let config = config::SecretConfig::load_or_default();
+    let args = Args::parse();
+    let retriever = retrieve::Retriever::new(&args.db_path).expect("DB error");
 
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 8080));
-    let server = server::Server::new();
+    let server = server::Server::new(retriever);
     let service = sustainity_api::server::MakeService::new(server);
-    let service = context::MakeAddContext::<_, context::EmptyContext>::new(service, config);
+    let service = context::MakeAddContext::<_, context::EmptyContext>::new(service);
     hyper::server::Server::bind(&addr).serve(service).await.expect("Service failed")
 }

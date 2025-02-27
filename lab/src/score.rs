@@ -37,7 +37,7 @@ impl SubscoreCalculator {
 
 #[must_use]
 pub fn calculate(product: &models::Product) -> models::SustainityScore {
-    let has_producer = !product.manufacturer_ids.is_empty();
+    let has_producer = !product.manufacturers.is_empty();
     let has_categories = !product.categories.is_empty();
     let num_certs = product.certifications.get_num();
 

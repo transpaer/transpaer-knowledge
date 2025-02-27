@@ -16,7 +16,6 @@ log = { workspace = true }
 maplit = { workspace = true }
 merge = { workspace = true }
 num_cpus = { workspace = true }
-postcard = { workspace = true }
 serde-jsonlines = { workspace = true }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }

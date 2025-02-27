@@ -4,13 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arangors = { workspace = true, features = ["reqwest_async"] }
 async-trait = { workspace = true }
+clap = { workspace = true }
 fern = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 hyper = { workspace = true, features = ["server"] }
 log = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_variant = { workspace = true }
 serde_json = { workspace = true }
