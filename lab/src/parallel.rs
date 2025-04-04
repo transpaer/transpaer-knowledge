@@ -269,7 +269,6 @@ impl Flow {
                                 if let Err(err) = consumer.consume(input).await {
                                     log::error!("Flow consumer: {err}");
                                 }
-                                continue;
                             }
                             Recv::Closed => {
                                 if let Err(err) = consumer.finish().await {
@@ -320,7 +319,6 @@ impl Flow {
                                 if let Err(err) = processor.process(input, tx.clone()).await {
                                     log::error!("Flow processor: {err}");
                                 }
-                                continue;
                             }
                             Recv::Closed => {
                                 if let Err(err) = processor.finish(tx).await {

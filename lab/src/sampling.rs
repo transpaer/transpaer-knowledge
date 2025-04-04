@@ -229,9 +229,9 @@ impl SamplingRunner {
         match item {
             api::GetLibraryItemResponse::Ok { body: item, .. } => {
                 if item.presentation.is_none() {
-                    return Err(Finding::Other(format!(
-                        "Library item CertFti has no presentation",
-                    )));
+                    return Err(Finding::Other(
+                        "Library item CertFti has no presentation".to_owned(),
+                    ));
                 }
             }
             api::GetLibraryItemResponse::NotFound { .. } => {
