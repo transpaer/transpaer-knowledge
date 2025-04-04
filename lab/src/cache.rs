@@ -8,11 +8,11 @@ use sustainity_collecting::errors::{IoOrSerdeError, MapSerde};
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Wikidata {
     /// Manufacturer IDs.
-    #[serde(deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_string")]
+    #[serde(deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_integer")]
     pub manufacturer_ids: Vec<sustainity_wikidata::data::Id>,
 
     /// All entry classes.
-    #[serde(deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_string")]
+    #[serde(deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_integer")]
     pub classes: Vec<sustainity_wikidata::data::Id>,
 }
 

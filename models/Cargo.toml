@@ -5,11 +5,14 @@ edition = "2021"
 
 [dependencies]
 isocountry = { workspace = true }
+kv = { workspace = true, features = ["json-value"] }
 log = { workspace = true, optional = true }
 md5 = { workspace = true }
 merge = { workspace = true }
+postcard = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 snafu = { workspace = true }
+thiserror = { workspace = true }
 
 sustainity-api = { workspace = true, optional = true }
 sustainity-schema = { workspace = true, optional = true }

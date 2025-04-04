@@ -1,23 +1,29 @@
 use snafu::prelude::*;
 
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
-pub enum DbError {
-    #[snafu(display("Connection: {source}"))]
-    Connect { source: arangors::ClientError },
+use sustainity_models::{buckets::BucketError, ids::ParseIdError};
 
-    #[snafu(display("Database: {source}"))]
-    Database { source: arangors::ClientError, name: String },
+#[derive(Debug)]
+pub enum InputVariant {
+    WikiId,
+    Ean,
+    Gtin,
+    VatId,
+}
 
-    #[snafu(display("Query: {source}\n{query}"))]
-    Query { source: arangors::ClientError, query: String },
+impl std::fmt::Display for InputVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum BackendError {
-    #[snafu(context(false), display("Database: {source}"))]
-    Db { source: DbError },
+    #[snafu(context(false), display("Bucket: {source}"))]
+    Bucket { source: BucketError },
+
+    #[snafu(display("Parsing request input `{input}` as {variant}: {source}"))]
+    ParsingInput { source: ParseIdError, input: String, variant: InputVariant },
 
     #[snafu(context(false), display("Model conversion: {source}"))]
     Convert { source: sustainity_models::models::IntoApiError },

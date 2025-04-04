@@ -393,43 +393,15 @@ impl CondensationConfig {
     }
 }
 
-/// Part of the configuration for the `crystalize` command.
-///
-/// Extracted to keep size of all configuration structures similar.
-#[derive(Debug, Clone)]
-pub struct TargetConfig {
-    pub organisations_path: std::path::PathBuf,
-    pub organisation_keywords_path: std::path::PathBuf,
-    pub organisation_keyword_edges_path: std::path::PathBuf,
-    pub organisation_vat_ids_path: std::path::PathBuf,
-    pub organisation_vat_id_edges_path: std::path::PathBuf,
-    pub organisation_wiki_ids_path: std::path::PathBuf,
-    pub organisation_wiki_id_edges_path: std::path::PathBuf,
-    pub organisation_wwws_path: std::path::PathBuf,
-    pub organisation_www_edges_path: std::path::PathBuf,
-    pub products_path: std::path::PathBuf,
-    pub product_keywords_path: std::path::PathBuf,
-    pub product_keyword_edges_path: std::path::PathBuf,
-    pub product_eans_path: std::path::PathBuf,
-    pub product_ean_edges_path: std::path::PathBuf,
-    pub product_gtins_path: std::path::PathBuf,
-    pub product_gtin_edges_path: std::path::PathBuf,
-    pub product_wiki_ids_path: std::path::PathBuf,
-    pub product_wiki_id_edges_path: std::path::PathBuf,
-    pub categories_path: std::path::PathBuf,
-    pub category_edges_path: std::path::PathBuf,
-    pub manufacturing_edges_path: std::path::PathBuf,
-}
-
 /// Configuration for the `crystalize` command.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct CrystalizationConfig {
-    /// Output file paths.
-    pub target: Box<TargetConfig>,
-
     /// Local storage for runtime operations.
-    pub local_storage_runtime: std::path::PathBuf,
+    pub runtime_storage: std::path::PathBuf,
+
+    /// Database storage..
+    pub db_storage: std::path::PathBuf,
 
     /// Data substrate.
     pub substrate: SubstrateConfig,
@@ -440,30 +412,8 @@ impl CrystalizationConfig {
     pub fn new(args: &commands::CrystalizationArgs) -> CrystalizationConfig {
         let target = std::path::PathBuf::from(&args.target);
         Self {
-            target: Box::new(TargetConfig {
-                organisations_path: target.join("organisations.jsonl"),
-                organisation_keywords_path: target.join("organisation_keywords.jsonl"),
-                organisation_keyword_edges_path: target.join("organisation_keyword_edges.jsonl"),
-                organisation_vat_ids_path: target.join("organisation_vat_ids.jsonl"),
-                organisation_vat_id_edges_path: target.join("organisation_vat_id_edges.jsonl"),
-                organisation_wiki_ids_path: target.join("organisation_wiki_ids.jsonl"),
-                organisation_wiki_id_edges_path: target.join("organisation_wiki_id_edges.jsonl"),
-                organisation_wwws_path: target.join("organisation_wwws.jsonl"),
-                organisation_www_edges_path: target.join("organisation_www_edges.jsonl"),
-                products_path: target.join("products.jsonl"),
-                product_keywords_path: target.join("product_keywords.jsonl"),
-                product_keyword_edges_path: target.join("product_keyword_edges.jsonl"),
-                product_eans_path: target.join("product_eans.jsonl"),
-                product_ean_edges_path: target.join("product_ean_edges.jsonl"),
-                product_gtins_path: target.join("product_gtins.jsonl"),
-                product_gtin_edges_path: target.join("product_gtin_edges.jsonl"),
-                product_wiki_ids_path: target.join("product_wiki_ids.jsonl"),
-                product_wiki_id_edges_path: target.join("product_wiki_id_edges.jsonl"),
-                categories_path: target.join("categories.jsonl"),
-                category_edges_path: target.join("category_edges.jsonl"),
-                manufacturing_edges_path: target.join("manufacturing_edges.jsonl"),
-            }),
-            local_storage_runtime: target.join("local_storage_runtime"),
+            runtime_storage: target.join("runtime_storage"),
+            db_storage: target.join("db"),
             substrate: SubstrateConfig::new(&args.substrate),
         }
     }
@@ -474,29 +424,9 @@ impl CrystalizationConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_creatable(&self.target.organisations_path)?;
-        utils::path_creatable(&self.target.organisation_keywords_path)?;
-        utils::path_creatable(&self.target.organisation_keyword_edges_path)?;
-        utils::path_creatable(&self.target.organisation_vat_ids_path)?;
-        utils::path_creatable(&self.target.organisation_vat_id_edges_path)?;
-        utils::path_creatable(&self.target.organisation_wiki_ids_path)?;
-        utils::path_creatable(&self.target.organisation_wiki_id_edges_path)?;
-        utils::path_creatable(&self.target.organisation_wwws_path)?;
-        utils::path_creatable(&self.target.organisation_www_edges_path)?;
-        utils::path_creatable(&self.target.products_path)?;
-        utils::path_creatable(&self.target.product_keywords_path)?;
-        utils::path_creatable(&self.target.product_keyword_edges_path)?;
-        utils::path_creatable(&self.target.product_eans_path)?;
-        utils::path_creatable(&self.target.product_ean_edges_path)?;
-        utils::path_creatable(&self.target.product_gtins_path)?;
-        utils::path_creatable(&self.target.product_gtin_edges_path)?;
-        utils::path_creatable(&self.target.product_wiki_ids_path)?;
-        utils::path_creatable(&self.target.product_wiki_id_edges_path)?;
-        utils::path_creatable(&self.target.categories_path)?;
-        utils::path_creatable(&self.target.category_edges_path)?;
-        utils::path_creatable(&self.target.manufacturing_edges_path)?;
         self.substrate.check_read()?;
-        utils::path_creatable(&self.local_storage_runtime)?;
+        utils::path_creatable(&self.runtime_storage)?;
+        utils::path_creatable(&self.db_storage)?;
         Ok(())
     }
 }
@@ -511,14 +441,11 @@ pub struct OxidationConfig {
     /// Path to the input library directory.
     pub library_dir_path: std::path::PathBuf,
 
-    /// Path to the output library file.
-    pub library_target_path: std::path::PathBuf,
-
     /// Path to Fashion Transparency Index data.
     pub fashion_transparency_index_path: std::path::PathBuf,
 
-    /// Path to the output presentations file.
-    pub presentations_path: std::path::PathBuf,
+    /// Application database storage.
+    pub app_storage: std::path::PathBuf,
 }
 
 impl OxidationConfig {
@@ -530,9 +457,8 @@ impl OxidationConfig {
         Self {
             library_file_path: source.join("sustainity_library.yaml"),
             library_dir_path: library,
-            library_target_path: target.join("library.jsonl"),
             fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
-            presentations_path: target.join("presentations.jsonl"),
+            app_storage: target.join("app"),
         }
     }
 
@@ -544,9 +470,8 @@ impl OxidationConfig {
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.library_file_path)?;
         utils::dir_exists(&self.library_dir_path)?;
-        utils::path_creatable(&self.library_target_path)?;
         utils::path_exists(&self.fashion_transparency_index_path)?;
-        utils::path_creatable(&self.presentations_path)?;
+        utils::path_creatable(&self.app_storage)?;
         Ok(())
     }
 }
@@ -632,26 +557,8 @@ impl ConnectionConfig {
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct SamplingTargetConfig {
-    /// Path to the category edges data file.
-    pub category_edges_path: std::path::PathBuf,
-
-    /// Path to the product Wiki IDs data file.
-    pub product_wiki_ids_path: std::path::PathBuf,
-
-    /// Path to the product Wiki ID edges data file.
-    pub product_wiki_id_edges_path: std::path::PathBuf,
-
-    /// Path to the products data file.
-    pub products_path: std::path::PathBuf,
-
-    /// Path to the organisation Wiki IDs data file.
-    pub organisation_wiki_ids_path: std::path::PathBuf,
-
-    /// Path to the organisation Wiki ID edges data file.
-    pub organisation_wiki_id_edges_path: std::path::PathBuf,
-
-    /// Path to the organisations data file.
-    pub organisations_path: std::path::PathBuf,
+    // DB storage
+    pub db_storage: std::path::PathBuf,
 }
 
 /// Configuration for the backend part of the `sample` command.
@@ -678,15 +585,7 @@ impl SamplingConfig {
     pub fn new(args: &commands::SampleArgs) -> SamplingConfig {
         let target = if let Some(target) = &args.target {
             let target = std::path::PathBuf::from(target);
-            Some(SamplingTargetConfig {
-                category_edges_path: target.join("category_edges.jsonl"),
-                product_wiki_ids_path: target.join("product_wiki_ids.jsonl"),
-                product_wiki_id_edges_path: target.join("product_wiki_id_edges.jsonl"),
-                products_path: target.join("products.jsonl"),
-                organisation_wiki_ids_path: target.join("organisation_wiki_ids.jsonl"),
-                organisation_wiki_id_edges_path: target.join("organisation_wiki_id_edges.jsonl"),
-                organisations_path: target.join("organisations.jsonl"),
-            })
+            Some(SamplingTargetConfig { db_storage: target.join("db") })
         } else {
             None
         };
@@ -701,8 +600,7 @@ impl SamplingConfig {
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         if let Some(target) = &self.target {
-            utils::path_exists(&target.products_path)?;
-            utils::path_exists(&target.organisations_path)?;
+            utils::dir_exists(&target.db_storage)?;
         }
         Ok(())
     }

@@ -1,13 +1,10 @@
 pub use crate::{
-    ids::{Ean, Gtin, ParseIdError, VatId, WikiId},
+    ids::{Ean, Gtin, OrganisationId, ParseIdError, ProductId, VatId, WikiId},
     models::{
-        BCorpCert, Certifications, Edge, EuEcolabelCert, FtiCert, GatherDomain as Domain,
-        GatherOrganisation as Organisation, GatherOrganisationId as OrganisationId,
-        GatherOrganisationIds as OrganisationIds, GatherPresentation as Presentation,
-        GatherPresentationData as PresentationData, GatherProduct as Product,
-        GatherProductId as ProductId, GatherProductIds as ProductIds,
-        GatherScoredPresentationEntry as ScoredPresentationEntry, IdEntry, Image, Keyword,
-        LibraryItem, LibraryTopic, Regions, Source, SustainityScore, SustainityScoreBranch,
-        SustainityScoreCategory, TcoCert, Text,
+        BCorpCert, Certifications, Domain, EuEcolabelCert, FtiCert,
+        GatherOrganisation as Organisation, GatherOrganisationIds as OrganisationIds,
+        GatherProduct as Product, GatherProductIds as ProductIds, Image, LibraryItem, LibraryTopic,
+        Presentation, PresentationData, Regions, ScoredPresentationEntry, Source, SustainityScore,
+        SustainityScoreBranch, SustainityScoreCategory, TcoCert, Text,
     },
 };

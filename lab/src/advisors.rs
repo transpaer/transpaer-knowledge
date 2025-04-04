@@ -295,10 +295,10 @@ impl FashionTransparencyIndexAdvisor {
     /// Prepares Fashion Transparency Index to be presented on the Library page.
     #[must_use]
     pub fn prepare_presentation(&self) -> models::Presentation {
-        let mut data = Vec::with_capacity(self.entries.len());
+        let mut entries = Vec::with_capacity(self.entries.len());
         for entry in self.entries.values() {
             if let Some(wikidata_id) = entry.wikidata_id {
-                data.push(models::ScoredPresentationEntry {
+                entries.push(models::ScoredPresentationEntry {
                     wiki_id: wikidata_id.into(),
                     name: entry.name.clone(),
                     score: i64::from(entry.score),
@@ -307,7 +307,7 @@ impl FashionTransparencyIndexAdvisor {
         }
         models::Presentation {
             id: sustainity::data::LibraryTopic::CertFti.to_str().to_owned(),
-            data: models::PresentationData::Scored(data),
+            data: models::PresentationData { entries },
         }
     }
 }

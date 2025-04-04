@@ -1,4 +1,5 @@
 use sustainity_api::models as api;
+use sustainity_models::ids;
 
 /// This test makes sure that Sustainity scores in the database and in the API can be mapped "1 to 1".
 ///
@@ -65,7 +66,6 @@ fn serde_product_defaults() {
     use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
 
     let original_product = Product {
-        db_key: "12".to_string(),
         ids: ProductIds { eans: vec![], gtins: vec![], wiki: vec![] },
         names: Vec::default(),
         descriptions: Vec::default(),
@@ -73,7 +73,7 @@ fn serde_product_defaults() {
         categories: Vec::default(),
         regions: Regions::World,
         certifications: Certifications::default(),
-        manufacturer_ids: Vec::new(),
+        manufacturers: Vec::new(),
         follows: Vec::default(),
         followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
@@ -81,7 +81,6 @@ fn serde_product_defaults() {
 
     let expected_string = indoc::indoc!(
         r#"{
-          "_key": "12",
           "ids": {
             "eans": [],
             "gtins": [],
@@ -91,16 +90,14 @@ fn serde_product_defaults() {
           "descriptions": [],
           "images": [],
           "categories": [],
-          "regions": {
-            "variant": "all"
-          },
+          "regions": "World",
           "certifications": {
             "bcorp": null,
             "eu_ecolabel": null,
             "fti": null,
             "tco": null
           },
-          "manufacturer_ids": [],
+          "manufacturers": [],
           "follows": [],
           "followed_by": [],
           "sustainity_score": {
@@ -120,11 +117,10 @@ fn serde_product_filled() {
     use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
 
     let original_product = Product {
-        db_key: "12".to_string(),
         ids: ProductIds {
-            eans: vec!["34".to_string()],
-            gtins: vec!["56".to_string()],
-            wiki: vec!["78".to_string()],
+            eans: vec![ids::Ean::new(34)],
+            gtins: vec![ids::Gtin::new(56)],
+            wiki: vec![ids::WikiId::new(78)],
         },
         names: Vec::default(),
         descriptions: Vec::default(),
@@ -132,7 +128,7 @@ fn serde_product_filled() {
         categories: Vec::default(),
         regions: Regions::List(vec![isocountry::CountryCode::FRA, isocountry::CountryCode::NLD]),
         certifications: Certifications::default(),
-        manufacturer_ids: Vec::new(),
+        manufacturers: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
@@ -140,16 +136,15 @@ fn serde_product_filled() {
 
     let expected_string = indoc::indoc!(
         r#"{
-          "_key": "12",
           "ids": {
             "eans": [
-              "34"
+              34
             ],
             "gtins": [
-              "56"
+              56
             ],
             "wiki": [
-              "78"
+              78
             ]
           },
           "names": [],
@@ -157,8 +152,7 @@ fn serde_product_filled() {
           "images": [],
           "categories": [],
           "regions": {
-            "variant": "list",
-            "content": [
+            "List": [
               "FR",
               "NL"
             ]
@@ -169,7 +163,7 @@ fn serde_product_filled() {
             "fti": null,
             "tco": null
           },
-          "manufacturer_ids": [],
+          "manufacturers": [],
           "follows": [],
           "followed_by": [],
           "sustainity_score": {

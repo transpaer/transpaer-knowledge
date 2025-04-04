@@ -11,31 +11,28 @@ use sustainity_api::{
     GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
 };
 
-use crate::{db::Db, retrieve};
+use crate::retrieve;
 
 const CORS_ORIGIN: &str = "*";
 const CORS_METHODS: &str = "GET, POST, DELETE, OPTIONS";
 const CORS_HEADERS: &str = "Origin, Content-Type";
 
-fn get<T, C: swagger::Has<T>>(context: &C) -> &T {
-    <C as swagger::Has<T>>::get(context)
-}
-
 #[derive(Clone)]
 pub struct Server<C> {
+    retriever: retrieve::Retriever,
     marker: PhantomData<C>,
 }
 
 impl<C> Server<C> {
-    pub fn new() -> Self {
-        Server { marker: PhantomData }
+    pub fn new(retriever: retrieve::Retriever) -> Self {
+        Server { retriever, marker: PhantomData }
     }
 }
 
 #[async_trait]
 impl<C> Api<C> for Server<C>
 where
-    C: swagger::Has<swagger::XSpanIdString> + swagger::Has<Db> + Send + Sync,
+    C: swagger::Has<swagger::XSpanIdString> + Send + Sync,
 {
     async fn check_health(&self, _context: &C) -> Result<CheckHealthResponse, ApiError> {
         Ok(CheckHealthResponse::Ok {
@@ -45,9 +42,8 @@ where
         })
     }
 
-    async fn get_library(&self, context: &C) -> Result<GetLibraryResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        let items = retrieve::library_contents(db).await?;
+    async fn get_library(&self, _context: &C) -> Result<GetLibraryResponse, ApiError> {
+        let items = self.retriever.library_contents()?;
         Ok(GetLibraryResponse::Ok {
             body: LibraryContents { items },
             access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -59,10 +55,9 @@ where
     async fn get_library_item(
         &self,
         topic: LibraryTopic,
-        context: &C,
+        _context: &C,
     ) -> Result<GetLibraryItemResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        if let Some(item) = retrieve::library_item(topic, db).await? {
+        if let Some(item) = self.retriever.library_item(topic)? {
             Ok(GetLibraryItemResponse::Ok {
                 body: item,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -81,10 +76,9 @@ where
     async fn search_by_text(
         &self,
         query: String,
-        context: &C,
+        _context: &C,
     ) -> Result<SearchByTextResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        let results = retrieve::search_by_text(query, db).await?;
+        let results = self.retriever.search_by_text(query)?;
         Ok(SearchByTextResponse::Ok {
             body: TextSearchResults { results },
             access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -97,10 +91,9 @@ where
         &self,
         id_variant: OrganisationIdVariant,
         id: String,
-        context: &C,
+        _context: &C,
     ) -> Result<GetOrganisationResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        if let Some(org) = retrieve::organisation(id_variant, &id, db).await? {
+        if let Some(org) = self.retriever.organisation(id_variant, &id)? {
             Ok(GetOrganisationResponse::Ok {
                 body: org,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -121,10 +114,9 @@ where
         id_variant: ProductIdVariant,
         id: String,
         region: Option<String>,
-        context: &C,
+        _context: &C,
     ) -> Result<GetProductResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        if let Some(prod) = retrieve::product(id_variant, &id, region.as_deref(), db).await? {
+        if let Some(prod) = self.retriever.product(id_variant, &id, region.as_deref())? {
             Ok(GetProductResponse::Ok {
                 body: prod,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),
@@ -142,14 +134,15 @@ where
 
     async fn get_alternatives(
         &self,
+        id_variant: ProductIdVariant,
         id: String,
         region: Option<String>,
-        context: &C,
+        _context: &C,
     ) -> Result<GetAlternativesResponse, ApiError> {
-        let db = get::<Db, C>(context);
-        let alternatives = retrieve::product_alternatives(&id, region.as_deref(), db).await?;
+        let alternatives =
+            self.retriever.product_alternatives(id_variant, &id, region.as_deref())?;
         Ok(GetAlternativesResponse::Ok {
-            body: alternatives,
+            body: alternatives.unwrap_or_else(Vec::new),
             access_control_allow_origin: CORS_ORIGIN.to_string(),
             access_control_allow_methods: CORS_METHODS.to_string(),
             access_control_allow_headers: CORS_HEADERS.to_string(),
