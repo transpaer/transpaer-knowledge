@@ -8,6 +8,7 @@ pub use sustainity_wikidata::data::Id as WikiId;
 
 use crate::utils;
 
+// TODO: move to the support file
 pub mod items {
     pub const ACTION_FIGURE: &str = "Q343566";
     pub const ALCOHOL_BRAND: &str = "Q80359036";
@@ -156,6 +157,7 @@ pub mod items {
     ];
 }
 
+// TODO: move to the support file
 pub mod ignored {
     pub const AIRCRAFT_CARRIER: &str = "Q17205";
     pub const AIRCRAFT: &str = "Q11436";
@@ -590,6 +592,7 @@ pub mod ignored {
     ];
 }
 
+// TODO: move to the support file
 pub mod organisations {
     pub const BUSSINESS: u64 = 4_830_453;
     pub const PUBLIC_COMPANY: u64 = 891_723;
@@ -652,6 +655,9 @@ pub trait ItemExt {
 
     /// Checks if this item is related to another via a specified property.
     fn relates(&self, property_id: &str, class_id: &str) -> bool;
+
+    // Returns IDs of entries linked with "country" property.
+    fn get_countries(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Returns IDs of entities linked with "follows" property.
     fn get_follows(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
@@ -837,6 +843,10 @@ impl ItemExt for data::Item {
         }
     }
 
+    fn get_countries(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
+        self.get_entity_ids(properties::COUNTRY)
+    }
+
     fn get_follows(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::FOLLOWS)
     }
@@ -946,5 +956,44 @@ impl ItemExt for data::Item {
     #[must_use]
     fn extract_domains(&self) -> Option<HashSet<String>> {
         self.get_official_websites().map(|u| utils::extract_domains_from_urls(&u))
+    }
+}
+
+/// Reader for loading `BCorp` support data.
+pub mod support {
+    use serde::{Deserialize, Serialize};
+
+    use sustainity_collecting::errors::{IoOrSerdeError, MapSerde};
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Country {
+        /// ID of the wikidata entry about a country.
+        pub wiki_id: String,
+
+        /// Alpha3 code of the country from the entry above.
+        // TODO: need to assign codes to all of the entries.
+        #[serde(
+            default,
+            deserialize_with = "crate::utils::deserialize_optional_country_code_from_alpha3"
+        )]
+        pub country: Option<isocountry::CountryCode>,
+    }
+
+    /// Record in a `BCorp` data.
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Data {
+        /// Company ID.
+        pub countries: Vec<Country>,
+    }
+
+    /// Loads the `Wikidata` data from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn parse(path: &std::path::Path) -> Result<Data, IoOrSerdeError> {
+        let contents = std::fs::read_to_string(path)?;
+        let parsed: Data = serde_yaml::from_str(&contents).map_with_path(path)?;
+        Ok(parsed)
     }
 }

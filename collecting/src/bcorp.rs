@@ -24,6 +24,9 @@ pub mod data {
         /// Current status.
         pub current_status: Status,
 
+        /// Company country of origin.
+        pub country: String,
+
         /// Official website URL.
         pub website: String,
     }

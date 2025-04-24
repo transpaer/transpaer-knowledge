@@ -21,6 +21,8 @@ const TONYS_GTIN: ids::Gtin = ids::Gtin::new(8_717_677_339_556);
 const FAIRPHONE_4_WIKI_ID: ids::WikiId = ids::WikiId::new(109_851_604);
 const FAIRPHONE_ORG_WIKI_ID: ids::WikiId = ids::WikiId::new(5_019_402);
 const BCORP_FAIRPHONE_ID: &str = "001C000001Dz6afIAB";
+const BCORP_FAIRPHONE_URL: &str =
+    "https://www.bcorporation.net/en-us/find-a-b-corp/company/fairphone/";
 
 #[derive(thiserror::Error, Debug)]
 enum Finding {
@@ -151,7 +153,10 @@ impl SamplingRunner {
         ensure_eq!(
             entry.certifications,
             models::Certifications {
-                bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
+                bcorp: Some(models::BCorpCert {
+                    id: BCORP_FAIRPHONE_ID.to_owned(),
+                    report_url: BCORP_FAIRPHONE_URL.to_owned(),
+                }),
                 eu_ecolabel: None,
                 fti: None,
                 tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
@@ -189,7 +194,10 @@ impl SamplingRunner {
         ensure_eq!(
             entry.certifications,
             models::Certifications {
-                bcorp: Some(models::BCorpCert { id: BCORP_FAIRPHONE_ID.to_owned() }),
+                bcorp: Some(models::BCorpCert {
+                    id: BCORP_FAIRPHONE_ID.to_owned(),
+                    report_url: BCORP_FAIRPHONE_URL.to_owned(),
+                }),
                 eu_ecolabel: None,
                 fti: None,
                 tco: Some(models::TcoCert { brand_name: "FAIRPHONE".to_owned() }),
@@ -326,6 +334,7 @@ impl SamplingRunner {
                         variant: api::models::MedallionVariant::BCorp,
                         bcorp: Some(api::models::BCorpMedallion {
                             id: api::models::Id::from_str(BCORP_FAIRPHONE_ID)?,
+                            report_url: api::models::LongString::from_str(BCORP_FAIRPHONE_URL)?,
                         }),
                         eu_ecolabel: None,
                         fti: None,
@@ -422,7 +431,8 @@ impl SamplingRunner {
                         api::models::Medallion {
                             variant: api::models::MedallionVariant::BCorp,
                             bcorp: Some(api::models::BCorpMedallion {
-                                id: api::models::Id::from_str(BCORP_FAIRPHONE_ID)?
+                                id: api::models::Id::from_str(BCORP_FAIRPHONE_ID)?,
+                                report_url: api::models::LongString::from_str(BCORP_FAIRPHONE_URL)?,
                             }),
                             eu_ecolabel: None,
                             fti: None,

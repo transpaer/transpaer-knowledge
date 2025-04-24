@@ -9,7 +9,10 @@ use merge::Merge;
 use sustainity_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
 use sustainity_models::{gather as models, ids::WikiId};
 use sustainity_schema as schema;
-use sustainity_wikidata::data::{Entity, Item};
+use sustainity_wikidata::{
+    data::{Entity, Item},
+    errors::ParseIdError,
+};
 
 use crate::{
     advisors, categories, config, errors, parallel, runners, sources,
@@ -355,6 +358,21 @@ impl CondensingWikidataWorker {
         }
         result
     }
+
+    /// Extracts countries from a Wikidata item.
+    fn extract_wikidata_countries(
+        &self,
+        item: &Item,
+    ) -> Result<Option<schema::RegionList>, ParseIdError> {
+        let countries = item.get_countries()?;
+        let mut result = Vec::new();
+        for country_id in countries.unwrap_or_default() {
+            if let Some(code) = self.sources.wikidata.get_country(&country_id) {
+                result.push(code.alpha3().to_owned());
+            }
+        }
+        Ok(if result.is_empty() { None } else { Some(schema::RegionList(result)) })
+    }
 }
 
 #[async_trait]
@@ -373,6 +391,7 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                 if self.sources.is_product(&item) {
                     let categories = Self::extract_wikidata_categories(&item);
                     if !categories.is_empty() || !Self::has_categories(&item, ignored::ALL) {
+                        let regions = self.extract_wikidata_countries(&item)?;
                         let product = schema::CatalogProduct {
                             id: item.id.to_id(),
                             ids: schema::ProductIds {
@@ -399,6 +418,7 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                                     .iter()
                                     .map(sustainity_collecting::data::WikiId::to_id)
                                     .collect(),
+                                regions,
                             }),
                             availability: None,
                             related: Some(schema::RelatedProducts {
@@ -425,6 +445,7 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
 
                 // Collect all organisations
                 if self.sources.is_organisation(&item) {
+                    let regions = self.extract_wikidata_countries(&item)?;
                     let producer = schema::CatalogProducer {
                         id: item.id.to_id(),
                         ids: schema::ProducerIds {
@@ -439,6 +460,7 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                             .map(|label| label.value.clone()),
                         images: item.get_logo_images().unwrap_or_default(),
                         websites: item.get_official_websites().unwrap_or_default(),
+                        origins: Some(schema::ProducerOrigins { regions }),
                     };
                     self.collector.insert_producer(producer);
                 }
@@ -480,6 +502,28 @@ impl CondensingOpenFoodFactsWorker {
             }
         }
         result
+    }
+
+    /// Extracts production regions from Open Food Facts record.
+    fn extract_open_food_facts_production_regions(
+        record: &open_food_facts::data::Record,
+        off: &advisors::OpenFoodFactsAdvisor,
+    ) -> Option<schema::RegionList> {
+        let mut result = HashSet::<isocountry::CountryCode>::new();
+        for tag in record.extract_sell_countries() {
+            match off.get_countries(&tag) {
+                Some(models::Regions::List(list)) => result.extend(list.iter()),
+                Some(models::Regions::Unknown | models::Regions::World) | None => {}
+            }
+        }
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(schema::RegionList(
+                result.into_iter().map(|code| code.alpha3().to_owned()).collect(),
+            ))
+        }
     }
 
     /// Extracts sell regions from Open Food Facts record.
@@ -560,7 +604,13 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                 categorisation: Some(schema::ProductCategorisation {
                     categories: categories.into_iter().map(schema::ProductCategory).collect(),
                 }),
-                origins: Some(schema::ProductOrigins { producer_ids: vec![producer_id.clone()] }),
+                origins: Some(schema::ProductOrigins {
+                    producer_ids: vec![producer_id.clone()],
+                    regions: Self::extract_open_food_facts_production_regions(
+                        &record,
+                        &self.sources.off,
+                    ),
+                }),
                 availability: Some(schema::ProductAvailability {
                     regions: Self::extract_open_food_facts_sell_regions(&record, &self.sources.off),
                 }),
@@ -583,6 +633,12 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                     images: Vec::new(),
                     names: record.extract_brand_labels(),
                     websites: Vec::new(),
+                    origins: Some(schema::ProducerOrigins {
+                        regions: Self::extract_open_food_facts_production_regions(
+                            &record,
+                            &self.sources.off,
+                        ),
+                    }),
                 };
 
                 self.collector.insert_producer(producer);
@@ -611,6 +667,20 @@ impl CondensingEuEcolabelWorker {
     pub fn new(sources: Arc<sources::FullSources>) -> Self {
         Self { collector: ReviewerCollector::default(), sources }
     }
+
+    fn extract_region(record: &eu_ecolabel::data::Record) -> Option<schema::RegionList> {
+        match isocountry::CountryCode::for_alpha2(&record.company_country) {
+            Ok(code) => Some(schema::RegionList(vec![code.alpha3().to_owned()])),
+            Err(err) => {
+                log::warn!(
+                    "EuEcoLabel country `{}` is not a valid alpha2 code: {}",
+                    record.company_country,
+                    err
+                );
+                None
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -622,11 +692,11 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
         record: eu_ecolabel::data::Record,
         _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
-        if let Some(vat_number) = record.vat_number {
+        if let Some(vat_number) = &record.vat_number {
             let wiki_ids = self
                 .sources
                 .eu_ecolabel
-                .vat_to_wiki(&models::VatId::try_from(&vat_number)?)
+                .vat_to_wiki(&models::VatId::try_from(vat_number)?)
                 .map(|matching| vec![matching.wiki_id.to_id()]);
 
             let producer = schema::ReviewProducer {
@@ -640,6 +710,7 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                 description: None,
                 images: Vec::default(),
                 websites: Vec::default(),
+                origins: Some(schema::ProducerOrigins { regions: Self::extract_region(&record) }),
                 report: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
@@ -673,12 +744,13 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                 let product = schema::ReviewProduct {
                     id,
                     ids,
-                    names: vec![record.product_or_service_name],
+                    names: vec![record.product_or_service_name.clone()],
                     summary: None,
                     images: Vec::new(),
                     categorisation: None,
                     origins: Some(schema::ProductOrigins {
                         producer_ids: vec![vat_number.to_string()],
+                        regions: Self::extract_region(&record),
                     }),
                     availability: None,
                     related: None,
@@ -725,6 +797,20 @@ impl BCorpCondenser {
         ]
         .join("")
     }
+
+    fn extract_origins(
+        record: &bcorp::data::Record,
+        advisor: &advisors::BCorpAdvisor,
+    ) -> Option<schema::ProducerOrigins> {
+        if let Some(region) = advisor.get_country_code(&record.country) {
+            Some(schema::ProducerOrigins {
+                regions: Some(schema::RegionList(vec![region.alpha3().to_owned()])),
+            })
+        } else {
+            log::warn!("Missing BCorp country mapping to country code for '{}'", record.country);
+            None
+        }
+    }
 }
 
 #[async_trait]
@@ -735,10 +821,14 @@ impl parallel::RefProducer for BCorpCondenser {
     async fn produce(&self, tx: parallel::Sender<Self::Output>) -> Result<(), Self::Error> {
         let mut collector = ReviewerCollector::default();
 
-        let data = bcorp::reader::parse(&self.config.bcorp_path)?;
+        let advisor = advisors::BCorpAdvisor::load(
+            &self.config.bcorp_original_path,
+            &self.config.bcorp_support_path,
+        )?;
+        let data = bcorp::reader::parse(&self.config.bcorp_original_path)?;
         for record in data {
             collector.insert_producer(schema::ReviewProducer {
-                id: record.company_id,
+                id: record.company_id.clone(),
                 ids: schema::ProducerIds {
                     vat: None,
                     wiki: None,
@@ -747,7 +837,8 @@ impl parallel::RefProducer for BCorpCondenser {
                 names: vec![record.company_name.clone()],
                 description: None,
                 images: Vec::new(),
-                websites: vec![record.website],
+                websites: vec![record.website.clone()],
+                origins: Self::extract_origins(&record, &advisor),
                 report: Some(schema::Report {
                     url: Some(Self::guess_link_id_from_company_name(&record.company_name)),
                 }),
@@ -803,6 +894,7 @@ impl parallel::RefProducer for FtiCondenser {
                 description: None,
                 images: Vec::new(),
                 websites: Vec::new(),
+                origins: None,
                 report: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
@@ -854,6 +946,7 @@ impl parallel::RefProducer for TcoCondenser {
                 description: None,
                 images: Vec::new(),
                 websites: Vec::new(),
+                origins: None,
                 report: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),

@@ -235,15 +235,19 @@ impl merge::Merge for Regions {
 pub struct BCorpCert {
     /// Name identifying the company.
     pub id: String,
+
+    /// Link to the BCorp page about the company.
+    pub report_url: String,
 }
 
 #[cfg(feature = "into-api")]
 impl BCorpCert {
     pub fn into_api(self) -> api::Medallion {
-        let bcorp = match api::Id::from_str(&self.id) {
-            Ok(id) => Some(api::BCorpMedallion { id }),
-            Err(err) => {
-                log::error!("Could not convert Id: {err}");
+        let bcorp = match (api::Id::from_str(&self.id), api::LongString::from_str(&self.report_url))
+        {
+            (Ok(id), Ok(report_url)) => Some(api::BCorpMedallion { id, report_url }),
+            (id, report_url) => {
+                log::error!("Could not convert medallion: {id:?}, {report_url:?}");
                 None
             }
         };
@@ -621,6 +625,9 @@ pub struct GatherOrganisation {
     /// Products of this organistion.
     pub products: BTreeSet<ids::ProductId>,
 
+    /// Countries where the organisation is registered in.
+    pub origins: BTreeSet<isocountry::CountryCode>,
+
     /// Known certifications.
     pub certifications: Certifications,
 }
@@ -633,6 +640,7 @@ impl GatherOrganisation {
         let mut images: Vec<_> = self.images.into_iter().collect();
         let mut websites: Vec<_> = self.websites.into_iter().collect();
         let mut products: Vec<_> = self.products.into_iter().collect();
+        let mut origins: Vec<_> = self.origins.into_iter().collect();
         let certifications = self.certifications;
 
         names.sort();
@@ -640,8 +648,18 @@ impl GatherOrganisation {
         images.sort();
         products.sort();
         websites.sort();
+        origins.sort();
 
-        StoreOrganisation { ids, names, descriptions, images, websites, products, certifications }
+        StoreOrganisation {
+            ids,
+            names,
+            descriptions,
+            images,
+            websites,
+            origins,
+            products,
+            certifications,
+        }
     }
 }
 
@@ -673,6 +691,9 @@ pub struct StoreOrganisation {
 
     /// Websites.
     pub websites: Vec<String>,
+
+    /// Countries where the organisation is registered in.
+    pub origins: Vec<isocountry::CountryCode>,
 
     /// Products of this organistion.
     pub products: Vec<ids::ProductId>,
@@ -707,8 +728,16 @@ fn text_to_short_string(text: &Text) -> api::ShortString {
 }
 
 #[cfg(feature = "into-api")]
-fn text_to_long_string(text: &Text) -> api::LongString {
-    api::LongString::from_str(&text.text).expect("Converting texts")
+fn text_to_long_text(text: &Text) -> api::LongText {
+    api::LongText {
+        text: api::LongString::from_str(&text.text).expect("Converting texts"),
+        source: text.source.clone().into_api(),
+    }
+}
+
+#[cfg(feature = "into-api")]
+fn country_code_to_region_code(code: isocountry::CountryCode) -> api::RegionCode {
+    api::RegionCode::from_str(code.alpha3()).expect("alpha3 code must have length of 3")
 }
 
 #[cfg(feature = "into-api")]
@@ -717,7 +746,7 @@ impl StoreOrganisation {
         api::OrganisationShort {
             organisation_ids: self.ids.to_api(),
             name: self.names.first().map_or_else(default_short_string, text_to_short_string),
-            description: self.descriptions.first().map(text_to_long_string),
+            description: self.descriptions.first().map(text_to_long_text),
             badges: self.certifications.to_api_badges(),
             scores: self.certifications.to_api_scores(),
         }
@@ -730,6 +759,7 @@ impl StoreOrganisation {
             descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
             websites: self.websites.into_iter().map(str_to_short_string).collect(),
+            origins: self.origins.into_iter().map(country_code_to_region_code).collect(),
             medallions: self.certifications.into_api_medallions(),
             products,
         }
@@ -850,6 +880,9 @@ pub struct GatherProduct {
     /// Regions where the product is available.
     pub regions: Regions,
 
+    /// Regions where the product is manufactures.
+    pub origins: BTreeSet<isocountry::CountryCode>,
+
     /// Known certifications.
     pub certifications: Certifications,
 
@@ -874,6 +907,7 @@ impl GatherProduct {
         let mut images: Vec<_> = self.images.into_iter().collect();
         let mut categories: Vec<_> = self.categories.into_iter().collect();
         let regions = self.regions;
+        let origins = self.origins.into_iter().collect();
         let certifications = self.certifications;
         let mut manufacturers: Vec<_> = self.manufacturers.into_iter().collect();
         let mut follows: Vec<_> = self.follows.into_iter().collect();
@@ -894,6 +928,7 @@ impl GatherProduct {
             images,
             categories,
             regions,
+            origins,
             certifications,
             manufacturers,
             follows,
@@ -939,6 +974,9 @@ pub struct StoreProduct {
     /// Regions where the product is available.
     pub regions: Regions,
 
+    /// Regions where the product is produced.
+    pub origins: Vec<isocountry::CountryCode>,
+
     /// Known certifications.
     pub certifications: Certifications,
 
@@ -961,7 +999,7 @@ impl StoreProduct {
         api::ProductShort {
             product_ids: self.ids.to_api(),
             name: self.names.first().map_or_else(default_short_string, text_to_short_string),
-            description: self.descriptions.first().map(text_to_long_string),
+            description: self.descriptions.first().map(text_to_long_text),
             badges: self.certifications.to_api_badges(),
             scores: self.certifications.to_api_scores(),
         }
@@ -980,6 +1018,7 @@ impl StoreProduct {
             names: self.names.into_iter().map(|n| n.into_api_short()).collect(),
             descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
+            origins: self.origins.into_iter().map(country_code_to_region_code).collect(),
             manufacturers,
             alternatives,
             medallions,

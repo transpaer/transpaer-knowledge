@@ -48,8 +48,8 @@ pub enum CrystalizationError {
     #[error("ID parsing: {0}")]
     IdParsing(#[from] sustainity_models::ids::ParseIdError),
 
-    #[error("ISO country code: {0}")]
-    IsoCountry(#[from] isocountry::CountryCodeParseErr),
+    #[error("ISO country code while (when {when}): {source}")]
+    IsoCountry { source: isocountry::CountryCodeParseErr, when: &'static str },
 
     #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
     UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: std::path::PathBuf, when: String },
