@@ -161,6 +161,10 @@ pub struct AnalysisArgs {
     /// Cache directory.
     #[arg(long)]
     pub cache: String,
+
+    /// Source data directory.
+    #[arg(long)]
+    pub source: String,
 }
 
 /// Arguments of the `connect` command.

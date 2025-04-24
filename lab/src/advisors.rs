@@ -7,23 +7,46 @@ use sustainity_collecting::{
 };
 use sustainity_models::gather as models;
 
-use crate::{cache, convert, errors, utils, wikidata::WikiId};
+use crate::{
+    cache, convert, errors, utils,
+    wikidata::{self, WikiId},
+};
 
 /// Holds the information read from the `BCorp` data.
 pub struct BCorpAdvisor {
     /// Map from `BCorp` company domains to their names.
     domain_to_name: HashMap<String, String>,
+
+    /// Map from `BCorp` country name to country code.
+    country_to_code: HashMap<String, isocountry::CountryCode>,
 }
 
 impl BCorpAdvisor {
     /// Constructs a new `BCorpAdvisor`.
     #[must_use]
-    pub fn new(records: &[bcorp::data::Record]) -> Self {
-        let domain_to_name: HashMap<String, String> = records
-            .iter()
-            .map(|r| (utils::extract_domain_from_url(&r.website), r.company_name.clone()))
-            .collect();
-        Self { domain_to_name }
+    pub fn new(
+        records: Option<&[bcorp::data::Record]>,
+        data: Option<&crate::bcorp::data::Data>,
+    ) -> Self {
+        let domain_to_name = if let Some(records) = records {
+            records
+                .iter()
+                .map(|r| (utils::extract_domain_from_url(&r.website), r.company_name.clone()))
+                .collect::<HashMap<String, String>>()
+        } else {
+            HashMap::new()
+        };
+
+        let country_to_code = if let Some(data) = data {
+            data.countries
+                .iter()
+                .map(|country| (country.country.clone(), country.code))
+                .collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
+
+        Self { domain_to_name, country_to_code }
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
@@ -31,14 +54,25 @@ impl BCorpAdvisor {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(path) {
-            let data = bcorp::reader::parse(path)?;
-            Ok(Self::new(&data))
+    pub fn load(
+        original_path: &std::path::Path,
+        support_path: &std::path::Path,
+    ) -> Result<Self, errors::ProcessingError> {
+        let original_data = if utils::is_path_ok(original_path) {
+            Some(sustainity_collecting::bcorp::reader::parse(original_path)?)
         } else {
-            log::warn!("Could not access {path:?}. BCorp data won't be loaded!");
-            Ok(Self::new(&[]))
-        }
+            log::warn!("Could not access {original_path:?}. BCorp original data won't be loaded!");
+            None
+        };
+
+        let support_data = if utils::is_path_ok(support_path) {
+            Some(crate::bcorp::reader::parse(support_path)?)
+        } else {
+            log::warn!("Could not access {support_path:?}. BCorp support data won't be loaded!");
+            None
+        };
+
+        Ok(Self::new(original_data.as_deref(), support_data.as_ref()))
     }
 
     /// Checks if at least one of the passed domains corresponds to a `BCorp` company.
@@ -50,6 +84,11 @@ impl BCorpAdvisor {
             }
         }
         false
+    }
+
+    #[must_use]
+    pub fn get_country_code(&self, name: &str) -> Option<&isocountry::CountryCode> {
+        self.country_to_code.get(name)
     }
 }
 
@@ -320,22 +359,40 @@ pub struct WikidataAdvisor {
 
     /// Topic info.
     class_ids: HashSet<WikiId>,
+
+    /// Wikidata ID to alpha3 country code
+    country_to_region: HashMap<WikiId, isocountry::CountryCode>,
 }
 
 impl WikidataAdvisor {
     /// Constructs a new `WikidataAdvisor` with loaded data.
-    #[must_use]
-    pub fn new(cache: &cache::Wikidata) -> Self {
-        Self {
-            manufacturer_ids: cache.manufacturer_ids.iter().copied().collect(),
-            class_ids: cache.classes.iter().copied().collect(),
-        }
-    }
+    pub fn new(
+        cache: Option<&cache::Wikidata>,
+        data: Option<&wikidata::support::Data>,
+    ) -> Result<Self, errors::ProcessingError> {
+        let country_to_region = if let Some(data) = data {
+            let mut country_to_region = HashMap::new();
+            for country in &data.countries {
+                if let Some(code) = country.country {
+                    let wiki_id = WikiId::try_from(&country.wiki_id)?;
+                    country_to_region.insert(wiki_id, code);
+                }
+            }
+            country_to_region
+        } else {
+            HashMap::new()
+        };
 
-    /// Constructs a new `WikidataAdvisor` with no data.
-    #[must_use]
-    pub fn new_empty() -> Self {
-        Self { manufacturer_ids: HashSet::new(), class_ids: HashSet::new() }
+        let (manufacturer_ids, class_ids) = if let Some(cache) = cache {
+            (
+                cache.manufacturer_ids.iter().copied().collect(),
+                cache.classes.iter().copied().collect(),
+            )
+        } else {
+            (HashSet::new(), HashSet::new())
+        };
+
+        Ok(Self { manufacturer_ids, class_ids, country_to_region })
     }
 
     /// Loads a new `WikidataAdvisor` from a file.
@@ -343,17 +400,25 @@ impl WikidataAdvisor {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load<P>(path: P) -> Result<Self, errors::ProcessingError>
+    pub fn load<P>(cache_path: P, source_path: P) -> Result<Self, errors::ProcessingError>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
-        if utils::is_path_ok(path.as_ref()) {
-            let data = cache::load(path.as_ref())?;
-            Ok(Self::new(&data))
+        let cache = if utils::is_path_ok(cache_path.as_ref()) {
+            Some(cache::load(cache_path.as_ref())?)
         } else {
-            log::warn!("Could not access {path:?}. Wikidata cache won't be loaded!");
-            Ok(Self::new_empty())
-        }
+            log::warn!("Could not access {cache_path:?}. Wikidata cache won't be loaded!");
+            None
+        };
+
+        let data = if utils::is_path_ok(source_path.as_ref()) {
+            Some(wikidata::support::parse(source_path.as_ref())?)
+        } else {
+            log::warn!("Could not access {source_path:?}. Wikidata source won't be loaded!");
+            None
+        };
+
+        Self::new(cache.as_ref(), data.as_ref())
     }
 
     /// Checks if the passed ID belongs to a known manufacturer.
@@ -366,6 +431,11 @@ impl WikidataAdvisor {
     #[must_use]
     pub fn has_class_id(&self, id: &WikiId) -> bool {
         self.class_ids.contains(id)
+    }
+
+    #[must_use]
+    pub fn get_country(&self, country_id: &WikiId) -> Option<&isocountry::CountryCode> {
+        self.country_to_region.get(country_id)
     }
 }
 

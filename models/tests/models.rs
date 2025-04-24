@@ -72,6 +72,7 @@ fn serde_product_defaults() {
         images: Vec::default(),
         categories: Vec::default(),
         regions: Regions::World,
+        origins: Vec::new(),
         certifications: Certifications::default(),
         manufacturers: Vec::new(),
         follows: Vec::default(),
@@ -91,6 +92,7 @@ fn serde_product_defaults() {
           "images": [],
           "categories": [],
           "regions": "World",
+          "origins": [],
           "certifications": {
             "bcorp": null,
             "eu_ecolabel": null,
@@ -127,6 +129,7 @@ fn serde_product_filled() {
         images: Vec::default(),
         categories: Vec::default(),
         regions: Regions::List(vec![isocountry::CountryCode::FRA, isocountry::CountryCode::NLD]),
+        origins: Vec::default(),
         certifications: Certifications::default(),
         manufacturers: Vec::default(),
         follows: Vec::default(),
@@ -157,6 +160,7 @@ fn serde_product_filled() {
               "NL"
             ]
           },
+          "origins": [],
           "certifications": {
             "bcorp": null,
             "eu_ecolabel": null,

@@ -77,9 +77,11 @@ impl Sourceable for FullSources {
 
     /// Constructs a new `FullSources`.
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        let wikidata = advisors::WikidataAdvisor::load(&config.wikidata_cache_path)?;
+        let wikidata =
+            advisors::WikidataAdvisor::load(&config.wikidata_cache_path, &config.wikidata_path)?;
         let matches = advisors::SustainityMatchesAdvisor::load(&config.match_path)?;
-        let bcorp = advisors::BCorpAdvisor::load(&config.bcorp_path)?;
+        let bcorp =
+            advisors::BCorpAdvisor::load(&config.bcorp_original_path, &config.bcorp_support_path)?;
         let eu_ecolabel = advisors::EuEcolabelAdvisor::load(
             &config.eu_ecolabel_original_path,
             &config.match_path,

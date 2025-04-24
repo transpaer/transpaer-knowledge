@@ -144,11 +144,7 @@ where
                 self.worker.process(&input, entity, tx).await?;
             }
             Err(err) => {
-                log::error!(
-                    "Failed to parse a Wikidata entity: {} \nMessage:\n'{}'\n\n",
-                    err,
-                    input
-                );
+                log::error!("Failed to parse a Wikidata entity: {err} \nMessage:\n'{input}'\n\n",);
             }
         }
         Ok(())

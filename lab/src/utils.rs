@@ -2,6 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use serde::{de::Deserializer, Deserialize};
+
 use crate::errors;
 
 /// Extracts domain from a URL.
@@ -175,6 +177,33 @@ where
     for (key, value2) in m2 {
         m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
     }
+}
+
+/// Helper for deserializing `isocountry::countryCode` from alpha3 strings.
+pub fn deserialize_country_code_from_alpha3<'de, D>(
+    d: D,
+) -> Result<isocountry::CountryCode, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(d)?;
+    isocountry::CountryCode::for_alpha3(s.as_str()).map_err(serde::de::Error::custom)
+}
+
+/// Helper for deserializing `isocountry::countryCode` from alpha3 strings.
+pub fn deserialize_optional_country_code_from_alpha3<'de, D>(
+    d: D,
+) -> Result<Option<isocountry::CountryCode>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(d)?;
+    Ok(match s {
+        Some(s) => Some(
+            isocountry::CountryCode::for_alpha3(s.as_str()).map_err(serde::de::Error::custom)?,
+        ),
+        None => None,
+    })
 }
 
 #[cfg(test)]

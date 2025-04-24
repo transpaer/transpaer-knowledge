@@ -304,7 +304,8 @@ impl Sourceable for AnalysisSources {
 
     /// Constructs a new `AnalysisSources`.
     fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        let wikidata = advisors::WikidataAdvisor::load(&config.wikidata_cache_path)?;
+        let wikidata =
+            advisors::WikidataAdvisor::load(&config.wikidata_cache_path, &config.wikidata_path)?;
         Ok(Self { wikidata })
     }
 }

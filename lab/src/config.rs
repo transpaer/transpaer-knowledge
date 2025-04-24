@@ -134,8 +134,14 @@ pub struct SourcesConfig {
     /// Path to input Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
-    /// Path to B-Corp data.
-    pub bcorp_path: std::path::PathBuf,
+    /// Path to input Wikidata cache.
+    pub wikidata_path: std::path::PathBuf,
+
+    /// Path to original B-Corp data.
+    pub bcorp_original_path: std::path::PathBuf,
+
+    /// Path to B-Corp support data.
+    pub bcorp_support_path: std::path::PathBuf,
 
     /// Path to original EU Ecolabel data.
     pub eu_ecolabel_original_path: std::path::PathBuf,
@@ -156,12 +162,15 @@ pub struct SourcesConfig {
 impl SourcesConfig {
     /// Constructs a new `SourceConfig`.
     pub fn new(origin: &str, source: &str, cache: &str) -> SourcesConfig {
+        // TODO: rename the source path? Maybe to "support"?
         let source = std::path::PathBuf::from(source);
         let origin = std::path::PathBuf::from(origin);
         let cache = std::path::PathBuf::from(cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
-            bcorp_path: origin.join("bcorp.csv"),
+            wikidata_path: source.join("wikidata.yaml"),
+            bcorp_original_path: origin.join("bcorp.csv"),
+            bcorp_support_path: source.join("bcorp.yaml"),
             eu_ecolabel_original_path: origin.join("eu_ecolabel_products.csv"),
             match_path: source.join("matches.yaml"),
             tco_path: source.join("tco.yaml"),
@@ -177,7 +186,8 @@ impl SourcesConfig {
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_exists(&self.wikidata_cache_path)?;
-        utils::path_exists(&self.bcorp_path)?;
+        utils::path_exists(&self.bcorp_original_path)?;
+        utils::path_exists(&self.bcorp_support_path)?;
         utils::path_exists(&self.eu_ecolabel_original_path)?;
         utils::path_exists(&self.match_path)?;
         utils::path_exists(&self.tco_path)?;
@@ -483,6 +493,9 @@ pub struct AnalysisConfig {
     /// Path to output Wikidata cache.
     pub wikidata_cache_path: std::path::PathBuf,
 
+    /// Path to output Wikidata cache.
+    pub wikidata_path: std::path::PathBuf,
+
     /// `Wikidatagatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
 }
@@ -491,8 +504,10 @@ impl AnalysisConfig {
     /// Constructs a new `FilteringConfig`.
     pub fn new(args: &commands::AnalysisArgs) -> AnalysisConfig {
         let cache = std::path::PathBuf::from(&args.cache);
+        let sources = std::path::PathBuf::from(&args.source);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
+            wikidata_path: sources.join("wikidata.json"),
             wikidata_gatherer: WikidataProducerConfig::new_filtered(&args.cache),
         }
     }

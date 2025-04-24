@@ -32,14 +32,46 @@ fn convert_regions(
             schema::RegionVariant::All => gather::Regions::World,
             schema::RegionVariant::Unknown => gather::Regions::Unknown,
         },
-        schema::Regions::List(list) => {
-            let mut regions = Vec::new();
-            for region in &list.0 {
-                regions.push(isocountry::CountryCode::for_alpha3(region)?);
-            }
-            gather::Regions::List(regions)
-        }
+        schema::Regions::List(list) => gather::Regions::List(convert_region_list(list)?),
     })
+}
+
+fn convert_region_list(
+    list: &schema::RegionList,
+) -> Result<Vec<isocountry::CountryCode>, isocountry::CountryCodeParseErr> {
+    let mut regions = Vec::new();
+    for region in &list.0 {
+        regions.push(isocountry::CountryCode::for_alpha3(region)?);
+    }
+    Ok(regions)
+}
+
+fn extract_product_origins(
+    origins: Option<&schema::ProductOrigins>,
+) -> Result<BTreeSet<isocountry::CountryCode>, isocountry::CountryCodeParseErr> {
+    if let Some(origins) = origins {
+        if let Some(regions) = &origins.regions {
+            Ok(convert_region_list(regions)?.into_iter().collect())
+        } else {
+            Ok(BTreeSet::new())
+        }
+    } else {
+        Ok(BTreeSet::new())
+    }
+}
+
+fn extract_producer_origins(
+    origins: Option<&schema::ProducerOrigins>,
+) -> Result<BTreeSet<isocountry::CountryCode>, isocountry::CountryCodeParseErr> {
+    if let Some(origins) = origins {
+        if let Some(regions) = &origins.regions {
+            Ok(convert_region_list(regions)?.into_iter().collect())
+        } else {
+            Ok(BTreeSet::new())
+        }
+    } else {
+        Ok(BTreeSet::new())
+    }
 }
 
 // Indentifies a substrate file.
@@ -211,13 +243,13 @@ impl CrystalizationReport {
         if !self.no_stem.is_empty() {
             log::warn!(" no stem:");
             for path in &self.no_stem {
-                log::warn!("  - {:?}", path);
+                log::warn!("  - {path:?}");
             }
         }
         if !self.not_unicode.is_empty() {
             log::warn!(" not unicode:");
             for path in &self.not_unicode {
-                log::warn!("  - {:?}", path);
+                log::warn!("  - {path:?}");
             }
         }
         if !self.invalid_ids.is_empty() {
@@ -1054,6 +1086,12 @@ impl Processor {
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
                 websites: producer.websites.into_iter().collect(),
+                origins: extract_producer_origins(producer.origins.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing catalogue producer",
+                    }
+                })?,
                 certifications: gather::Certifications::default(),
                 products: BTreeSet::new(), //< filled later
             },
@@ -1100,7 +1138,18 @@ impl Processor {
                 categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
                     c.categories.iter().map(|c| c.join("/")).collect()
                 }),
-                regions: extract_regions(product.availability.as_ref())?,
+                regions: extract_regions(product.availability.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing catalogue product regions",
+                    }
+                })?,
+                origins: extract_product_origins(product.origins.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing catalogue product origins",
+                    }
+                })?,
                 manufacturers,
                 follows,
                 followed_by,
@@ -1144,7 +1193,18 @@ impl Processor {
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
                 categories: product.categorisation.categories.iter().map(|c| c.join("/")).collect(),
-                regions: extract_regions(product.availability.as_ref())?,
+                regions: extract_regions(product.availability.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing producer product regions",
+                    }
+                })?,
+                origins: extract_product_origins(product.origins.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing producer product origins",
+                    }
+                })?,
                 manufacturers,
                 follows,
                 followed_by,
@@ -1195,6 +1255,12 @@ impl Processor {
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
                 websites: producer.websites.into_iter().collect(),
+                origins: extract_producer_origins(producer.origins.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing review producer",
+                    }
+                })?,
                 certifications,
                 products: BTreeSet::new(), //< filled later
             },
@@ -1237,7 +1303,18 @@ impl Processor {
                 categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
                     c.categories.iter().map(|c| c.join("/")).collect()
                 }),
-                regions: extract_regions(product.availability.as_ref())?,
+                regions: extract_regions(product.availability.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing review product regions",
+                    }
+                })?,
+                origins: extract_product_origins(product.origins.as_ref()).map_err(|source| {
+                    errors::CrystalizationError::IsoCountry {
+                        source,
+                        when: "processing review product origins",
+                    }
+                })?,
                 manufacturers,
                 follows,
                 followed_by,
@@ -1317,7 +1394,14 @@ impl Processor {
             return None;
         }
 
-        Some(gather::BCorpCert { id: producer.id.clone() })
+        Some(gather::BCorpCert {
+            id: producer.id.clone(),
+            report_url: producer
+                .report
+                .as_ref()
+                .and_then(|report| report.url.clone())
+                .unwrap_or_default(),
+        })
     }
 
     fn extract_euecolabel_cert(substrate: &Substrate) -> Option<gather::EuEcolabelCert> {

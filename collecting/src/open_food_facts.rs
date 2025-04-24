@@ -57,6 +57,16 @@ pub mod data {
             labels.into_iter().collect()
         }
 
+        /// Extracts productnio country tags.
+        #[must_use]
+        pub fn extract_producttion_countries(&self) -> Vec<String> {
+            if self.manufacturing_places_tags.is_empty() {
+                Vec::new()
+            } else {
+                self.manufacturing_places_tags.split(',').map(String::from).collect()
+            }
+        }
+
         /// Extracts sell country tags.
         #[must_use]
         pub fn extract_sell_countries(&self) -> Vec<String> {

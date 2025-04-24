@@ -3,8 +3,10 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
+// TODO: add more structure to the files
 pub mod advisors;
 pub mod analysis;
+pub mod bcorp;
 pub mod cache;
 pub mod categories;
 pub mod commands;

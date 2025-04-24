@@ -1,3 +1,6 @@
+/// "Country" property.
+pub const COUNTRY: &str = "P17";
+
 /// "Image" property.
 pub const IMAGE: &str = "P18";
 
