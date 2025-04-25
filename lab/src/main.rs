@@ -3,11 +3,9 @@
 #![deny(clippy::expect_used)]
 #![allow(clippy::module_name_repetitions)]
 
-use sustainity_lab::{config, errors};
-
 /// Formats duration to a human-readable format.
 #[must_use]
-pub fn format_elapsed_time(duration: std::time::Duration) -> String {
+fn format_elapsed_time(duration: std::time::Duration) -> String {
     let duration = duration.as_secs();
     let seconds = duration % 60;
     let minutes = (duration / 60) % 60;
@@ -15,59 +13,65 @@ pub fn format_elapsed_time(duration: std::time::Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
-async fn run() -> Result<(), errors::ProcessingError> {
-    match config::Config::new_from_args() {
-        config::Config::Filtering1(config) => {
+async fn run() -> Result<(), sustainity_lab::ProcessingError> {
+    use sustainity_lab::Config;
+    match Config::new_from_args() {
+        Config::Filtering1(config) => {
             config.check()?;
             log::info!("Start filtering, phase 1");
-            sustainity_lab::filtering1::FilteringRunner::run(&config)?;
+            sustainity_lab::Filtering1Runner::run(&config)?;
         }
-        config::Config::Filtering2(config) => {
+        Config::Filtering2(config) => {
             config.check()?;
             log::info!("Start filtering, phase 2");
-            sustainity_lab::filtering2::FilteringRunner::run(&config)?;
+            sustainity_lab::Filtering2Runner::run(&config)?;
         }
-        config::Config::Filtering(config) => {
+        Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering, phase 1");
-            sustainity_lab::filtering1::FilteringRunner::run(&config.filter1)?;
+            sustainity_lab::Filtering1Runner::run(&config.filter1)?;
             log::info!("Continue filtering, phase 2");
-            sustainity_lab::filtering2::FilteringRunner::run(&config.filter2)?;
+            sustainity_lab::Filtering2Runner::run(&config.filter2)?;
         }
-        config::Config::Updating(config) => {
+        Config::Updating(config) => {
             config.check()?;
             log::info!("Start updating!");
-            sustainity_lab::updating::UpdateRunner::run(&config)?;
+            sustainity_lab::UpdateRunner::run(&config)?;
         }
-        config::Config::Condensation(config) => {
+        Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            sustainity_lab::condensing::CondensingRunner::run(&config)?;
+            sustainity_lab::CondensingRunner::run(&config)?;
         }
-        config::Config::Crystalization(config) => {
+        Config::Coagulation(config) => {
+            config.check()?;
+            log::info!("Start coagulation!");
+            sustainity_lab::Coagulator::run(&config)?;
+        }
+        Config::Crystalization(config) => {
             config.check()?;
             log::info!("Start crystalization!");
-            sustainity_lab::crystalizing::Crystalizer::run(&config)?;
+            sustainity_lab::Crystalizer::run(&config)?;
         }
-        config::Config::Oxidation(config) => {
+        Config::Oxidation(config) => {
             config.check()?;
             log::info!("Start oxidizing!");
-            sustainity_lab::oxidation::Oxidizer::run(&config)?;
+            sustainity_lab::Oxidizer::run(&config)?;
         }
-        config::Config::Analysis(config) => {
+        Config::Analysis(config) => {
             config.check()?;
             log::info!("Start analysis!");
-            sustainity_lab::analysis::AnalysisRunner::run(&config)?;
+            sustainity_lab::AnalysisRunner::run(&config)?;
         }
-        config::Config::Connection(config) => {
+        Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
-            sustainity_lab::connecting::ConnectionRunner::run(&config)?;
+            sustainity_lab::ConnectionRunner::run(&config)?;
         }
-        config::Config::Sample(config) => {
+        Config::Sample(config) => {
             config.check()?;
             log::info!("Start sampling!");
-            sustainity_lab::sampling::SamplingRunner::run(&config).await?;
+            sustainity_lab::SamplingRunner::run(&config).await?;
         }
     }
     Ok(())
@@ -98,8 +102,23 @@ async fn main() {
         log::error!("Processing error:\n{err}");
     }
 
-    log::info!(
-        "Done! Elapsed time: {}",
-        sustainity_lab::utils::format_elapsed_time(start_time.elapsed())
-    );
+    log::info!("Done! Elapsed time: {}", format_elapsed_time(start_time.elapsed()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_elapsed_time;
+
+    #[test]
+    fn test_format_elapsed_time() {
+        use std::time::Duration;
+
+        assert_eq!(format_elapsed_time(Duration::new(0, 0)), "0h 0m 0s");
+        assert_eq!(format_elapsed_time(Duration::new(12, 0)), "0h 0m 12s");
+        assert_eq!(format_elapsed_time(Duration::new(120, 0)), "0h 2m 0s");
+        assert_eq!(format_elapsed_time(Duration::new(134, 0)), "0h 2m 14s");
+        assert_eq!(format_elapsed_time(Duration::new(3600, 0)), "1h 0m 0s");
+        assert_eq!(format_elapsed_time(Duration::new(3720, 0)), "1h 2m 0s");
+        assert_eq!(format_elapsed_time(Duration::new(3724, 0)), "1h 2m 4s");
+    }
 }

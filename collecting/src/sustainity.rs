@@ -108,7 +108,7 @@ pub mod data {
 /// Reader to loading sustainity data.
 pub mod reader {
     use super::data::{LibraryInfo, NameMatching};
-    use crate::errors::{IoOrSerdeError, MapSerde};
+    use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
 
     /// Loads the sustainity library data from a file.
     ///
@@ -116,7 +116,7 @@ pub mod reader {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn parse_library(path: &std::path::Path) -> Result<Vec<LibraryInfo>, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: Vec<LibraryInfo> = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
     }
@@ -127,7 +127,7 @@ pub mod reader {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn parse_id_map(path: &std::path::Path) -> Result<Vec<NameMatching>, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: Vec<NameMatching> = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
     }

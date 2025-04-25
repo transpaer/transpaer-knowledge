@@ -92,29 +92,6 @@ impl BCorpAdvisor {
     }
 }
 
-/// Represents a company extracted to EU Ecolabel data.
-#[derive(Clone, Debug)]
-pub struct EuEcolabelCompany {
-    /// Company name.
-    pub name: String,
-
-    /// Company VAT ID.
-    pub vat_id: models::VatId,
-}
-
-/// Represents a product extracted to EU Ecolabel data.
-#[derive(Clone, Debug)]
-pub struct EuEcolabelProduct {
-    /// Product name.
-    pub name: String,
-
-    /// Producer ID.
-    pub company_id: models::OrganisationId,
-
-    /// GTIN of the product.
-    pub gtin: models::Gtin,
-}
-
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
     /// Map from companies Vat ID to their Wikidata IDs.

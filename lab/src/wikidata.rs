@@ -631,6 +631,7 @@ pub mod organisations {
     ];
 }
 
+#[allow(dead_code)]
 pub trait ItemExt {
     /// Returns items label in the speified language.
     fn get_label(&self, lang: data::Language) -> Option<&str>;
@@ -992,7 +993,8 @@ pub mod support {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn parse(path: &std::path::Path) -> Result<Data, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents =
+            std::fs::read_to_string(path).map_err(|e| IoOrSerdeError::Io(e, path.to_owned()))?;
         let parsed: Data = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
     }

@@ -25,7 +25,7 @@ pub mod data {
 /// Reader to loading TCO data.
 pub mod reader {
     use super::data::Entry;
-    use crate::errors::{IoOrSerdeError, MapSerde};
+    use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
 
     /// Loads the Fashion Transparency Index data from a file.
     ///
@@ -33,7 +33,7 @@ pub mod reader {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn parse(path: &std::path::Path) -> Result<Vec<Entry>, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: Vec<Entry> = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
     }

@@ -102,7 +102,7 @@ pub mod data {
 /// Reader for loading Open Food Facts data.
 pub mod reader {
     use super::data::{CountryEntry, Record};
-    use crate::errors::{IoOrSerdeError, MapSerde};
+    use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
 
     /// Iterator over Open Food Facts CSV file records.
     pub struct Iter {
@@ -159,7 +159,7 @@ pub mod reader {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn parse_countries(path: &std::path::Path) -> Result<Vec<CountryEntry>, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: Vec<CountryEntry> = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
     }

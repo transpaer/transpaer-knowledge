@@ -109,10 +109,27 @@ pub struct CondensationArgs {
     pub substrate: String,
 }
 
+/// Arguments of the `coagulate` command.
+#[derive(Parser, Debug)]
+#[command(
+    about = "Preprocessing step for the `crystalize` command",
+    long_about = "Iterates over all IDs of all organisations and products from all substrates to merge
+                  them if they refer to the same entity."
+)]
+pub struct CoagulationArgs {
+    /// Substrate data directory.
+    #[arg(long)]
+    pub substrate: String,
+
+    /// Target data directory.
+    #[arg(long)]
+    pub coagulate: String,
+}
+
 /// Arguments of the `crystalize` command.
 #[derive(Parser, Debug)]
 #[command(
-    about = "Processes all available substrate files to create an new version of Sustainity database",
+    about = "Processes all available substrate files to create a new version of Sustainity database",
     long_about = "Substrate files adhere to the schema defined by the Sustainity projest and are provided \
                   by affiliated companies, organisations, reviewers, etc, or are prepared by the Sustainity \
                   from reputable data sources. This command merges all the available substrate files to \
@@ -122,6 +139,10 @@ pub struct CrystalizationArgs {
     /// Substrate data directory.
     #[arg(long)]
     pub substrate: String,
+
+    /// Coagulation data.
+    #[arg(long)]
+    pub coagulate: String,
 
     /// Target data directory.
     #[arg(long)]
@@ -209,6 +230,7 @@ pub enum Commands {
     Filter(FilteringArgs),
     Update(UpdatingArgs),
     Condense(CondensationArgs),
+    Coagulate(CoagulationArgs),
     Crystalize(CrystalizationArgs),
     Oxidize(OxidationArgs),
     Analyze(AnalysisArgs),

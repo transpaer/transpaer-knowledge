@@ -4,7 +4,7 @@ pub use sustainity_collecting::errors::IoOrSerdeError;
 pub use sustainity_models::buckets::BucketError;
 pub use sustainity_wikidata::dump::LoaderError;
 
-use crate::wikidata::WikiId;
+use crate::{coagulate::ExternalId, substrate::DataSetId, wikidata::WikiId};
 
 /// Error returned if config checking failed.
 #[derive(Error, Debug)]
@@ -41,34 +41,60 @@ pub enum SourcesCheckError {
 
 /// Errors specific to the crystalisation command.
 #[derive(Error, Debug)]
-pub enum CrystalizationError {
-    #[error("Crystalization: {0:?}")]
+pub enum CoagulationError {
+    #[error("Reading substate: {0:?}")]
     ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
-
-    #[error("ID parsing: {0}")]
-    IdParsing(#[from] sustainity_models::ids::ParseIdError),
-
-    #[error("ISO country code while (when {when}): {source}")]
-    IsoCountry { source: isocountry::CountryCodeParseErr, when: &'static str },
 
     #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
     UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: std::path::PathBuf, when: String },
 
+    #[error("Unique ID {id:?} repeated")]
+    ExternalIdRepeated { id: ExternalId },
+
+    #[error("Substrate name not found for data set `{id:?}`")]
+    SubstrateNameNotFoundForId { id: DataSetId },
+
+    #[error("Substrate ID not found for data set `{name}`")]
+    SubstrateIdNotFoundForName { name: String },
+
     #[error("IO error: {0} ({1:?})")]
     Io(std::io::Error, std::path::PathBuf),
+
+    #[error("IO or serde error: {0}")]
+    IoOrSerde(#[from] IoOrSerdeError),
+
+    #[error("Bucket: {0}")]
+    Bucket(#[from] BucketError),
+}
+
+/// Errors specific to the crystalisation command.
+#[derive(Error, Debug)]
+pub enum CrystalizationError {
+    #[error("Crystalization: {0:?}")]
+    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+
+    #[error("ISO country code while (when {when}): {source}")]
+    IsoCountry { source: isocountry::CountryCodeParseErr, when: &'static str },
 
     #[error("Bocket: {0}")]
     Bucket(#[from] BucketError),
 
     #[error("Keys are not unique for: {comment} (only {unique} unique out of {all})")]
     NotUniqueKeys { comment: String, unique: usize, all: usize },
+
+    // TODO: Inline the variants
+    #[error("Coagulation error: {0}")]
+    Coagulation(#[from] CoagulationError),
 }
 
 /// Error returned when a problem with processing.
 #[derive(Error, Debug)]
 pub enum ProcessingError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("In file `{1}`.\nIO error: {0}")]
+    Io(std::io::Error, std::path::PathBuf),
+
+    #[error("IO error while spawning a tread: {0}")]
+    Thread(std::io::Error),
 
     #[error("In file `{1}`.\nCSV parsing error: {0}")]
     ReadCsv(csv::Error, std::path::PathBuf),
@@ -115,8 +141,13 @@ pub enum ProcessingError {
     #[error("Sources check: {0}")]
     SourcesCheck(#[from] SourcesCheckError),
 
+    // TODO: Inline the variants
     #[error("Crystalization error: {0}")]
     Crystalization(#[from] CrystalizationError),
+
+    // TODO: Inline the variants
+    #[error("Coagulation error: {0}")]
+    Coagulation(#[from] CoagulationError),
 
     #[error("ID parsing: {0}")]
     IdParsing(#[from] sustainity_models::ids::ParseIdError),
@@ -137,7 +168,7 @@ impl<T> From<std::sync::PoisonError<T>> for ProcessingError {
 impl From<IoOrSerdeError> for ProcessingError {
     fn from(error: IoOrSerdeError) -> Self {
         match error {
-            IoOrSerdeError::Io(error) => Self::Io(error),
+            IoOrSerdeError::Io(error, path) => Self::Io(error, path),
             IoOrSerdeError::ReadCsv(error, path) => Self::ReadCsv(error, path),
             IoOrSerdeError::ReadJson(error, path) => Self::ReadJson(error, path),
             IoOrSerdeError::ReadYaml(error, path) => Self::ReadYaml(error, path),
@@ -151,7 +182,7 @@ impl From<IoOrSerdeError> for ProcessingError {
 impl From<LoaderError> for ProcessingError {
     fn from(error: LoaderError) -> Self {
         match error {
-            LoaderError::Io(error) => Self::Io(error),
+            LoaderError::Io(source, path) => Self::Io(source, path),
             LoaderError::CompressionMethod => Self::CompressionMethod,
         }
     }

@@ -5,8 +5,8 @@ pub use sustainity_wikidata::errors::ParseIdError;
 /// Error returned when a problem with IO or file parsing occured.
 #[derive(Error, Debug)]
 pub enum IoOrSerdeError {
-    #[error("IO error: {0}")]
-    Io(std::io::Error),
+    #[error("In file `{1}`.\nIO error: {0}")]
+    Io(std::io::Error, std::path::PathBuf),
 
     #[error("In file `{1}`.\nCSV parsing error: {0}")]
     ReadCsv(csv::Error, std::path::PathBuf),
@@ -27,9 +27,16 @@ pub enum IoOrSerdeError {
     WriteYaml(serde_yaml::Error),
 }
 
-impl From<std::io::Error> for IoOrSerdeError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(error)
+/// Trait for mapping from IO errors to `IoOrSerdeError`.
+#[allow(clippy::missing_errors_doc)]
+pub trait MapIo<T> {
+    /// Maps `Result` to `Result` with `IoOrSerdeError`.
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError>;
+}
+
+impl<T> MapIo<T> for Result<T, std::io::Error> {
+    fn map_with_path(self, path: &std::path::Path) -> Result<T, IoOrSerdeError> {
+        self.map_err(|e| IoOrSerdeError::Io(e, path.into()))
     }
 }
 
