@@ -35,7 +35,7 @@ impl WikidataProducerConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_path)?;
+        utils::file_exists(&self.wikidata_path)?;
         Ok(())
     }
 }
@@ -60,7 +60,7 @@ impl OpenFoodFactsProducerConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.open_food_facts_path)?;
+        utils::file_exists(&self.open_food_facts_path)?;
         Ok(())
     }
 }
@@ -85,7 +85,7 @@ impl EuEcolabelProducerConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.eu_ecolabel_path)?;
+        utils::file_exists(&self.eu_ecolabel_path)?;
         Ok(())
     }
 }
@@ -185,14 +185,14 @@ impl SourcesConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_cache_path)?;
-        utils::path_exists(&self.bcorp_original_path)?;
-        utils::path_exists(&self.bcorp_support_path)?;
-        utils::path_exists(&self.eu_ecolabel_original_path)?;
-        utils::path_exists(&self.match_path)?;
-        utils::path_exists(&self.tco_path)?;
-        utils::path_exists(&self.fashion_transparency_index_path)?;
-        utils::path_exists(&self.open_food_facts_countries_path)?;
+        utils::file_exists(&self.wikidata_cache_path)?;
+        utils::file_exists(&self.bcorp_original_path)?;
+        utils::file_exists(&self.bcorp_support_path)?;
+        utils::file_exists(&self.eu_ecolabel_original_path)?;
+        utils::file_exists(&self.match_path)?;
+        utils::file_exists(&self.tco_path)?;
+        utils::file_exists(&self.fashion_transparency_index_path)?;
+        utils::file_exists(&self.open_food_facts_countries_path)?;
         Ok(())
     }
 }
@@ -228,7 +228,7 @@ impl SubstrateConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check_write(&self) -> Result<(), ConfigCheckError> {
-        utils::empty_dir_exists(&self.substrate_path)?;
+        utils::path_creatable(&self.substrate_path)?;
         Ok(())
     }
 }
@@ -403,28 +403,28 @@ impl CondensationConfig {
     }
 }
 
-/// Configuration for the `crystalize` command.
+/// Configuration for the `coagulate` command.
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct CrystalizationConfig {
-    /// Local storage for runtime operations.
-    pub runtime_storage: std::path::PathBuf,
-
-    /// Database storage..
-    pub db_storage: std::path::PathBuf,
-
+pub struct CoagulationConfig {
     /// Data substrate.
     pub substrate: SubstrateConfig,
+
+    /// Runtime storage directory.
+    pub runtime: std::path::PathBuf,
+
+    /// Path to store the coagulate in.
+    pub coagulate: std::path::PathBuf,
 }
 
-impl CrystalizationConfig {
-    /// Constructs a new `CondensationConfig`.
-    pub fn new(args: &commands::CrystalizationArgs) -> CrystalizationConfig {
-        let target = std::path::PathBuf::from(&args.target);
+impl CoagulationConfig {
+    /// Constructs a new `CoagulationConfig`.
+    pub fn new(args: &commands::CoagulationArgs) -> CoagulationConfig {
+        let coagulate = std::path::PathBuf::from(&args.coagulate);
         Self {
-            runtime_storage: target.join("runtime_storage"),
-            db_storage: target.join("db"),
             substrate: SubstrateConfig::new(&args.substrate),
+            runtime: coagulate.join("runtime"),
+            coagulate: coagulate.join("coagulate.yaml"),
         }
     }
 
@@ -435,8 +435,46 @@ impl CrystalizationConfig {
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         self.substrate.check_read()?;
-        utils::path_creatable(&self.runtime_storage)?;
-        utils::path_creatable(&self.db_storage)?;
+        utils::parent_creatable(&self.coagulate)?;
+        Ok(())
+    }
+}
+
+/// Configuration for the `crystalize` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct CrystalizationConfig {
+    /// Data substrate.
+    pub substrate: SubstrateConfig,
+
+    /// Path to store the coagulate in.
+    pub coagulate: std::path::PathBuf,
+
+    /// Database storage..
+    pub crystal: std::path::PathBuf,
+}
+
+impl CrystalizationConfig {
+    /// Constructs a new `CondensationConfig`.
+    pub fn new(args: &commands::CrystalizationArgs) -> CrystalizationConfig {
+        let target = std::path::PathBuf::from(&args.target);
+        let coagulate = std::path::PathBuf::from(&args.coagulate);
+        Self {
+            substrate: SubstrateConfig::new(&args.substrate),
+            coagulate: coagulate.join("coagulate.yaml"),
+            crystal: target.join("db"),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        self.substrate.check_read()?;
+        utils::file_exists(&self.coagulate)?;
+        utils::parent_creatable(&self.crystal)?;
         Ok(())
     }
 }
@@ -478,9 +516,9 @@ impl OxidationConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.library_file_path)?;
+        utils::file_exists(&self.library_file_path)?;
         utils::dir_exists(&self.library_dir_path)?;
-        utils::path_exists(&self.fashion_transparency_index_path)?;
+        utils::file_exists(&self.fashion_transparency_index_path)?;
         utils::path_creatable(&self.app_storage)?;
         Ok(())
     }
@@ -518,7 +556,7 @@ impl AnalysisConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.wikidata_cache_path)?;
+        utils::file_exists(&self.wikidata_cache_path)?;
         self.wikidata_gatherer.check()?;
         Ok(())
     }
@@ -560,8 +598,8 @@ impl ConnectionConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_exists(&self.eu_ecolabel_input_path)?;
-        utils::path_exists(&self.open_food_facts_input_path)?;
+        utils::file_exists(&self.eu_ecolabel_input_path)?;
+        utils::file_exists(&self.open_food_facts_input_path)?;
         utils::path_creatable(&self.output_path)?;
         self.wikidata_gatherer.check()?;
         Ok(())
@@ -726,6 +764,7 @@ pub enum Config {
     Filtering(FilteringConfig),
     Updating(UpdatingConfig),
     Condensation(CondensationConfig),
+    Coagulation(CoagulationConfig),
     Crystalization(CrystalizationConfig),
     Oxidation(OxidationConfig),
     Analysis(AnalysisConfig),
@@ -745,6 +784,7 @@ impl Config {
             Commands::Filter(args) => Config::Filtering(FilteringConfig::new(&args)),
             Commands::Update(args) => Config::Updating(UpdatingConfig::new(&args)),
             Commands::Condense(args) => Config::Condensation(CondensationConfig::new(&args)),
+            Commands::Coagulate(args) => Config::Coagulation(CoagulationConfig::new(&args)),
             Commands::Crystalize(args) => Config::Crystalization(CrystalizationConfig::new(&args)),
             Commands::Oxidize(args) => Config::Oxidation(OxidationConfig::new(&args)),
             Commands::Analyze(args) => Config::Analysis(AnalysisConfig::new(&args)),

@@ -471,6 +471,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct EuEcolabelRunner<W, S, C>
 where
     W: EuEcolabelWorker,
@@ -480,6 +481,7 @@ where
     phantom: std::marker::PhantomData<(W, S, C)>,
 }
 
+#[allow(dead_code)]
 impl<W, S, C> EuEcolabelRunner<W, S, C>
 where
     W: EuEcolabelWorker + Sync + 'static,
@@ -510,6 +512,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct FullRunner<W, S, C>
 where
     W: WikidataWorker + OpenFoodFactsWorker + EuEcolabelWorker,
@@ -519,6 +522,7 @@ where
     phantom: std::marker::PhantomData<(W, S, C)>,
 }
 
+#[allow(dead_code)]
 impl<W, S, C> FullRunner<W, S, C>
 where
     S: Stash + 'static,

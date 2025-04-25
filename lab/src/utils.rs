@@ -1,6 +1,6 @@
 //! Miscellaneous utilities.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use serde::{de::Deserializer, Deserialize};
 
@@ -49,7 +49,7 @@ pub fn is_path_ok(path: &std::path::Path) -> bool {
 /// # Errors
 ///
 /// Returns an error if the path does not exist or is not a file.
-pub fn path_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+pub fn file_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
         return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
     }
@@ -70,31 +70,6 @@ pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError
     }
     if !path.is_dir() {
         return Err(errors::ConfigCheckError::PathIsNotADir(path.to_owned()));
-    }
-    Ok(())
-}
-
-/// Verifies that the path exists and is an empty directory.
-///
-/// # Errors
-///
-/// Returns an error if the path does not exist or is not a directory.
-pub fn empty_dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
-    if !path.exists() {
-        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
-    }
-    if !path.is_dir() {
-        return Err(errors::ConfigCheckError::PathIsNotADir(path.to_owned()));
-    }
-    match path.read_dir() {
-        Ok(mut entry) => {
-            if entry.next().is_some() {
-                return Err(errors::ConfigCheckError::PathIsNotAnEmptyDir(path.to_owned()));
-            }
-        }
-        Err(_) => {
-            return Err(errors::ConfigCheckError::PathIsNotReadable(path.to_owned()));
-        }
     }
     Ok(())
 }
@@ -123,14 +98,18 @@ pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckE
     Ok(())
 }
 
-/// Formats duration to a human-readable format.
-#[must_use]
-pub fn format_elapsed_time(duration: std::time::Duration) -> String {
-    let duration = duration.as_secs();
-    let seconds = duration % 60;
-    let minutes = (duration / 60) % 60;
-    let hours = duration / 3600;
-    format!("{hours}h {minutes}m {seconds}s")
+/// Verifies that the parent of the given path itself does not exist,
+/// but it's parent exists and is a directory.
+///
+/// # Errors
+///
+/// Returns an error if the path exists or the base is not a directory.
+pub fn parent_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+    if let Some(base) = path.parent() {
+        path_creatable(base)
+    } else {
+        Err(errors::ConfigCheckError::PathHasNoParent(path.to_owned()))
+    }
 }
 
 /// Trims the given name and transforms it to lower case.
@@ -160,19 +139,6 @@ where
     V: Clone,
     M: Fn(&mut V, &V),
     S: std::hash::BuildHasher,
-{
-    for (key, value2) in m2 {
-        m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
-    }
-}
-
-/// Merges map `m2` into map `m1` by merging common entries and copping values not present in `m1`.
-/// The merging funtionality is provided via a closure.
-pub fn merge_btreemaps_with<K, V, M>(m1: &mut BTreeMap<K, V>, m2: BTreeMap<K, V>, m: M)
-where
-    K: Eq + Ord,
-    V: Clone,
-    M: Fn(&mut V, &V),
 {
     for (key, value2) in m2 {
         m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
@@ -236,19 +202,6 @@ mod tests {
             ["www.example.com".into(), "http://example.com".into(), "example2.com".into()].into();
         let output: HashSet<String> = ["example.com".into(), "example2.com".into()].into();
         assert_eq!(extract_domains_from_urls(&input), output);
-    }
-
-    #[test]
-    fn test_format_elapsed_time() {
-        use std::time::Duration;
-
-        assert_eq!(format_elapsed_time(Duration::new(0, 0)), "0h 0m 0s");
-        assert_eq!(format_elapsed_time(Duration::new(12, 0)), "0h 0m 12s");
-        assert_eq!(format_elapsed_time(Duration::new(120, 0)), "0h 2m 0s");
-        assert_eq!(format_elapsed_time(Duration::new(134, 0)), "0h 2m 14s");
-        assert_eq!(format_elapsed_time(Duration::new(3600, 0)), "1h 0m 0s");
-        assert_eq!(format_elapsed_time(Duration::new(3720, 0)), "1h 2m 0s");
-        assert_eq!(format_elapsed_time(Duration::new(3724, 0)), "1h 2m 4s");
     }
 
     #[test]

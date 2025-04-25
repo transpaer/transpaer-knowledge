@@ -23,26 +23,6 @@ where
     }
 }
 
-#[derive(Clone)]
-pub struct SplitSender<T>
-where
-    T: Clone + Send,
-{
-    senders: Vec<async_channel::Sender<T>>,
-}
-
-impl<T> SplitSender<T>
-where
-    T: Clone + Send,
-{
-    pub async fn send(&self, split: usize, message: T) {
-        let split = split % self.senders.len();
-        if let Err(err) = self.senders[split].send(message).await {
-            log::error!("Flow sender: {err}");
-        }
-    }
-}
-
 pub enum Recv<T>
 where
     T: Clone + Send,
@@ -80,50 +60,12 @@ where
     (Sender { sender }, Receiver { receiver })
 }
 
-#[must_use]
-pub fn bounded_split<T>() -> (SplitSender<T>, Vec<Receiver<T>>)
-where
-    T: Clone + Send,
-{
-    let cpus = num_cpus::get();
-    let mut senders = Vec::with_capacity(cpus);
-    let mut receivers = Vec::with_capacity(cpus);
-    for _ in 0..num_cpus::get() {
-        let (sender, receiver) = async_channel::bounded(CHANNEL_CAP);
-        senders.push(sender);
-        receivers.push(Receiver { receiver });
-    }
-
-    (SplitSender { senders }, receivers)
-}
-
 #[async_trait]
 pub trait Producer: Send + Sync {
     type Output: Clone + Send;
     type Error: std::error::Error;
 
     async fn produce(self, tx: Sender<Self::Output>) -> Result<(), Self::Error>;
-}
-
-#[async_trait]
-pub trait SplitProducer: Send + Sync {
-    type Output: Clone + Send;
-    type Error: std::error::Error;
-
-    async fn produce(self, tx: SplitSender<Self::Output>) -> Result<(), Self::Error>;
-}
-
-#[async_trait]
-pub trait Producer2: Send + Sync {
-    type Output1: Clone + Send;
-    type Output2: Clone + Send;
-    type Error: std::error::Error;
-
-    async fn produce(
-        self,
-        tx1: Sender<Self::Output1>,
-        tx2: Sender<Self::Output2>,
-    ) -> Result<(), Self::Error>;
 }
 
 #[async_trait]
@@ -187,12 +129,15 @@ impl Flow {
     {
         let name =
             self.name.as_ref().map_or_else(|| "flow-prod".to_string(), |n| format!("fprod-{n}"));
-        let handler: std::thread::JoinHandle<()> =
-            std::thread::Builder::new().name(name).spawn(move || {
+        let handler: std::thread::JoinHandle<()> = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
                 if let Err(err) = futures::executor::block_on(producer.produce(tx)) {
                     log::error!("Flow producer: {err}");
                 }
-            })?;
+            })
+            .map_err(errors::ProcessingError::Thread)?;
+
         self.handlers.push(handler);
         Ok(self)
     }
@@ -208,14 +153,16 @@ impl Flow {
     {
         let name =
             self.name.as_ref().map_or_else(|| "flow-prod".to_string(), |n| format!("fprod-{n}"));
-        let handler: std::thread::JoinHandle<()> =
-            std::thread::Builder::new().name(name).spawn(move || {
+        let handler: std::thread::JoinHandle<()> = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
                 for producer in producers {
                     if let Err(err) = futures::executor::block_on(producer.produce(tx.clone())) {
                         log::error!("Flow producer: {err}");
                     }
                 }
-            })?;
+            })
+            .map_err(errors::ProcessingError::Thread)?;
         self.handlers.push(handler);
         Ok(self)
     }
@@ -260,8 +207,9 @@ impl Flow {
     {
         let name =
             self.name.as_ref().map_or_else(|| "flow-cons".to_string(), |n| format!("fcons-{n}"));
-        let handler: std::thread::JoinHandle<()> =
-            std::thread::Builder::new().name(name).spawn(move || {
+        let handler: std::thread::JoinHandle<()> = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
                 futures::executor::block_on(async {
                     loop {
                         match rx.recv().await {
@@ -279,7 +227,8 @@ impl Flow {
                         }
                     }
                 });
-            })?;
+            })
+            .map_err(errors::ProcessingError::Thread)?;
         self.handlers.push(handler);
         Ok(self)
     }
@@ -310,8 +259,9 @@ impl Flow {
             .name
             .as_ref()
             .map_or_else(|| format!("flow-proc-{i}"), |n| format!("fproc-{n}-{i}"));
-        let handler: std::thread::JoinHandle<()> =
-            std::thread::Builder::new().name(name).spawn(move || {
+        let handler: std::thread::JoinHandle<()> = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
                 futures::executor::block_on(async {
                     loop {
                         match rx.recv().await {
@@ -329,7 +279,8 @@ impl Flow {
                         }
                     }
                 });
-            })?;
+            })
+            .map_err(errors::ProcessingError::Thread)?;
         self.handlers.push(handler);
         Ok(())
     }

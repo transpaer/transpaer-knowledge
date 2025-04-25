@@ -9,17 +9,11 @@ use thiserror::Error;
 /// Error returned when a problem with IO or sending over channel occured.
 #[derive(Error, Debug)]
 pub enum LoaderError {
-    #[error("IO error: {0}")]
-    Io(std::io::Error),
+    #[error("In file `{1}`.\nIO error: {0}")]
+    Io(std::io::Error, std::path::PathBuf),
 
     #[error("Unknown compression method")]
     CompressionMethod,
-}
-
-impl From<std::io::Error> for LoaderError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(error)
-    }
 }
 
 /// Compression method used in the dump.
@@ -52,6 +46,9 @@ pub struct Loader {
 
     /// Compression method to use.
     compression_method: CompressionMethod,
+
+    /// Path to the loaded file. Needed only for error reporting.
+    path: std::path::PathBuf,
 }
 
 impl Loader {
@@ -68,10 +65,11 @@ impl Loader {
             _ => return Err(LoaderError::CompressionMethod),
         };
 
-        let file = std::fs::File::open(path)?;
+        let path = path.to_owned();
+        let file = std::fs::File::open(&path).map_err(|e| LoaderError::Io(e, path.clone()))?;
         let reader = std::io::BufReader::new(file);
 
-        Ok(Self { reader, compression_method })
+        Ok(Self { reader, compression_method, path })
     }
 
     /// Parses the Wikidata dump file while unzipping it and sends the parsed out entries to the
@@ -103,17 +101,27 @@ impl Loader {
     {
         let mut entries: usize = 0;
 
-        self.reader.seek(std::io::SeekFrom::End(0))?;
-        let file_size = self.reader.stream_position()?;
-        self.reader.seek(std::io::SeekFrom::Start(0))?;
+        self.reader
+            .seek(std::io::SeekFrom::End(0))
+            .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+        let file_size =
+            self.reader.stream_position().map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+        self.reader
+            .seek(std::io::SeekFrom::Start(0))
+            .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
 
         loop {
             let decoder = flate2::bufread::GzDecoder::new(&mut self.reader);
             for line in std::io::BufReader::new(decoder).lines() {
-                entries += Self::handle_line(&mut callback, &line?).await?;
+                let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+                entries += Self::handle_line(&mut callback, &line).await?;
             }
 
-            if self.reader.stream_position()? == file_size {
+            let stream_position = self
+                .reader
+                .stream_position()
+                .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            if stream_position == file_size {
                 break;
             }
         }
@@ -129,7 +137,8 @@ impl Loader {
 
         let decoder = bzip2::bufread::MultiBzDecoder::new(&mut self.reader);
         for line in std::io::BufReader::new(decoder).lines() {
-            entries += Self::handle_line(&mut callback, &line?).await?;
+            let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            entries += Self::handle_line(&mut callback, &line).await?;
         }
 
         Ok(entries)
@@ -143,7 +152,8 @@ impl Loader {
         let mut entries: usize = 0;
 
         for line in std::io::BufReader::new(&mut self.reader).lines() {
-            entries += Self::handle_line(&mut callback, &line?).await?;
+            let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            entries += Self::handle_line(&mut callback, &line).await?;
         }
 
         Ok(entries)

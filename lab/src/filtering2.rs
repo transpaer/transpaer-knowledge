@@ -82,7 +82,7 @@ impl FilteringStash {
     }
 
     #[allow(clippy::unused_self)]
-    fn save(&self) -> Result<(), errors::ProcessingError> {
+    fn save(&self) -> Result<(), std::io::Error> {
         log::info!("Saving {} entries", self.entries.len());
         let mut file = std::fs::OpenOptions::new()
             .create(true)
@@ -110,7 +110,9 @@ impl runners::Stash for FilteringStash {
 
         // Periodically save data to file to avoid running out of memory.
         if self.is_full() {
-            self.save()?;
+            self.save().map_err(|e| {
+                errors::ProcessingError::Io(e, self.config.wikidata_filtered_dump_path.clone())
+            })?;
             self.clear();
         }
 
@@ -118,7 +120,9 @@ impl runners::Stash for FilteringStash {
     }
 
     fn finish(self) -> Result<(), errors::ProcessingError> {
-        self.save()?;
+        self.save().map_err(|e| {
+            errors::ProcessingError::Io(e, self.config.wikidata_filtered_dump_path.clone())
+        })?;
         Ok(())
     }
 }

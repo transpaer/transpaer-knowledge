@@ -26,9 +26,10 @@ impl Oxidizer {
         for info in sustainity.get_info() {
             let id: &str = serde_variant::to_variant_name(&info.id)?;
             let article_path = config.library_dir_path.join(id).with_extension("md");
-            crate::utils::path_exists(&article_path)?;
+            crate::utils::file_exists(&article_path)?;
 
-            let article = std::fs::read_to_string(&article_path)?;
+            let article = std::fs::read_to_string(&article_path)
+                .map_err(|e| errors::ProcessingError::Io(e, article_path.clone()))?;
             let topic = info.id.to_str().to_owned();
             library.insert(
                 &topic,

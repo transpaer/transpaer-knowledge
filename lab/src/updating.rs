@@ -119,7 +119,8 @@ impl runners::Stash for UpdateStash {
         println!(" - {}% of tag use-cases assigned", 100 * assigned / all);
 
         let contents = serde_yaml::to_string(&countries).map_serde()?;
-        std::fs::write(&self.config.sources.open_food_facts_countries_path, contents)?;
+        let path = &self.config.sources.open_food_facts_countries_path;
+        std::fs::write(path, contents).map_err(|e| errors::ProcessingError::Io(e, path.clone()))?;
 
         Ok(())
     }

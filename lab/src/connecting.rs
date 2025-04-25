@@ -275,7 +275,8 @@ impl runners::Stash for ConnectionStash {
         log::info!(" - matched {} / {} names", matched, self.collector.data.len());
 
         let contents = serde_yaml::to_string(&data).map_serde()?;
-        std::fs::write(&self.config.output_path, contents)?;
+        std::fs::write(&self.config.output_path, contents)
+            .map_err(|e| errors::ProcessingError::Io(e, self.config.output_path.clone()))?;
 
         Ok(())
     }
