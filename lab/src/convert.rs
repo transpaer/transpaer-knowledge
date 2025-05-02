@@ -11,7 +11,7 @@ pub fn to_model_regions(
         Regions::List(list) => {
             let regions = list
                 .iter()
-                .map(|c| isocountry::CountryCode::for_alpha2(c))
+                .map(|c| isocountry::CountryCode::for_alpha3(c))
                 .collect::<Result<Vec<isocountry::CountryCode>, _>>()?;
             models::Regions::List(regions)
         }
@@ -28,7 +28,7 @@ pub fn to_off_regions(
         models::Regions::World => Regions::World,
         models::Regions::Unknown => Regions::Unknown,
         models::Regions::List(list) => {
-            let regions = list.iter().map(ToString::to_string).collect::<Vec<String>>();
+            let regions = list.iter().map(|c| c.alpha3().to_owned()).collect::<Vec<String>>();
             Regions::List(regions)
         }
     }

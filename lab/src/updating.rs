@@ -23,8 +23,14 @@ pub struct UpdateCollector {
     /// Gathers all found countries. The count is used for sorting.
     countries: HashMap<String, usize>,
 
-    /// Counts how many empty countries were present.
-    empty_count: usize,
+    /// Counts all records in the data.
+    records: usize,
+
+    /// Counts how many empty sell countries were present.
+    empty_sell_count: usize,
+
+    /// Counts how many empty production countries were present.
+    empty_production_count: usize,
 }
 
 impl UpdateCollector {}
@@ -32,7 +38,9 @@ impl UpdateCollector {}
 impl merge::Merge for UpdateCollector {
     fn merge(&mut self, other: Self) {
         utils::merge_hashmaps_with(&mut self.countries, other.countries, |a, b| *a += b);
-        self.empty_count += other.empty_count;
+        self.records += other.records;
+        self.empty_sell_count += other.empty_sell_count;
+        self.empty_production_count += other.empty_production_count;
     }
 }
 
@@ -51,14 +59,26 @@ impl runners::OpenFoodFactsWorker for UpdateWorker {
         record: open_food_facts::data::Record,
         _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
+        self.collector.records += 1;
+
         let sell_countries = record.extract_sell_countries();
         if sell_countries.is_empty() {
-            self.collector.empty_count += 1;
+            self.collector.empty_sell_count += 1;
         } else {
             for tag in sell_countries {
                 self.collector.countries.entry(tag).and_modify(|n| *n += 1).or_insert(1);
             }
         }
+
+        let production_countries = record.extract_production_countries();
+        if production_countries.is_empty() {
+            self.collector.empty_production_count += 1;
+        } else {
+            for tag in production_countries {
+                self.collector.countries.entry(tag).and_modify(|n| *n += 1).or_insert(1);
+            }
+        }
+
         Ok(())
     }
 
@@ -114,8 +134,10 @@ impl runners::Stash for UpdateStash {
             countries.push(open_food_facts::data::CountryEntry { country_tag, regions, count });
         }
 
-        println!(" - found {} countries", countries.len(),);
-        println!(" - {} entries had no country", self.collector.empty_count,);
+        println!(" - processed {} entries", self.collector.records);
+        println!(" - found {} countries", countries.len());
+        println!(" - {} entries had no sell country", self.collector.empty_sell_count);
+        println!(" - {} entries had no production country", self.collector.empty_production_count);
         println!(" - {}% of tag use-cases assigned", 100 * assigned / all);
 
         let contents = serde_yaml::to_string(&countries).map_serde()?;

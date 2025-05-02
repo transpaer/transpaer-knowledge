@@ -59,7 +59,7 @@ pub mod data {
 
         /// Extracts productnio country tags.
         #[must_use]
-        pub fn extract_producttion_countries(&self) -> Vec<String> {
+        pub fn extract_production_countries(&self) -> Vec<String> {
             if self.manufacturing_places_tags.is_empty() {
                 Vec::new()
             } else {
