@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 
+chrono = { workspace = true }
 csv = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

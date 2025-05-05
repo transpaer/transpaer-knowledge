@@ -210,6 +210,7 @@ pub struct OpenFoodFactsProducer {
 
 impl OpenFoodFactsProducer {
     /// Constructs a new `OpenFoodFactsProducer`
+    #[allow(clippy::unnecessary_wraps)]
     pub fn new(
         config: config::OpenFoodFactsProducerConfig,
     ) -> Result<Self, errors::ProcessingError> {
@@ -369,6 +370,7 @@ pub struct EuEcolabelProducer {
 
 impl EuEcolabelProducer {
     /// Constructs a new `EuEcolabelProducer`.
+    #[allow(clippy::unnecessary_wraps)]
     pub fn new(config: config::EuEcolabelProducerConfig) -> Result<Self, errors::ProcessingError> {
         Ok(Self { config })
     }

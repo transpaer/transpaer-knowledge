@@ -2,6 +2,9 @@
 
 use std::{collections::BTreeSet, str::FromStr};
 
+// TODO: When impleneting `Merge` manually it's easy fo forget some fields.
+//       Either always derive `Merge` or introduce another trait that will
+//       build a complitely new struct as this will guaranty all fields are used.
 use merge::Merge;
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
@@ -59,9 +62,15 @@ impl IntoApiError {
 }
 
 /// Points to a source of some data.
+///
+/// If the source is mentioned here, we process it in a special way.
+/// The sources without special processing are marked as `Other`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Source {
+    /// Sustainity.
+    Sustainity,
+
     /// Wikidata.
     Wikidata,
 
@@ -80,19 +89,27 @@ pub enum Source {
     /// TCO.
     Tco,
 
+    /// The "Simple Environmentalist" youtube channel.
+    SimpleEnvironmentalist,
+
     Other,
 }
 
 impl Source {
-    pub fn from_string(string: &str) -> Self {
+    pub fn from_stem(string: &str) -> Self {
         match string {
+            "sustainity" => Source::Sustainity,
             "wikidata" => Source::Wikidata,
             "open_food_facts" => Source::OpenFoodFacts,
             "eu_ecolabel" => Source::EuEcolabel,
             "bcorp" => Source::BCorp,
             "fti" => Source::Fti,
             "tco" => Source::Tco,
-            _ => Source::Other,
+            "simple_environmentalist" => Source::SimpleEnvironmentalist,
+            _ => {
+                log::warn!("Source `{string}` is not covered");
+                Source::Other
+            }
         }
     }
 
@@ -121,8 +138,10 @@ impl Source {
             Self::EuEcolabel => api::DataSource::Eu,
             Self::Fti => api::DataSource::Fti,
             Self::OpenFoodFacts => api::DataSource::Off,
-            Self::Wikidata => api::DataSource::Wiki,
+            Self::Sustainity => api::DataSource::Sustainity,
             Self::Tco => api::DataSource::Tco,
+            Self::Wikidata => api::DataSource::Wiki,
+            Self::SimpleEnvironmentalist => api::DataSource::Other,
             Self::Other => api::DataSource::Other,
         }
     }
@@ -417,6 +436,129 @@ impl Certifications {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MentionSource {
+    SimpleEnvironmentalist,
+    Other,
+}
+
+impl From<&Source> for MentionSource {
+    fn from(source: &Source) -> Self {
+        match source {
+            Source::Sustainity
+            | Source::Wikidata
+            | Source::OpenFoodFacts
+            | Source::EuEcolabel
+            | Source::BCorp
+            | Source::Fti
+            | Source::Tco
+            | Source::Other => Self::Other,
+            Source::SimpleEnvironmentalist => Self::SimpleEnvironmentalist,
+        }
+    }
+}
+
+#[cfg(feature = "into-api")]
+impl MentionSource {
+    pub fn get_icon_link(&self) -> Option<String> {
+        match self {
+            Self::SimpleEnvironmentalist => Some("https://yt3.googleusercontent.com/TAUPgsU3oOD-CYNfUo1V9rpgtH-IHbAjUdo92nusdtz9e25tLjQ_uRx0ZpnAf5DnBp6tUAQUt28=s160-c-k-c0x00ffffff-no-rj".to_string()),
+            Self::Other => None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Mention {
+    /// Title of the mention.
+    pub title: String,
+
+    /// External link to the mention.
+    pub link: String,
+}
+
+#[cfg(feature = "into-api")]
+impl Mention {
+    pub fn into_api(self) -> api::Mention {
+        api::Mention { title: self.title, link: self.link }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Medium {
+    /// Describes the medium.
+    pub source: MentionSource,
+
+    /// List of all mentions from this medium.
+    pub mentions: Vec<Mention>,
+}
+
+#[cfg(feature = "into-api")]
+impl Medium {
+    pub fn into_api(self) -> api::Medium {
+        api::Medium {
+            icon: self.source.get_icon_link(),
+            mentions: self.mentions.into_iter().map(|mention| mention.into_api()).collect(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum VerifiedShop {
+    Fairphone,
+    Amazon,
+}
+
+impl VerifiedShop {
+    fn from_schema(shop: &schema::VerifiedShop) -> Self {
+        match shop {
+            schema::VerifiedShop::Fairphone => Self::Fairphone,
+            schema::VerifiedShop::Amazon => Self::Amazon,
+        }
+    }
+}
+
+#[cfg(feature = "into-api")]
+impl VerifiedShop {
+    pub fn into_api(self) -> api::VerifiedShop {
+        match self {
+            Self::Fairphone => api::VerifiedShop::Fairphone,
+            Self::Amazon => api::VerifiedShop::Amazon,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ShoppingEntry {
+    pub id: String,
+    pub shop: VerifiedShop,
+    pub description: String,
+}
+
+impl ShoppingEntry {
+    pub fn from_schema(entry: &schema::ShoppingEntry) -> Self {
+        Self {
+            shop: VerifiedShop::from_schema(&entry.shop),
+            id: entry.id.clone(),
+            description: entry.description.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "into-api")]
+impl ShoppingEntry {
+    pub fn into_api(self) -> api::ShoppingEntry {
+        let link = match &self.shop {
+            VerifiedShop::Fairphone => format!("https://shop.fairphone.com/{}", self.id),
+            VerifiedShop::Amazon => format!("https://www.amazon.nl/-/en/_/dp/{}", self.id),
+        };
+        let shop = self.shop.into_api();
+        let description = str_to_short_string(self.description);
+        api::ShoppingEntry { shop, link, description }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[repr(u8)]
 pub enum SustainityScoreCategory {
@@ -516,7 +658,7 @@ impl Default for SustainityScore {
 }
 
 /// Represents a set of IDs of an organisation.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherOrganisationIds {
     /// VAT IDs.
     pub vat_ids: BTreeSet<ids::VatId>,
@@ -605,7 +747,7 @@ impl StoreOrganisationIds {
 }
 
 /// Represents an organisation (e.g. manufacturer, shop).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatherOrganisation {
     /// Organisation IDs.
     pub ids: GatherOrganisationIds,
@@ -630,6 +772,9 @@ pub struct GatherOrganisation {
 
     /// Known certifications.
     pub certifications: Certifications,
+
+    /// Mantions in media.
+    pub media: BTreeSet<Medium>,
 }
 
 impl GatherOrganisation {
@@ -641,6 +786,7 @@ impl GatherOrganisation {
         let mut websites: Vec<_> = self.websites.into_iter().collect();
         let mut products: Vec<_> = self.products.into_iter().collect();
         let mut origins: Vec<_> = self.origins.into_iter().collect();
+        let mut media: Vec<_> = self.media.into_iter().collect();
         let certifications = self.certifications;
 
         names.sort();
@@ -649,6 +795,7 @@ impl GatherOrganisation {
         products.sort();
         websites.sort();
         origins.sort();
+        media.sort();
 
         StoreOrganisation {
             ids,
@@ -659,6 +806,7 @@ impl GatherOrganisation {
             origins,
             products,
             certifications,
+            media,
         }
     }
 }
@@ -670,7 +818,10 @@ impl merge::Merge for GatherOrganisation {
         self.descriptions.extend(other.descriptions);
         self.images.extend(other.images);
         self.websites.extend(other.websites);
+        self.products.extend(other.products);
+        self.origins.extend(other.origins);
         self.certifications.merge(other.certifications);
+        self.media.extend(other.media);
     }
 }
 
@@ -700,6 +851,9 @@ pub struct StoreOrganisation {
 
     /// Known certifications.
     pub certifications: Certifications,
+
+    /// Mantions in media.
+    pub media: Vec<Medium>,
 }
 
 #[cfg(feature = "into-api")]
@@ -761,13 +915,14 @@ impl StoreOrganisation {
             websites: self.websites.into_iter().map(str_to_short_string).collect(),
             origins: self.origins.into_iter().map(country_code_to_region_code).collect(),
             medallions: self.certifications.into_api_medallions(),
+            media: self.media.into_iter().map(|m| m.into_api()).collect(),
             products,
         }
     }
 }
 
 /// Represents a set of product IDs.
-#[derive(Serialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherProductIds {
     /// GTIN of the product.
     pub eans: BTreeSet<ids::Ean>,
@@ -860,7 +1015,7 @@ impl StoreProductIds {
 }
 
 /// Represents a product.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatherProduct {
     /// Product ID.
     pub ids: GatherProductIds,
@@ -889,6 +1044,12 @@ pub struct GatherProduct {
     /// DB IDs of manufacturers.
     pub manufacturers: BTreeSet<ids::OrganisationId>,
 
+    /// Info about possible ways to buy this product.
+    pub shopping: BTreeSet<ShoppingEntry>,
+
+    /// Mentions in media.
+    pub media: BTreeSet<Medium>,
+
     /// Wikidata IDs newer version products.
     pub follows: BTreeSet<ids::ProductId>,
 
@@ -910,6 +1071,8 @@ impl GatherProduct {
         let origins = self.origins.into_iter().collect();
         let certifications = self.certifications;
         let mut manufacturers: Vec<_> = self.manufacturers.into_iter().collect();
+        let mut shopping: Vec<_> = self.shopping.into_iter().collect();
+        let mut media: Vec<_> = self.media.into_iter().collect();
         let mut follows: Vec<_> = self.follows.into_iter().collect();
         let mut followed_by: Vec<_> = self.followed_by.into_iter().collect();
         let sustainity_score = self.sustainity_score;
@@ -918,6 +1081,8 @@ impl GatherProduct {
         images.sort();
         categories.sort();
         manufacturers.sort();
+        shopping.sort();
+        media.sort();
         follows.sort();
         followed_by.sort();
 
@@ -931,6 +1096,8 @@ impl GatherProduct {
             origins,
             certifications,
             manufacturers,
+            shopping,
+            media,
             follows,
             followed_by,
             sustainity_score,
@@ -946,8 +1113,11 @@ impl merge::Merge for GatherProduct {
         self.images.extend(other.images);
         self.categories.extend(other.categories);
         self.regions.merge(other.regions);
+        self.origins.extend(other.origins);
         self.certifications.merge(other.certifications);
         self.manufacturers.extend(other.manufacturers);
+        self.shopping.extend(other.shopping);
+        self.media.extend(other.media);
         self.follows.extend(other.follows);
         self.followed_by.extend(other.followed_by);
     }
@@ -982,6 +1152,12 @@ pub struct StoreProduct {
 
     /// DB IDs of manufacturers.
     pub manufacturers: Vec<ids::OrganisationId>,
+
+    /// Info about possible ways to buy this product.
+    pub shopping: Vec<ShoppingEntry>,
+
+    /// Mentions in media.
+    pub media: Vec<Medium>,
 
     /// Wikidata IDs newer version products.
     pub follows: Vec<ids::ProductId>,
@@ -1019,6 +1195,8 @@ impl StoreProduct {
             descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
             origins: self.origins.into_iter().map(country_code_to_region_code).collect(),
+            shopping: self.shopping.into_iter().map(|l| l.into_api()).collect(),
+            media: self.media.into_iter().map(|m| m.into_api()).collect(),
             manufacturers,
             alternatives,
             medallions,
@@ -1086,6 +1264,22 @@ impl Presentation {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ReferenceLink {
+    /// Title of the reference
+    pub title: String,
+
+    /// Link to the reference
+    pub link: String,
+}
+
+#[cfg(feature = "into-api")]
+impl ReferenceLink {
+    pub fn into_api(self) -> api::ReferenceLink {
+        api::ReferenceLink { title: self.title, link: self.link }
+    }
+}
+
 /// Represents a topic info.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LibraryItem {
@@ -1100,6 +1294,9 @@ pub struct LibraryItem {
 
     /// Contents of the article in markdown format.
     pub article: String,
+
+    /// Links to external references to the same topic.
+    pub links: Vec<ReferenceLink>,
 }
 
 #[cfg(feature = "into-api")]
@@ -1121,6 +1318,7 @@ impl LibraryItem {
             title: str_to_short_string(self.title),
             summary: str_to_short_string(self.summary),
             article: str_to_long_string(self.article),
+            links: self.links.into_iter().map(|link| link.into_api()).collect(),
             presentation,
         })
     }

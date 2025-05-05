@@ -10,25 +10,25 @@ use crate::{coagulate::ExternalId, substrate::DataSetId, wikidata::WikiId};
 #[derive(Error, Debug)]
 pub enum ConfigCheckError {
     #[error("Path '{0}' does not exist")]
-    PathDoesNotExist(std::path::PathBuf),
+    DoesNotExist(std::path::PathBuf),
 
     #[error("Path '{0}' is not a file")]
-    PathIsNotAFile(std::path::PathBuf),
+    NotAFile(std::path::PathBuf),
 
     #[error("Path '{0}' is not a directory")]
-    PathIsNotADir(std::path::PathBuf),
+    NotADir(std::path::PathBuf),
 
     #[error("Path '{0}' is not a readable")]
-    PathIsNotReadable(std::path::PathBuf),
+    NotReadable(std::path::PathBuf),
 
     #[error("Path '{0}' is not an empty directory")]
-    PathIsNotAnEmptyDir(std::path::PathBuf),
+    NotAnEmptyDir(std::path::PathBuf),
 
     #[error("Path '{0}' already exists")]
-    PathAlreadyExists(std::path::PathBuf),
+    AlreadyExists(std::path::PathBuf),
 
     #[error("Path '{0}' has no parent")]
-    PathHasNoParent(std::path::PathBuf),
+    NoParent(std::path::PathBuf),
 }
 
 /// Error related to validating the input data.
@@ -39,10 +39,20 @@ pub enum SourcesCheckError {
     RepeatedIds(std::collections::HashSet<WikiId>),
 }
 
+/// Errors specific to the `condense` command.
+#[derive(Error, Debug)]
+pub enum CondensationError {
+    #[error("IO error: {0} ({1:?})")]
+    Io(std::io::Error, std::path::PathBuf),
+
+    #[error("Saving Substrate error: {0}")]
+    WriteSubstrate(#[from] sustainity_schema::errors::SaveError),
+}
+
 /// Errors specific to the crystalisation command.
 #[derive(Error, Debug)]
 pub enum CoagulationError {
-    #[error("Reading substate: {0:?}")]
+    #[error("Reading substrate: {0}")]
     ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
 
     #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
@@ -87,6 +97,7 @@ pub enum CrystalizationError {
     Coagulation(#[from] CoagulationError),
 }
 
+// TODO: Ideally this type could be removed.
 /// Error returned when a problem with processing.
 #[derive(Error, Debug)]
 pub enum ProcessingError {
@@ -141,11 +152,12 @@ pub enum ProcessingError {
     #[error("Sources check: {0}")]
     SourcesCheck(#[from] SourcesCheckError),
 
-    // TODO: Inline the variants
+    #[error("Crystalization error: {0}")]
+    Condensation(#[from] CondensationError),
+
     #[error("Crystalization error: {0}")]
     Crystalization(#[from] CrystalizationError),
 
-    // TODO: Inline the variants
     #[error("Coagulation error: {0}")]
     Coagulation(#[from] CoagulationError),
 

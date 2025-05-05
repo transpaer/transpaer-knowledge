@@ -4,17 +4,19 @@ use async_trait::async_trait;
 
 use sustainity_wikidata::data::{Entity, Item};
 
-use crate::{config, errors, parallel, runners, sources, sources::Sourceable};
+use crate::{advisors, config, errors, parallel, runners, sources, sources::Sourceable};
 
 /// Filters product entries out from the wikidata dump file.
 #[derive(Clone)]
 pub struct FilteringWorker {
+    wiki: usize,
     sources: Arc<sources::FullSources>,
+    substrate: Arc<advisors::SubstrateAdvisor>,
 }
 
 impl FilteringWorker {
-    fn new(sources: Arc<sources::FullSources>) -> Self {
-        Self { sources }
+    fn new(sources: Arc<sources::FullSources>, substrate: Arc<advisors::SubstrateAdvisor>) -> Self {
+        Self { sources, substrate, wiki: 0 }
     }
 
     /// Decides if the passed item should be kept or filtered out.
@@ -23,7 +25,10 @@ impl FilteringWorker {
     /// - is a product or
     /// - is a manufacturer.
     fn should_keep(&self, item: &Item) -> bool {
-        self.sources.is_product(item) || self.sources.is_organisation(item)
+        self.sources.is_product(item)
+            || self.sources.is_organisation(item)
+            || self.substrate.is_product(item)
+            || self.substrate.is_organisation(item)
     }
 }
 
@@ -37,13 +42,23 @@ impl runners::WikidataWorker for FilteringWorker {
         entity: Entity,
         tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
+        let mut wiki = false;
         match entity {
             Entity::Item(item) => {
                 if self.should_keep(&item) {
+                    for (_, sl) in &item.sitelinks {
+                        if sl.site == "enwiki" {
+                            wiki = true;
+                            break;
+                        }
+                    }
                     tx.send(msg.to_string()).await;
                 }
             }
             Entity::Property(_property) => {}
+        }
+        if wiki {
+            self.wiki += 1;
         }
         Ok(())
     }
@@ -131,9 +146,10 @@ pub struct FilteringRunner;
 
 impl FilteringRunner {
     pub fn run(config: &config::Filtering2Config) -> Result<(), errors::ProcessingError> {
+        let substrate = Arc::new(advisors::SubstrateAdvisor::load(&config.substrate_path)?);
         let sources = Arc::new(sources::FullSources::load(&config.into())?);
 
-        let worker = FilteringWorker::new(sources);
+        let worker = FilteringWorker::new(sources, substrate);
         let stash = FilteringStash::new(config.clone());
 
         let flow = parallel::Flow::new();

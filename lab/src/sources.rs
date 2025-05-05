@@ -1,4 +1,6 @@
-use crate::{advisors, config, errors, utils, wikidata::ItemExt};
+use sustainity_models::utils;
+
+use crate::{advisors, config, errors, wikidata::ItemExt};
 
 /// Trait for structures holding all the supplementary source data required by a `Processor`.
 pub trait Sourceable: Sized + Sync + Send {

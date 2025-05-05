@@ -74,7 +74,9 @@ fn serde_product_defaults() {
         regions: Regions::World,
         origins: Vec::new(),
         certifications: Certifications::default(),
-        manufacturers: Vec::new(),
+        manufacturers: Vec::default(),
+        shopping: Vec::default(),
+        media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
@@ -100,6 +102,8 @@ fn serde_product_defaults() {
             "tco": null
           },
           "manufacturers": [],
+          "shopping": [],
+          "media": [],
           "follows": [],
           "followed_by": [],
           "sustainity_score": {
@@ -132,6 +136,8 @@ fn serde_product_filled() {
         origins: Vec::default(),
         certifications: Certifications::default(),
         manufacturers: Vec::default(),
+        shopping: Vec::default(),
+        media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
         sustainity_score: SustainityScore::default(),
@@ -168,6 +174,8 @@ fn serde_product_filled() {
             "tco": null
           },
           "manufacturers": [],
+          "shopping": [],
+          "media": [],
           "follows": [],
           "followed_by": [],
           "sustainity_score": {

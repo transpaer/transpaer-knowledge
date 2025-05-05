@@ -15,12 +15,13 @@ pub enum BucketError {
     Store(#[from] kv::Error),
 }
 
+#[derive(Clone)]
 pub struct Bucket<'a, K, V> {
     bucket: kv::Bucket<'a, Vec<u8>, Vec<u8>>,
     phantom: std::marker::PhantomData<(K, V)>,
 }
 
-impl<K, V> Bucket<'_, K, V> {
+impl<'a, K, V> Bucket<'a, K, V> {
     pub fn obtain(store: &kv::Store, name: &str) -> Result<Self, BucketError> {
         let bucket = store.bucket::<Vec<u8>, Vec<u8>>(Some(name))?;
         Ok(Bucket { bucket, phantom: std::marker::PhantomData })
@@ -50,6 +51,25 @@ impl<K, V> Bucket<'_, K, V> {
         let value_data = self.bucket.get(&key_data)?;
         Ok(if let Some(value_data) = value_data {
             Some(postcard::from_bytes(&value_data)?)
+        } else {
+            None
+        })
+    }
+
+    pub fn edit(&self, key: K) -> Result<Option<BucketEntry<'a, K, V>>, BucketError>
+    where
+        K: Clone + Serialize,
+        V: Clone + Serialize + DeserializeOwned,
+    {
+        let key_data = postcard::to_stdvec(&key)?;
+        let value_data = self.bucket.get(&key_data)?;
+        Ok(if let Some(value_data) = value_data {
+            Some(BucketEntry {
+                key,
+                value: postcard::from_bytes(&value_data)?,
+                key_data,
+                bucket: self.clone(),
+            })
         } else {
             None
         })
@@ -93,6 +113,130 @@ impl<K, V> Bucket<'_, K, V> {
             result.insert(key, value);
         }
         Ok(result)
+    }
+
+    pub fn iter(&self) -> BucketIter<K, V>
+    where
+        K: Serialize,
+        V: Serialize,
+    {
+        BucketIter { iter: self.bucket.iter(), phantom: std::marker::PhantomData }
+    }
+
+    pub fn iter_autosave(self) -> BucketIterAutosave<'a, K, V>
+    where
+        K: Clone + Serialize,
+        V: Clone + Serialize,
+    {
+        BucketIterAutosave { iter: self.bucket.iter(), bucket: self }
+    }
+}
+
+pub struct BucketIter<K, V> {
+    iter: kv::Iter<Vec<u8>, Vec<u8>>,
+    phantom: std::marker::PhantomData<(K, V)>,
+}
+
+impl<K, V> BucketIter<K, V>
+where
+    K: Serialize + DeserializeOwned + Eq + std::hash::Hash,
+    V: Serialize + DeserializeOwned,
+{
+    fn go(&mut self) -> Result<Option<(K, V)>, BucketError> {
+        Ok(if let Some(item) = self.iter.next().transpose()? {
+            let key = postcard::from_bytes(&item.key::<Vec<u8>>()?)?;
+            let value = postcard::from_bytes(&item.value::<Vec<u8>>()?)?;
+            Some((key, value))
+        } else {
+            None
+        })
+    }
+}
+
+impl<K, V> Iterator for BucketIter<K, V>
+where
+    K: Serialize + DeserializeOwned + Eq + std::hash::Hash,
+    V: Serialize + DeserializeOwned,
+{
+    type Item = Result<(K, V), BucketError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.go().transpose()
+    }
+}
+
+pub struct BucketIterAutosave<'a, K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    iter: kv::Iter<Vec<u8>, Vec<u8>>,
+    bucket: Bucket<'a, K, V>,
+}
+
+impl<'a, K, V> BucketIterAutosave<'a, K, V>
+where
+    K: Clone + Serialize + DeserializeOwned + Eq + std::hash::Hash,
+    V: Clone + Serialize + DeserializeOwned,
+{
+    fn go(&mut self) -> Result<Option<BucketEntry<'a, K, V>>, BucketError> {
+        Ok(if let Some(item) = self.iter.next().transpose()? {
+            let key_data = item.key::<Vec<u8>>()?;
+            let key = postcard::from_bytes(&key_data)?;
+            let value = postcard::from_bytes(&item.value::<Vec<u8>>()?)?;
+            Some(BucketEntry { key, value, key_data, bucket: self.bucket.clone() })
+        } else {
+            None
+        })
+    }
+}
+
+impl<'a, K, V> Iterator for BucketIterAutosave<'a, K, V>
+where
+    K: Clone + Serialize + DeserializeOwned + Eq + std::hash::Hash,
+    V: Clone + Serialize + DeserializeOwned,
+{
+    type Item = Result<BucketEntry<'a, K, V>, BucketError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.go().transpose()
+    }
+}
+
+pub struct BucketEntry<'a, K, V>
+where
+    K: Clone + Serialize,
+    V: Clone + Serialize,
+{
+    pub key: K,
+    pub value: V,
+    key_data: Vec<u8>,
+    bucket: Bucket<'a, K, V>,
+}
+
+impl<K, V> BucketEntry<'_, K, V>
+where
+    K: Clone + Serialize,
+    V: Clone + Serialize,
+{
+    pub fn store(&mut self) -> Result<(), BucketError> {
+        let value_data = postcard::to_stdvec(&self.value)?;
+        self.bucket.bucket.set(&self.key_data, &value_data)?;
+        Ok(())
+    }
+
+    pub fn consume(mut self) -> Result<(), BucketError> {
+        self.store()
+    }
+}
+
+impl<K, V> Drop for BucketEntry<'_, K, V>
+where
+    K: Clone + Serialize,
+    V: Clone + Serialize,
+{
+    fn drop(&mut self) {
+        self.store().expect("Failed to automatically save a bucket entry");
     }
 }
 
@@ -193,5 +337,135 @@ impl AppStore {
         &self,
     ) -> Result<Bucket<store::LibraryTopic, store::Presentation>, BucketError> {
         Bucket::obtain(&self.store, "library.topic => library.presentation")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Bucket;
+
+    #[derive(Debug, Clone)]
+    pub struct TestStore {
+        store: kv::Store,
+    }
+
+    impl TestStore {
+        pub fn new() -> Self {
+            Self { store: kv::Store::new(kv::Config::new(tempfile::tempdir().unwrap())).unwrap() }
+        }
+
+        pub fn get_test_bucket<'a>(&'a self) -> Bucket<'a, u32, String> {
+            Bucket::obtain(&self.store, "test").unwrap()
+        }
+    }
+
+    /// Check if bucket clones edit the same entries.
+    ///
+    /// This should be possible per guaranties of the `kv` crate.
+    #[test]
+    fn bucket_clone() {
+        let store = TestStore::new();
+
+        let bucket1 = store.get_test_bucket();
+        let bucket2 = bucket1.clone();
+        let bucket3 = store.get_test_bucket();
+
+        bucket1.insert(&3, &String::from("3")).unwrap();
+        bucket1.insert(&4, &String::from("4")).unwrap();
+        bucket1.insert(&5, &String::from("5")).unwrap();
+        bucket1.insert(&6, &String::from("6")).unwrap();
+
+        {
+            let mut iter = bucket2.iter();
+            assert_eq!(iter.next().transpose().unwrap(), Some((3, String::from("3"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((4, String::from("4"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((5, String::from("5"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((6, String::from("6"))));
+            assert_eq!(iter.next().transpose().unwrap(), None);
+            assert_eq!(iter.next().transpose().unwrap(), None);
+        }
+
+        {
+            let mut iter = bucket3.iter();
+            assert_eq!(iter.next().transpose().unwrap(), Some((3, String::from("3"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((4, String::from("4"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((5, String::from("5"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((6, String::from("6"))));
+            assert_eq!(iter.next().transpose().unwrap(), None);
+            assert_eq!(iter.next().transpose().unwrap(), None);
+        }
+    }
+
+    /// Check if iteration works properly and edited entries are available during next iteration.
+    #[test]
+    fn bucket_iter_and_edit() {
+        let store = TestStore::new();
+        let bucket = store.get_test_bucket();
+
+        bucket.insert(&3, &String::from("3")).unwrap();
+        bucket.insert(&4, &String::from("4")).unwrap();
+        bucket.insert(&5, &String::from("5")).unwrap();
+        bucket.insert(&6, &String::from("6")).unwrap();
+
+        {
+            let mut iter = bucket.iter();
+            assert_eq!(iter.next().transpose().unwrap(), Some((3, String::from("3"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((4, String::from("4"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((5, String::from("5"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((6, String::from("6"))));
+            assert_eq!(iter.next().transpose().unwrap(), None);
+            assert_eq!(iter.next().transpose().unwrap(), None);
+        }
+
+        {
+            let mut editor = bucket.edit(4).unwrap().unwrap();
+            editor.value = String::from("44");
+        }
+
+        {
+            let mut editor = bucket.edit(5).unwrap().unwrap();
+            // Editing the key should have no impact on where the value is saved.
+            editor.key = 9;
+            editor.value = String::from("55");
+        }
+
+        {
+            let mut iter = bucket.iter();
+            assert_eq!(iter.next().transpose().unwrap(), Some((3, String::from("3"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((4, String::from("44"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((5, String::from("55"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((6, String::from("6"))));
+            assert_eq!(iter.next().transpose().unwrap(), None);
+            assert_eq!(iter.next().transpose().unwrap(), None);
+        }
+    }
+
+    /// Check if autosave iteration works properly.
+    #[test]
+    fn bucket_iter_autosave() {
+        let store = TestStore::new();
+        let bucket = store.get_test_bucket();
+
+        bucket.insert(&3, &String::from("3")).unwrap();
+        bucket.insert(&4, &String::from("4")).unwrap();
+        bucket.insert(&5, &String::from("5")).unwrap();
+        bucket.insert(&6, &String::from("6")).unwrap();
+
+        {
+            for item in bucket.clone().iter_autosave() {
+                let mut item = item.unwrap();
+                item.value = (11 * item.key).to_string();
+            }
+        }
+
+        {
+            let mut iter = bucket.iter();
+            assert_eq!(iter.next().transpose().unwrap(), Some((3, String::from("33"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((4, String::from("44"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((5, String::from("55"))));
+            assert_eq!(iter.next().transpose().unwrap(), Some((6, String::from("66"))));
+            assert_eq!(iter.next().transpose().unwrap(), None);
+            assert_eq!(iter.next().transpose().unwrap(), None);
+        }
     }
 }

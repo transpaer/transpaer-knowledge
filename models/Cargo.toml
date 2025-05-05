@@ -22,6 +22,7 @@ sustainity-wikidata = { workspace = true }
 indoc = { workspace = true }
 serde_json = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
 
 [features]
 # TODO: move to the backend for better error handling
