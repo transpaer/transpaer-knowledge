@@ -3,20 +3,22 @@ use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 use merge::Merge;
 
 use sustainity_models::{
-    buckets::{Bucket, DbStore},
-    gather, store,
+    buckets::{Bucket, BucketError, DbStore},
+    gather, store, utils,
 };
 use sustainity_schema as schema;
 
 use crate::{
     coagulate::{Coagulate, ExternalId, InnerId},
-    config, errors,
+    config,
+    errors::{self, CrystalizationError},
     substrate::{DataSetId, Substrate, Substrates},
 };
 
 const MAX_CATEGORY_PRODUCT_NUM: usize = 300_000;
 
 // TODO: Rework as repotts per data source
+#[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Debug, Default)]
 pub struct CrystalizationReport {
@@ -96,60 +98,92 @@ impl CrystalizationReport {
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct CrystalizationCollector {
-    /// Found organisations.
-    organisations: BTreeMap<gather::OrganisationId, gather::Organisation>,
-
-    /// Found products.
-    products: BTreeMap<gather::ProductId, gather::Product>,
+    /// Stores a list of products and all organisations.
+    ///
+    /// Since the lists contain several gigabytes of data it's necessary to store them in a database
+    /// stored on a disk.
+    store: kv::Store,
 }
 
 impl CrystalizationCollector {
-    pub fn update_organisation(
-        &mut self,
-        id: gather::OrganisationId,
-        organisation: gather::Organisation,
-    ) {
-        match self.organisations.entry(id) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().merge(organisation);
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(organisation);
-            }
-        }
+    pub fn new(path: &std::path::Path) -> Result<Self, BucketError> {
+        Ok(Self { store: kv::Store::new(kv::Config::new(path))? })
     }
 
-    pub fn update_product(&mut self, id: gather::ProductId, product: gather::Product) {
-        match self.products.entry(id) {
-            Entry::Occupied(mut entry) => entry.get_mut().merge(product),
-            Entry::Vacant(entry) => {
-                let _ = entry.insert(product);
+    pub fn update_organisation(
+        &mut self,
+        id: &gather::OrganisationId,
+        organisation: gather::Organisation,
+    ) -> Result<(), BucketError> {
+        let orgs = self.get_organisation_bucket()?;
+        let org = match orgs.get(id)? {
+            Some(mut org) => {
+                org.merge(organisation);
+                org
             }
-        }
+            None => organisation,
+        };
+        orgs.insert(id, &org)?;
+        Ok(())
+    }
+
+    pub fn update_product(
+        &mut self,
+        id: &gather::ProductId,
+        product: gather::Product,
+    ) -> Result<(), BucketError> {
+        let prods = self.get_product_bucket()?;
+        let prod = match prods.get(id)? {
+            Some(mut prod) => {
+                prod.merge(product);
+                prod
+            }
+            None => product,
+        };
+        prods.insert(id, &prod)?;
+        Ok(())
+    }
+
+    fn get_organisation_bucket(
+        &self,
+    ) -> Result<Bucket<gather::OrganisationId, gather::Organisation>, BucketError> {
+        Bucket::obtain(&self.store, "organisation.id => organisation")
+    }
+
+    fn get_product_bucket(
+        &self,
+    ) -> Result<Bucket<gather::ProductId, gather::Product>, BucketError> {
+        Bucket::obtain(&self.store, "product.id => product")
     }
 }
 
-#[derive(Debug, derive_new::new)]
+#[derive(Debug)]
 pub struct Processor {
     /// Collected data.
-    #[new(default)]
     collector: CrystalizationCollector,
 
     /// Report listing warnings from substrate files.
-    #[new(default)]
     report: CrystalizationReport,
 }
 
 impl Processor {
+    pub fn new(runtime_path: &std::path::Path) -> Result<Self, BucketError> {
+        Ok(Self {
+            collector: CrystalizationCollector::new(runtime_path)?,
+            report: CrystalizationReport::default(),
+        })
+    }
+
     fn process(
         mut self,
         substrates: &Substrates,
         coagulate: &Coagulate,
     ) -> Result<(CrystalizationCollector, CrystalizationReport), errors::CrystalizationError> {
-        log::info!("Processing data");
+        log::info!("Processing substrates");
         for substrate in substrates.list() {
+            log::info!(" -> {}", substrate.name);
             match schema::read::iter_file(&substrate.path)? {
                 schema::read::FileIterVariant::Catalog(iter) => {
                     for entry in iter {
@@ -205,7 +239,7 @@ impl Processor {
         let ids = self.convert_organisation_ids(producer.ids, substrate);
 
         self.collector.update_organisation(
-            unique_id.clone(),
+            &unique_id,
             gather::Organisation {
                 ids,
                 names: producer
@@ -231,9 +265,10 @@ impl Processor {
                     },
                 )?,
                 certifications: gather::Certifications::default(),
+                media: BTreeSet::new(),
                 products: BTreeSet::new(), //< filled later
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -255,7 +290,7 @@ impl Processor {
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
 
         self.collector.update_product(
-            unique_id,
+            &unique_id,
             gather::Product {
                 ids,
                 names: product
@@ -289,12 +324,16 @@ impl Processor {
                     },
                 )?,
                 manufacturers,
+                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
+                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
+                }),
+                media: BTreeSet::new(),
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -316,7 +355,7 @@ impl Processor {
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
 
         self.collector.update_product(
-            unique_id,
+            &unique_id,
             gather::Product {
                 ids,
                 names: product
@@ -344,12 +383,16 @@ impl Processor {
                     },
                 )?,
                 manufacturers,
+                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
+                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
+                }),
+                media: BTreeSet::new(),
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -374,7 +417,7 @@ impl Processor {
         let ids = self.convert_organisation_ids(producer.ids, substrate);
 
         self.collector.update_organisation(
-            unique_id.clone(),
+            &unique_id,
             gather::Organisation {
                 ids,
                 names: producer
@@ -399,10 +442,11 @@ impl Processor {
                         when: "processing review producer",
                     },
                 )?,
+                media: Self::extract_media_mentions(producer.reports.as_ref(), &substrate.source),
                 certifications,
                 products: BTreeSet::new(), //< filled later
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -424,7 +468,7 @@ impl Processor {
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
 
         self.collector.update_product(
-            unique_id.clone(),
+            &unique_id,
             gather::Product {
                 ids,
                 names: product
@@ -454,12 +498,16 @@ impl Processor {
                     },
                 )?,
                 manufacturers,
+                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
+                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
+                }),
+                media: Self::extract_media_mentions(product.reports.as_ref(), &substrate.source),
                 follows,
                 followed_by,
                 sustainity_score: gather::SustainityScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(), //< Assigned later from producers
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -504,6 +552,7 @@ impl Processor {
         }
         (follows, followed_by)
     }
+
     fn extract_regions(
         availability: Option<&schema::ProductAvailability>,
     ) -> Result<gather::Regions, isocountry::CountryCodeParseErr> {
@@ -564,6 +613,33 @@ impl Processor {
         }
     }
 
+    fn extract_media_mentions(
+        reports: Option<&schema::Reports>,
+        source: &gather::Source,
+    ) -> BTreeSet<gather::Medium> {
+        if let Some(reports) = reports {
+            let source = gather::MentionSource::from(source);
+            let mut mentions = Vec::new();
+            for report in &reports.0 {
+                if let Some(url) = &report.url {
+                    if utils::extract_domain_from_url(url) == "youtube.com" {
+                        mentions.push(gather::Mention {
+                            title: report.title.as_ref().unwrap_or(url).clone(),
+                            link: url.to_string(),
+                        });
+                    }
+                }
+            }
+            if !mentions.is_empty() {
+                maplit::btreeset! {gather::Medium { source, mentions }}
+            } else {
+                BTreeSet::new()
+            }
+        } else {
+            BTreeSet::new()
+        }
+    }
+
     fn convert_inner_ids(
         &mut self,
         input: &[String],
@@ -593,9 +669,12 @@ impl Processor {
 
         Some(gather::BCorpCert {
             id: producer.id.clone(),
+            // We know in BCorp data there is always only one report.
             report_url: producer
-                .report
-                .as_ref()
+                .reports
+                .as_ref()?
+                .0
+                .first()
                 .and_then(|report| report.url.clone())
                 .unwrap_or_default(),
         })
@@ -739,21 +818,25 @@ impl Saver {
         result
     }
 
-    fn finalize(
-        organisations: &mut BTreeMap<gather::OrganisationId, gather::Organisation>,
-        products: &mut BTreeMap<gather::ProductId, gather::Product>,
-    ) {
+    fn finalize<'a>(
+        organisations: &'a mut Bucket<'a, gather::OrganisationId, gather::Organisation>,
+        products: &Bucket<gather::ProductId, gather::Product>,
+    ) -> Result<(), CrystalizationError> {
         log::info!("Finalizing products");
 
         // Assign
         //  - certifications to products
         //  - product to organisations
         log::info!(" -> assigning certifications");
-        for (product_id, product) in products.iter_mut() {
-            for manufacturer_id in &product.manufacturers {
-                if let Some(organisation) = organisations.get_mut(manufacturer_id) {
-                    product.certifications.inherit(&organisation.certifications);
-                    organisation.products.insert(product_id.clone());
+        for product in products.clone().iter_autosave() {
+            let mut product = product?;
+            for manufacturer_id in &product.value.manufacturers {
+                if let Some(mut organisation) = organisations.edit(manufacturer_id.clone())? {
+                    product
+                        .value
+                        .certifications
+                        .inherit(&organisation.value.certifications.clone());
+                    organisation.value.products.insert(product.key.clone());
                 }
 
                 // TODO: There are many organisations that cannot be found.
@@ -764,9 +847,12 @@ impl Saver {
 
         // Calculate product Sustainity score
         log::info!(" -> calculating Sustainity scores");
-        for product in products.values_mut() {
-            product.sustainity_score = crate::score::calculate(product);
+        for product in products.clone().iter_autosave() {
+            let mut product = product?;
+            product.value.sustainity_score = crate::score::calculate(&product.value);
         }
+
+        Ok(())
     }
 
     /// Runs a quick sanity check: the `unique` should contain as many elements as `all`.
@@ -792,14 +878,15 @@ impl Saver {
     /// - converts into a vector
     fn store_organisations(
         &self,
-        organisations: BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut Bucket<gather::OrganisationId, gather::Organisation>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "organisation.id => organisation";
         log::info!(" -> `{COMMENT}`");
 
         let bucket = self.store.get_organisation_bucket()?;
-        for (id, organisation) in organisations {
-            bucket.insert(&id, &organisation.store())?;
+        for iter in organisations.iter() {
+            let (id, org) = iter?;
+            bucket.insert(&id, &org.store())?;
         }
 
         Ok(())
@@ -810,17 +897,18 @@ impl Saver {
     /// This data is needed to implement an efficient text search index.
     fn store_organisation_keywords(
         &self,
-        organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut Bucket<gather::OrganisationId, gather::Organisation>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "keywords => [organisation.id]";
         log::info!(" -> `{COMMENT}`");
 
         let mut data = BTreeMap::<String, Vec<store::OrganisationId>>::new();
-        for (unique_id, organisation) in organisations {
+        for item in organisations.iter() {
+            let (organisation_id, organisation) = item?;
             for keyword in Self::extract_keywords(&organisation.names) {
                 data.entry(keyword)
-                    .and_modify(|ids| ids.push(unique_id.clone()))
-                    .or_insert_with(|| vec![unique_id.clone()]);
+                    .and_modify(|ids| ids.push(organisation_id.clone()))
+                    .or_insert_with(|| vec![organisation_id.clone()]);
             }
         }
 
@@ -838,7 +926,7 @@ impl Saver {
     /// This data is needed to implement an efficient VAT search index.
     fn store_organisation_vat_ids(
         &self,
-        organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut Bucket<gather::OrganisationId, gather::Organisation>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "organisation.vat_id => organisation.id";
 
@@ -847,9 +935,10 @@ impl Saver {
         let bucket = self.store.get_vat_id_to_organisation_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (organisation_id, organisation) in organisations {
-            for vat_id in &organisation.ids.vat_ids {
-                bucket.insert(vat_id, organisation_id)?;
+        for item in organisations.iter() {
+            let (organisation_id, organisation) = item?;
+            for vat_id in organisation.ids.vat_ids {
+                bucket.insert(&vat_id, &organisation_id)?;
                 uniqueness_check.insert(vat_id);
             }
         }
@@ -866,7 +955,7 @@ impl Saver {
     /// This data is needed to implement an efficient Wikidata ID search index.
     fn store_organisation_wiki_ids(
         &self,
-        organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut Bucket<gather::OrganisationId, gather::Organisation>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "organisation.wiki_id => organisation.id";
 
@@ -875,9 +964,10 @@ impl Saver {
         let bucket = self.store.get_wiki_id_to_organisation_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (organisation_id, organisation) in organisations {
-            for wiki_id in &organisation.ids.wiki {
-                bucket.insert(wiki_id, organisation_id)?;
+        for item in organisations.iter() {
+            let (organisation_id, organisation) = item?;
+            for wiki_id in organisation.ids.wiki {
+                bucket.insert(&wiki_id, &organisation_id)?;
                 uniqueness_check.insert(wiki_id);
             }
         }
@@ -894,7 +984,7 @@ impl Saver {
     /// This data is needed to implement an efficient WWW domain search index.
     fn store_organisation_www_domains(
         &self,
-        organisations: &BTreeMap<gather::OrganisationId, gather::Organisation>,
+        organisations: &mut Bucket<gather::OrganisationId, gather::Organisation>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "organisation.WWW_domain => organisation.id";
 
@@ -903,9 +993,10 @@ impl Saver {
         let bucket = self.store.get_www_domain_to_organisation_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (organisation_id, organisation) in organisations {
-            for domain in &organisation.ids.domains {
-                bucket.insert(domain, organisation_id)?;
+        for item in organisations.iter() {
+            let (organisation_id, organisation) = item?;
+            for domain in organisation.ids.domains {
+                bucket.insert(&domain, &organisation_id)?;
                 uniqueness_check.insert(domain);
             }
         }
@@ -920,18 +1011,19 @@ impl Saver {
     /// Stores product data.
     fn store_products(
         &self,
-        products: BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "product.id => product";
         log::info!(" -> `{COMMENT}`");
 
         let bucket = self.store.get_product_bucket()?;
-        for (id, product) in products {
-            let product = product.clone().store();
-            bucket.insert(&id, &product)?;
+        for item in products.iter() {
+            let (product_id, product) = item?;
+            let product = product.store();
+            bucket.insert(&product_id, &product)?;
 
             // Make sure that the DB can be deserialized
-            assert!(bucket.get(&id).is_ok(), "DB integrity: {id:?} => {product:?}");
+            assert!(bucket.get(&product_id).is_ok(), "DB integrity: {product_id:?} => {product:?}");
         }
 
         bucket.flush()?;
@@ -943,17 +1035,18 @@ impl Saver {
     /// This data is needed to implement an efficient text search index.
     fn store_product_keywords(
         &self,
-        products: &BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "keywords => [product.id]";
         log::info!(" -> `{COMMENT}`");
 
         let mut data = BTreeMap::<String, Vec<store::ProductId>>::new();
-        for (unique_id, product) in products {
+        for item in products.iter() {
+            let (product_id, product) = item?;
             for keyword in Self::extract_keywords(&product.names) {
                 data.entry(keyword)
-                    .and_modify(|ids| ids.push(unique_id.clone()))
-                    .or_insert_with(|| vec![unique_id.clone()]);
+                    .and_modify(|ids| ids.push(product_id.clone()))
+                    .or_insert_with(|| vec![product_id.clone()]);
             }
         }
 
@@ -971,7 +1064,7 @@ impl Saver {
     /// This data is needed to implement an efficient EAN search index.
     fn store_product_eans(
         &self,
-        products: &BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "product.ean => product.id";
 
@@ -980,9 +1073,10 @@ impl Saver {
         let bucket = self.store.get_ean_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (product_id, product) in products {
-            for ean in &product.ids.eans {
-                bucket.insert(ean, product_id)?;
+        for item in products.iter() {
+            let (product_id, product) = item?;
+            for ean in product.ids.eans {
+                bucket.insert(&ean, &product_id)?;
                 uniqueness_check.insert(ean);
             }
         }
@@ -999,7 +1093,7 @@ impl Saver {
     /// This data is needed to implement an efficient GTIN search index.
     fn store_product_gtins(
         &self,
-        products: &BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "product.gtin => product.id";
 
@@ -1008,9 +1102,10 @@ impl Saver {
         let bucket = self.store.get_gtin_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (product_id, product) in products {
-            for gtin in &product.ids.gtins {
-                bucket.insert(gtin, product_id)?;
+        for item in products.iter() {
+            let (product_id, product) = item?;
+            for gtin in product.ids.gtins {
+                bucket.insert(&gtin, &product_id)?;
                 uniqueness_check.insert(gtin);
             }
         }
@@ -1028,7 +1123,7 @@ impl Saver {
     /// Data is composed from Wikidata ID vertex collection and edge collection connecting them to products.
     fn store_product_wiki_ids(
         &self,
-        products: &BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "product.wiki_id => product.id";
 
@@ -1037,9 +1132,10 @@ impl Saver {
         let bucket = self.store.get_wiki_id_to_product_id_bucket()?;
 
         let mut uniqueness_check = HashSet::new();
-        for (product_id, product) in products {
-            for wiki_id in &product.ids.wiki {
-                bucket.insert(wiki_id, product_id)?;
+        for item in products.iter() {
+            let (product_id, product) = item?;
+            for wiki_id in product.ids.wiki {
+                bucket.insert(&wiki_id, &product_id)?;
                 uniqueness_check.insert(wiki_id);
             }
         }
@@ -1057,18 +1153,19 @@ impl Saver {
     /// Data is composed from category vertex collection and edge collection connecting them to products.
     fn store_categories(
         &self,
-        products: &BTreeMap<gather::ProductId, gather::Product>,
+        products: &mut Bucket<gather::ProductId, gather::Product>,
     ) -> Result<(), errors::CrystalizationError> {
         const COMMENT: &str = "product.category => [product.id]";
 
         log::info!(" -> `{COMMENT}`");
 
         let mut data = BTreeMap::<String, Vec<store::ProductId>>::new();
-        for (unique_id, product) in products {
-            for category in &product.categories {
+        for item in products.iter() {
+            let (product_id, product) = item?;
+            for category in product.categories {
                 data.entry(category.clone())
-                    .and_modify(|ids| ids.push(unique_id.clone()))
-                    .or_insert_with(|| vec![unique_id.clone()]);
+                    .and_modify(|ids| ids.push(product_id.clone()))
+                    .or_insert_with(|| vec![product_id.clone()]);
             }
         }
 
@@ -1083,26 +1180,24 @@ impl Saver {
         Ok(())
     }
 
-    fn store_all(
-        self,
-        mut collector: CrystalizationCollector,
-    ) -> Result<(), errors::ProcessingError> {
-        Self::finalize(&mut collector.organisations, &mut collector.products);
+    fn store_all(self, collector: &CrystalizationCollector) -> Result<(), errors::ProcessingError> {
+        Self::finalize(
+            &mut collector.get_organisation_bucket()?,
+            &collector.get_product_bucket()?,
+        )?;
 
-        log::info!("Storing:");
+        self.store_organisation_keywords(&mut collector.get_organisation_bucket()?)?;
+        self.store_organisation_vat_ids(&mut collector.get_organisation_bucket()?)?;
+        self.store_organisation_wiki_ids(&mut collector.get_organisation_bucket()?)?;
+        self.store_organisation_www_domains(&mut collector.get_organisation_bucket()?)?;
+        self.store_organisations(&mut collector.get_organisation_bucket()?)?;
 
-        self.store_organisation_keywords(&collector.organisations)?;
-        self.store_organisation_vat_ids(&collector.organisations)?;
-        self.store_organisation_wiki_ids(&collector.organisations)?;
-        self.store_organisation_www_domains(&collector.organisations)?;
-        self.store_organisations(collector.organisations)?;
-
-        self.store_product_keywords(&collector.products)?;
-        self.store_product_eans(&collector.products)?;
-        self.store_product_gtins(&collector.products)?;
-        self.store_product_wiki_ids(&collector.products)?;
-        self.store_categories(&collector.products)?;
-        self.store_products(collector.products)?;
+        self.store_product_keywords(&mut collector.get_product_bucket()?)?;
+        self.store_product_eans(&mut collector.get_product_bucket()?)?;
+        self.store_product_gtins(&mut collector.get_product_bucket()?)?;
+        self.store_product_wiki_ids(&mut collector.get_product_bucket()?)?;
+        self.store_categories(&mut collector.get_product_bucket()?)?;
+        self.store_products(&mut collector.get_product_bucket()?)?;
 
         log::info!("Crystalisation finished");
 
@@ -1121,11 +1216,11 @@ impl Crystalizer {
 
             let coagulate = Coagulate::read(&config.coagulate, &substrates)?;
             let (collector, crystalizer_report) =
-                Processor::new().process(&substrates, &coagulate)?;
+                Processor::new(&config.runtime)?.process(&substrates, &coagulate)?;
             crystalizer_report.report(&substrates);
 
             let store = DbStore::new(&config.crystal)?;
-            Saver::new(store).store_all(collector)?;
+            Saver::new(store).store_all(&collector)?;
             Ok(())
         })
     }

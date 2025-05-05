@@ -4,10 +4,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use merge::Merge;
 
 use sustainity_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
-use sustainity_models::{gather as models, ids::WikiId};
+use sustainity_models::{gather as models, ids::WikiId, utils::extract_domain_from_url};
 use sustainity_schema as schema;
 use sustainity_wikidata::{
     data::{Entity, Item},
@@ -46,10 +45,11 @@ fn merge_review_producers(p1: &mut schema::ReviewProducer, p2: &schema::ReviewPr
     *p1 = r;
 }
 
-pub trait Collector: Clone + Default + Send + merge::Merge {
+pub trait Collector: Clone + Default + Send {
     type About: Clone + Send;
 
     fn build_substrate(self, about: Self::About) -> schema::Root;
+    fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError>;
 }
 
 /// Data storage for gathered data from a cataloger.
@@ -61,19 +61,13 @@ pub struct CatalogerCollector {
     products: Vec<schema::CatalogProduct>,
 }
 
-impl merge::Merge for CatalogerCollector {
-    fn merge(&mut self, other: Self) {
-        utils::merge_hashmaps_with(&mut self.producers, other.producers, merge_catalog_producers);
-        merge::vec::append(&mut self.products, other.products);
-    }
-}
-
 impl Collector for CatalogerCollector {
     type About = schema::AboutCataloger;
 
-    fn build_substrate(self, about: Self::About) -> schema::Root {
+    fn build_substrate(mut self, about: Self::About) -> schema::Root {
         let mut producers: Vec<schema::CatalogProducer> = self.producers.into_values().collect();
         producers.sort_by(|a, b| a.id.cmp(&b.id));
+        self.products.sort_by(|a, b| a.id.cmp(&b.id));
 
         schema::Root::CatalogerRoot(schema::CatalogerRoot {
             meta: prepare_meta(schema::ProviderVariant::Cataloger),
@@ -82,14 +76,15 @@ impl Collector for CatalogerCollector {
             products: self.products,
         })
     }
+
+    fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError> {
+        utils::merge_hashmaps_with(&mut self.producers, other.producers, merge_catalog_producers);
+        merge::vec::append(&mut self.products, other.products);
+        Ok(())
+    }
 }
 
 impl CatalogerCollector {
-    #[must_use]
-    pub fn has_producer(&self, producer_id: &str) -> bool {
-        self.producers.contains_key(producer_id)
-    }
-
     pub fn insert_producer(&mut self, producer: schema::CatalogProducer) {
         match self.producers.entry(producer.id.clone()) {
             Entry::Occupied(mut entry) => {
@@ -115,19 +110,13 @@ pub struct ReviewerCollector {
     products: Vec<schema::ReviewProduct>,
 }
 
-impl merge::Merge for ReviewerCollector {
-    fn merge(&mut self, other: Self) {
-        utils::merge_hashmaps_with(&mut self.producers, other.producers, merge_review_producers);
-        merge::vec::append(&mut self.products, other.products);
-    }
-}
-
 impl Collector for ReviewerCollector {
     type About = schema::AboutReviewer;
 
-    fn build_substrate(self, about: Self::About) -> schema::Root {
+    fn build_substrate(mut self, about: Self::About) -> schema::Root {
         let mut producers: Vec<schema::ReviewProducer> = self.producers.into_values().collect();
         producers.sort_by(|a, b| a.id.cmp(&b.id));
+        self.products.sort_by(|a, b| a.id.cmp(&b.id));
 
         schema::Root::ReviewerRoot(schema::ReviewerRoot {
             meta: prepare_meta(schema::ProviderVariant::Reviewer),
@@ -135,6 +124,12 @@ impl Collector for ReviewerCollector {
             producers,
             products: self.products,
         })
+    }
+
+    fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError> {
+        utils::merge_hashmaps_with(&mut self.producers, other.producers, merge_review_producers);
+        merge::vec::append(&mut self.products, other.products);
+        Ok(())
     }
 }
 
@@ -150,7 +145,7 @@ impl ReviewerCollector {
         }
     }
 
-    pub fn push_product(&mut self, product: schema::ReviewProduct) {
+    pub fn add_product(&mut self, product: schema::ReviewProduct) {
         self.products.push(product);
     }
 }
@@ -437,6 +432,18 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                                         .collect(),
                                 ),
                             }),
+                            shopping: item.get_asins().map(|asins| {
+                                schema::Shopping(
+                                    asins
+                                        .iter()
+                                        .map(|asin| schema::ShoppingEntry {
+                                            id: asin.clone(),
+                                            description: String::new(),
+                                            shop: schema::VerifiedShop::Amazon,
+                                        })
+                                        .collect(),
+                                )
+                            }),
                         };
 
                         self.collector.add_product(product);
@@ -551,26 +558,42 @@ impl CondensingOpenFoodFactsWorker {
         }
     }
 
-    fn get_producer_id(record: &open_food_facts::data::Record) -> String {
-        utils::disambiguate_name(&record.brand_owner)
+    fn get_producer_id(record: &open_food_facts::data::Record) -> Option<String> {
+        let id = utils::disambiguate_name(&record.brand_owner);
+        if id.is_empty() {
+            None
+        } else {
+            Some(id)
+        }
     }
 
     fn guess_producer_wiki_id(&self, record: &open_food_facts::data::Record) -> Option<WikiId> {
-        let name = Self::get_producer_id(record);
-        if let Some(wiki_id) = self.sources.matches.name_to_wiki(&name) {
-            Some(WikiId::from(*wiki_id))
-        } else {
-            let mut matches = HashSet::<WikiId>::new();
-            for name in record.extract_brand_labels() {
-                let name = utils::disambiguate_name(&name);
-                if let Some(id) = self.sources.matches.name_to_wiki(&name) {
-                    matches.insert(WikiId::from(*id));
+        if let Some(name) = Self::get_producer_id(record) {
+            if let Some(wiki_id) = self.sources.matches.name_to_wiki(&name) {
+                Some(WikiId::from(*wiki_id))
+            } else {
+                let mut matches = HashSet::<WikiId>::new();
+                for name in record.extract_brand_labels() {
+                    let name = utils::disambiguate_name(&name);
+                    if let Some(id) = self.sources.matches.name_to_wiki(&name) {
+                        matches.insert(WikiId::from(*id));
+                    }
                 }
+                if matches.len() == 1 {
+                    return matches.iter().next().copied();
+                }
+                None
             }
-            if matches.len() == 1 {
-                return matches.iter().next().copied();
-            }
+        } else {
             None
+        }
+    }
+
+    fn vec(string: &str) -> Vec<String> {
+        if string.is_empty() {
+            Vec::new()
+        } else {
+            vec![string.to_owned()]
         }
     }
 }
@@ -598,14 +621,14 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                     gtin: Some(vec![gtin.to_string()]),
                     wiki: None,
                 },
-                names: vec![record.product_name.clone()],
+                names: Self::vec(&record.product_name),
                 description: None,
-                images: vec![record.image_small_url.clone()],
+                images: Self::vec(&record.image_small_url),
                 categorisation: Some(schema::ProductCategorisation {
                     categories: categories.into_iter().map(schema::ProductCategory).collect(),
                 }),
                 origins: Some(schema::ProductOrigins {
-                    producer_ids: vec![producer_id.clone()],
+                    producer_ids: producer_id.as_ref().map_or_else(Vec::new, |id| vec![id.clone()]),
                     regions: Self::extract_open_food_facts_production_regions(
                         &record,
                         &self.sources.off,
@@ -615,11 +638,12 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                     regions: Self::extract_open_food_facts_sell_regions(&record, &self.sources.off),
                 }),
                 related: None,
+                shopping: None,
             };
 
             self.collector.add_product(product);
 
-            if !self.collector.has_producer(&producer_id) {
+            if let Some(producer_id) = producer_id {
                 let producer = schema::CatalogProducer {
                     id: producer_id,
                     ids: schema::ProducerIds {
@@ -711,7 +735,7 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                 images: Vec::default(),
                 websites: Vec::default(),
                 origins: Some(schema::ProducerOrigins { regions: Self::extract_region(&record) }),
-                report: None,
+                reports: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
                 })),
@@ -754,13 +778,14 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                     }),
                     availability: None,
                     related: None,
-                    report: None,
+                    reports: None,
                     review: Some(schema::Review::Certification(schema::Certification {
                         is_certified: Some(true),
                     })),
+                    shopping: None,
                 };
 
-                self.collector.push_product(product);
+                self.collector.add_product(product);
             }
         }
         Ok(())
@@ -825,25 +850,44 @@ impl parallel::RefProducer for BCorpCondenser {
             &self.config.bcorp_original_path,
             &self.config.bcorp_support_path,
         )?;
-        let data = bcorp::reader::parse(&self.config.bcorp_original_path)?;
-        for record in data {
+        let original_data = bcorp::reader::parse(&self.config.bcorp_original_path)?;
+
+        // The same company may have multiple records.
+        // We use only the latest one.
+        let mut filtered_data = HashMap::<String, bcorp::data::Record>::new();
+        for record in original_data {
+            match filtered_data.entry(record.company_id.clone()) {
+                Entry::Occupied(mut entry) => {
+                    if entry.get().date_certified < record.date_certified {
+                        entry.insert(record);
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    let _ = entry.insert(record);
+                }
+            }
+        }
+
+        // Process the filtered records.
+        for record in filtered_data.values() {
             collector.insert_producer(schema::ReviewProducer {
                 id: record.company_id.clone(),
                 ids: schema::ProducerIds {
                     vat: None,
                     wiki: None,
-                    domains: Some(vec![utils::extract_domain_from_url(&record.website)]),
+                    domains: Some(vec![extract_domain_from_url(&record.website)]),
                 },
                 names: vec![record.company_name.clone()],
-                description: None,
+                description: Some(record.description.clone()),
                 images: Vec::new(),
                 websites: vec![record.website.clone()],
-                origins: Self::extract_origins(&record, &advisor),
-                report: Some(schema::Report {
+                origins: Self::extract_origins(record, &advisor),
+                reports: Some(schema::Reports(vec![schema::Report {
+                    title: Some(record.company_name.clone()),
                     url: Some(Self::guess_link_id_from_company_name(&record.company_name)),
-                }),
+                }])),
                 review: Some(schema::Review::Certification(schema::Certification {
-                    is_certified: Some(true),
+                    is_certified: Some(record.current_status.is_certified()),
                 })),
             });
         }
@@ -895,7 +939,7 @@ impl parallel::RefProducer for FtiCondenser {
                 images: Vec::new(),
                 websites: Vec::new(),
                 origins: None,
-                report: None,
+                reports: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
                 })),
@@ -947,7 +991,7 @@ impl parallel::RefProducer for TcoCondenser {
                 images: Vec::new(),
                 websites: Vec::new(),
                 origins: None,
-                report: None,
+                reports: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
                 })),
@@ -982,14 +1026,14 @@ where
 {
     type Input = A::Collector;
     type Output = SaveMessage;
-    type Error = errors::ProcessingError;
+    type Error = errors::CondensationError;
 
     async fn process(
         &mut self,
         input: Self::Input,
         _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), Self::Error> {
-        self.collector.merge(input);
+        self.collector.merge(input)?;
         Ok(())
     }
 
@@ -1024,9 +1068,11 @@ impl SubstrateSaver {
 #[async_trait]
 impl parallel::Consumer for SubstrateSaver {
     type Input = SaveMessage;
-    type Error = errors::ProcessingError;
+    type Error = errors::CondensationError;
 
     async fn consume(&mut self, mut input: Self::Input) -> Result<(), Self::Error> {
+        std::fs::create_dir_all(&self.config.substrate.substrate_path)
+            .map_err(|e| Self::Error::Io(e, self.config.substrate.substrate_path.clone()))?;
         let path = self
             .config
             .substrate
@@ -1040,7 +1086,7 @@ impl parallel::Consumer for SubstrateSaver {
         Ok(())
     }
 
-    async fn finish(mut self) -> Result<(), errors::ProcessingError> {
+    async fn finish(mut self) -> Result<(), errors::CondensationError> {
         log::info!("Condensation finished");
         Ok(())
     }

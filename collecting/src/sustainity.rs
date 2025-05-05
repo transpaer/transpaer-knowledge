@@ -14,6 +14,9 @@ pub mod data {
         #[serde(rename = "info:faq")]
         InfoFaq,
 
+        #[serde(rename = "info:greenwashing")]
+        InfoGreenwashing,
+
         #[serde(rename = "data:wiki")]
         DataWiki,
 
@@ -46,6 +49,15 @@ pub mod data {
         }
     }
 
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub struct Link {
+        #[serde(rename = "title")]
+        pub title: String,
+
+        #[serde(rename = "link")]
+        pub link: String,
+    }
+
     /// Sustainity topic entry.
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct LibraryInfo {
@@ -57,6 +69,9 @@ pub mod data {
 
         #[serde(rename = "summary")]
         pub summary: String,
+
+        #[serde(rename = "links")]
+        pub links: Option<Vec<Link>>,
     }
 
     /// Mapping connecting company or product name to curresponding Wikidata ID.

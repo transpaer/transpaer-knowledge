@@ -484,6 +484,31 @@ impl IdStructure for ProducerIds {
     }
 }
 
+/// Enumerates known shops.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+enum VerifiedShop {
+    Fairphone,
+    Amazon,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+struct ShopLink {
+    shop: VerifiedShop,
+    id: String,
+}
+
+impl From<&schema::ShoppingEntry> for ShopLink {
+    fn from(entry: &schema::ShoppingEntry) -> Self {
+        Self {
+            shop: match &entry.shop {
+                schema::VerifiedShop::Fairphone => VerifiedShop::Fairphone,
+                schema::VerifiedShop::Amazon => VerifiedShop::Amazon,
+            },
+            id: entry.id.clone(),
+        }
+    }
+}
+
 /// An ID identifying a product in the source data.
 ///
 /// One product may have multiple individual IDs, but products cannot share IDs.
@@ -497,6 +522,9 @@ enum IndividualProductId {
 
     /// Wikidata ID.
     Wiki(ids::WikiId),
+
+    /// ID in a shop.
+    ShopLink(ShopLink),
 }
 
 impl IndividualId for IndividualProductId {}
@@ -514,7 +542,8 @@ impl ProductIds {
         data_set_id: DataSetId,
     ) -> (Self, Vec<CoagulationWarning>) {
         let external = ExternalId::new(data_set_id, InnerId::new(product.id.clone()));
-        let (individual, warnings) = Self::extract_individual_ids(&product.ids, data_set_id);
+        let (individual, warnings) =
+            Self::extract_individual_ids(&product.ids, product.shopping.as_ref(), data_set_id);
         (Self { external, individual }, warnings)
     }
 
@@ -524,7 +553,8 @@ impl ProductIds {
         data_set_id: DataSetId,
     ) -> (Self, Vec<CoagulationWarning>) {
         let external = ExternalId::new(data_set_id, InnerId::new(product.id.clone()));
-        let (individual, warnings) = Self::extract_individual_ids(&product.ids, data_set_id);
+        let (individual, warnings) =
+            Self::extract_individual_ids(&product.ids, product.shopping.as_ref(), data_set_id);
         (Self { external, individual }, warnings)
     }
 
@@ -534,12 +564,14 @@ impl ProductIds {
         data_set_id: DataSetId,
     ) -> (Self, Vec<CoagulationWarning>) {
         let external = ExternalId::new(data_set_id, InnerId::new(product.id.clone()));
-        let (individual, warnings) = Self::extract_individual_ids(&product.ids, data_set_id);
+        let (individual, warnings) =
+            Self::extract_individual_ids(&product.ids, product.shopping.as_ref(), data_set_id);
         (Self { external, individual }, warnings)
     }
 
     fn extract_individual_ids(
         ids: &schema::ProductIds,
+        links: Option<&schema::Shopping>,
         data_set_id: DataSetId,
     ) -> (Vec<IndividualProductId>, Vec<CoagulationWarning>) {
         let mut individual = Vec::new();
@@ -577,6 +609,11 @@ impl ProductIds {
                 }
             }
         }
+        if let Some(links) = links {
+            for link in &links.0 {
+                individual.push(IndividualProductId::ShopLink(ShopLink::from(link)));
+            }
+        }
 
         (individual, warnings)
     }
@@ -604,6 +641,7 @@ pub enum CoagulationWarning {
 }
 
 // TODO: Rework as repotts per data source
+#[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Debug, Default)]
 pub struct CoagulationReport {

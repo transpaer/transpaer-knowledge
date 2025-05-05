@@ -6,44 +6,6 @@ use serde::{de::Deserializer, Deserialize};
 
 use crate::errors;
 
-/// Extracts domain from a URL.
-#[must_use]
-pub fn extract_domain_from_url(url: &str) -> String {
-    let mut domain = url;
-    if domain.starts_with("http://") {
-        domain = &domain[7..];
-    }
-    if domain.starts_with("https://") {
-        domain = &domain[8..];
-    }
-    if domain.starts_with("www.") {
-        domain = &domain[4..];
-    }
-    if let Some((host, _path)) = domain.split_once('/') {
-        domain = host;
-    }
-    domain.to_lowercase()
-}
-
-/// Extracts domains from multiple URLs.
-pub fn extract_domains_from_urls<'a, C, U>(websites: &'a C) -> std::collections::HashSet<String>
-where
-    &'a C: std::iter::IntoIterator<Item = U>,
-    U: AsRef<str>,
-{
-    let mut result = std::collections::HashSet::<String>::new();
-    for website in websites {
-        result.insert(extract_domain_from_url(website.as_ref()));
-    }
-    result
-}
-
-/// Checks is the path exists and is a file.
-#[must_use]
-pub fn is_path_ok(path: &std::path::Path) -> bool {
-    path.exists() && path.is_file()
-}
-
 /// Verifies that the path exists and is a file.
 ///
 /// # Errors
@@ -51,10 +13,10 @@ pub fn is_path_ok(path: &std::path::Path) -> bool {
 /// Returns an error if the path does not exist or is not a file.
 pub fn file_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
-        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
+        return Err(errors::ConfigCheckError::DoesNotExist(path.to_owned()));
     }
     if !path.is_file() {
-        return Err(errors::ConfigCheckError::PathIsNotAFile(path.to_owned()));
+        return Err(errors::ConfigCheckError::NotAFile(path.to_owned()));
     }
     Ok(())
 }
@@ -66,10 +28,10 @@ pub fn file_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckErro
 /// Returns an error if the path does not exist or is not a directory.
 pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if !path.exists() {
-        return Err(errors::ConfigCheckError::PathDoesNotExist(path.to_owned()));
+        return Err(errors::ConfigCheckError::DoesNotExist(path.to_owned()));
     }
     if !path.is_dir() {
-        return Err(errors::ConfigCheckError::PathIsNotADir(path.to_owned()));
+        return Err(errors::ConfigCheckError::NotADir(path.to_owned()));
     }
     Ok(())
 }
@@ -81,18 +43,18 @@ pub fn dir_exists(path: &std::path::Path) -> Result<(), errors::ConfigCheckError
 /// Returns an error if the path exists or the base is not a directory.
 pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
     if path.exists() {
-        return Err(errors::ConfigCheckError::PathAlreadyExists(path.to_owned()));
+        return Err(errors::ConfigCheckError::AlreadyExists(path.to_owned()));
     }
 
     if let Some(base) = path.parent() {
         if !base.exists() {
-            return Err(errors::ConfigCheckError::PathDoesNotExist(base.to_owned()));
+            return Err(errors::ConfigCheckError::DoesNotExist(base.to_owned()));
         }
         if !base.is_dir() {
-            return Err(errors::ConfigCheckError::PathIsNotADir(base.to_owned()));
+            return Err(errors::ConfigCheckError::NotADir(base.to_owned()));
         }
     } else {
-        return Err(errors::ConfigCheckError::PathHasNoParent(path.to_owned()));
+        return Err(errors::ConfigCheckError::NoParent(path.to_owned()));
     }
 
     Ok(())
@@ -108,7 +70,7 @@ pub fn parent_creatable(path: &std::path::Path) -> Result<(), errors::ConfigChec
     if let Some(base) = path.parent() {
         path_creatable(base)
     } else {
-        Err(errors::ConfigCheckError::PathHasNoParent(path.to_owned()))
+        Err(errors::ConfigCheckError::NoParent(path.to_owned()))
     }
 }
 
@@ -174,35 +136,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
 
     use super::*;
-
-    #[test]
-    fn test_extract_domain_from_url() {
-        assert_eq!(extract_domain_from_url("example.com"), "example.com");
-        assert_eq!(extract_domain_from_url("www.example.com"), "example.com");
-        assert_eq!(extract_domain_from_url("http://www.example.com"), "example.com");
-        assert_eq!(extract_domain_from_url("https://www.example.com"), "example.com");
-        assert_eq!(extract_domain_from_url("www.Example.Com/a/b/c/d?e=1"), "example.com");
-        assert_eq!(extract_domain_from_url("http://www.exAmplE.com/a/"), "example.com");
-        assert_eq!(extract_domain_from_url("https://www.ExamPle.com/a/"), "example.com");
-    }
-
-    #[test]
-    fn test_extract_domains_from_urls_vec() {
-        let input = vec!["www.example.com", "http://www.example.com", "example2.com"];
-        let output: HashSet<String> = ["example.com".into(), "example2.com".into()].into();
-        assert_eq!(extract_domains_from_urls(&input), output);
-    }
-
-    #[test]
-    fn test_extract_domains_from_urls_hashmap() {
-        let input: HashSet<String> =
-            ["www.example.com".into(), "http://example.com".into(), "example2.com".into()].into();
-        let output: HashSet<String> = ["example.com".into(), "example2.com".into()].into();
-        assert_eq!(extract_domains_from_urls(&input), output);
-    }
 
     #[test]
     fn test_merge_hashmaps() {

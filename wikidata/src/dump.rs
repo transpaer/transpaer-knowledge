@@ -103,24 +103,22 @@ impl Loader {
 
         self.reader
             .seek(std::io::SeekFrom::End(0))
-            .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            .map_err(|e| LoaderError::Io(e, self.path.clone()))?;
         let file_size =
-            self.reader.stream_position().map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            self.reader.stream_position().map_err(|e| LoaderError::Io(e, self.path.clone()))?;
         self.reader
             .seek(std::io::SeekFrom::Start(0))
-            .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            .map_err(|e| LoaderError::Io(e, self.path.clone()))?;
 
         loop {
             let decoder = flate2::bufread::GzDecoder::new(&mut self.reader);
             for line in std::io::BufReader::new(decoder).lines() {
-                let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+                let line = line.map_err(|e| LoaderError::Io(e, self.path.clone()))?;
                 entries += Self::handle_line(&mut callback, &line).await?;
             }
 
-            let stream_position = self
-                .reader
-                .stream_position()
-                .map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            let stream_position =
+                self.reader.stream_position().map_err(|e| LoaderError::Io(e, self.path.clone()))?;
             if stream_position == file_size {
                 break;
             }
@@ -137,7 +135,7 @@ impl Loader {
 
         let decoder = bzip2::bufread::MultiBzDecoder::new(&mut self.reader);
         for line in std::io::BufReader::new(decoder).lines() {
-            let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            let line = line.map_err(|e| LoaderError::Io(e, self.path.clone()))?;
             entries += Self::handle_line(&mut callback, &line).await?;
         }
 
@@ -152,7 +150,7 @@ impl Loader {
         let mut entries: usize = 0;
 
         for line in std::io::BufReader::new(&mut self.reader).lines() {
-            let line = line.map_err(|e| LoaderError::Io(e, self.path.to_owned()))?;
+            let line = line.map_err(|e| LoaderError::Io(e, self.path.clone()))?;
             entries += Self::handle_line(&mut callback, &line).await?;
         }
 

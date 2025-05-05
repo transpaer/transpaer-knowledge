@@ -283,6 +283,9 @@ pub enum EntityIdDataValue {
     #[serde(rename = "property")]
     Property(EntityIdInfo),
 
+    #[serde(rename = "entity-schema")]
+    EntitySchema(EntityIdOptionInfo),
+
     #[serde(rename = "form")]
     Form(EntityIdOptionInfo),
 
@@ -369,7 +372,7 @@ pub enum DataValue {
     #[serde(rename = "string")]
     String(String),
 
-    /// Entity Id.
+    /// Link to A database entiry.
     #[serde(rename = "wikibase-entityid")]
     WikibaseEntityId(EntityIdDataValue),
 

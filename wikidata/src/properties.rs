@@ -25,8 +25,14 @@ pub const SUBCLASS_OF: &str = "P279";
 /// "Official website" property.
 pub const OFFICIAL_WEBSITE: &str = "P856";
 
+/// "Product, material, or service produced or provided" property.
+pub const PRODUCT_MATERIAL_OR_SERVICE: &str = "P1056";
+
 /// "Global Trade Item Number" property.
 pub const GTIN: &str = "P3962";
 
 /// "EU VAT number" property.
 pub const EU_VAT_NUMBER: &str = "P3608";
+
+/// Amazon Standard Identification Number.
+pub const ASIN: &str = "P5749";

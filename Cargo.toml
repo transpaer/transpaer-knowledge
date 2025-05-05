@@ -13,6 +13,7 @@ members = [
 async-channel = { version = "1.8" }
 async-trait = { version = "0.1.68" }
 bzip2 = { version = "0.4" }
+chrono = { version = "0.4", default-features = false }
 clap = { version = "4.1" }
 csv = { version = "1.1" }
 derive-new = { version = "0.6" }
@@ -46,6 +47,8 @@ tokio = { version = "1.24" }
 
 sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false }
 sustainity-schema = { git = "https://github.com/sustainity-dev/sustainity-schema-rust.git", branch = "main" }
+# sustainity-api = { path = "../sustainity-api-rust/sustainity_api", default-features = false }
+# sustainity-schema = { path = "../sustainity-schema-rust/sustainity-schema" }
 
 sustainity-collecting = { path = "collecting" }
 sustainity-condensing = { path = "condensing" }

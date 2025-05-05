@@ -5,11 +5,14 @@ use std::collections::{HashMap, HashSet};
 use sustainity_collecting::{
     bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, sustainity, tco,
 };
-use sustainity_models::gather as models;
+use sustainity_models::{gather as models, ids, utils::extract_domain_from_url};
+use sustainity_schema as schema;
 
 use crate::{
-    cache, convert, errors, utils,
-    wikidata::{self, WikiId},
+    cache, convert, errors,
+    substrate::Substrates,
+    utils,
+    wikidata::{self, ItemExt, WikiId},
 };
 
 /// Holds the information read from the `BCorp` data.
@@ -31,7 +34,7 @@ impl BCorpAdvisor {
         let domain_to_name = if let Some(records) = records {
             records
                 .iter()
-                .map(|r| (utils::extract_domain_from_url(&r.website), r.company_name.clone()))
+                .map(|r| (extract_domain_from_url(&r.website), r.company_name.clone()))
                 .collect::<HashMap<String, String>>()
         } else {
             HashMap::new()
@@ -58,14 +61,14 @@ impl BCorpAdvisor {
         original_path: &std::path::Path,
         support_path: &std::path::Path,
     ) -> Result<Self, errors::ProcessingError> {
-        let original_data = if utils::is_path_ok(original_path) {
+        let original_data = if utils::file_exists(original_path).is_ok() {
             Some(sustainity_collecting::bcorp::reader::parse(original_path)?)
         } else {
             log::warn!("Could not access {original_path:?}. BCorp original data won't be loaded!");
             None
         };
 
-        let support_data = if utils::is_path_ok(support_path) {
+        let support_data = if utils::file_exists(support_path).is_ok() {
             Some(crate::bcorp::reader::parse(support_path)?)
         } else {
             log::warn!("Could not access {support_path:?}. BCorp support data won't be loaded!");
@@ -139,9 +142,9 @@ impl EuEcolabelAdvisor {
         original_path: &std::path::Path,
         match_path: &std::path::Path,
     ) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(original_path) {
+        if utils::file_exists(original_path).is_ok() {
             let data = eu_ecolabel::reader::parse(original_path)?;
-            if utils::is_path_ok(match_path) {
+            if utils::file_exists(match_path).is_ok() {
                 let map = sustainity::reader::parse_id_map(match_path)?;
                 Ok(Self::new(&data, &map)?)
             } else {
@@ -188,7 +191,7 @@ impl OpenFoodFactsAdvisor {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(path) {
+        if utils::file_exists(path).is_ok() {
             let data = open_food_facts::reader::parse_countries(path)?;
             let mut country_to_regions = HashMap::new();
             for entry in data {
@@ -234,7 +237,7 @@ impl TcoAdvisor {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(path) {
+        if utils::file_exists(path).is_ok() {
             let data = tco::reader::parse(path)?;
             Ok(Self::new(&data))
         } else {
@@ -244,6 +247,7 @@ impl TcoAdvisor {
     }
 
     /// Checks if the company was certified.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn has_company(&self, company_id: &WikiId) -> bool {
         self.companies.contains_key(company_id)
@@ -289,7 +293,7 @@ impl FashionTransparencyIndexAdvisor {
     ///
     /// Returns `Err` if fails to read from `path`, fails to parse the contents or the contents are invalid.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(path) {
+        if utils::file_exists(path).is_ok() {
             let data = fashion_transparency_index::reader::parse(path)?;
             let result = Self::new(&data)?;
             Ok(result)
@@ -303,6 +307,7 @@ impl FashionTransparencyIndexAdvisor {
     }
 
     /// Checks if the company is known.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn has_company(&self, company_id: &WikiId) -> bool {
         self.entries.contains_key(company_id)
@@ -381,14 +386,14 @@ impl WikidataAdvisor {
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
-        let cache = if utils::is_path_ok(cache_path.as_ref()) {
+        let cache = if utils::file_exists(cache_path.as_ref()).is_ok() {
             Some(cache::load(cache_path.as_ref())?)
         } else {
             log::warn!("Could not access {cache_path:?}. Wikidata cache won't be loaded!");
             None
         };
 
-        let data = if utils::is_path_ok(source_path.as_ref()) {
+        let data = if utils::file_exists(source_path.as_ref()).is_ok() {
             Some(wikidata::support::parse(source_path.as_ref())?)
         } else {
             log::warn!("Could not access {source_path:?}. Wikidata source won't be loaded!");
@@ -399,24 +404,167 @@ impl WikidataAdvisor {
     }
 
     /// Checks if the passed ID belongs to a known manufacturer.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn has_manufacturer_id(&self, id: &WikiId) -> bool {
         self.manufacturer_ids.contains(id)
     }
 
     /// Checks if the passed ID belongs to a known item class.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn has_class_id(&self, id: &WikiId) -> bool {
         self.class_ids.contains(id)
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
     pub fn get_country(&self, country_id: &WikiId) -> Option<&isocountry::CountryCode> {
         self.country_to_region.get(country_id)
     }
 }
 
-/// Holds the information read from out internal data set.
+/// Holds the information read from the substrate data.
+#[derive(Debug, Default)]
+pub struct SubstrateAdvisor {
+    /// All producer wiki IDs.
+    producer_wiki_ids: HashSet<ids::WikiId>,
+
+    /// All product wiki IDs.
+    product_wiki_ids: HashSet<ids::WikiId>,
+
+    /// All domains.
+    domains: HashSet<String>,
+}
+
+impl SubstrateAdvisor {
+    /// Loads a new `SubstrateAdvisor` from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        if utils::dir_exists(path).is_ok() {
+            log::info!("Loading SubstrateAdvisor");
+            let mut me = Self::default();
+
+            let (substrates, _report) = Substrates::prepare(path)?;
+            for substrate in substrates.list() {
+                log::info!(" -> {}", substrate.name);
+                match schema::read::iter_file(&substrate.path)? {
+                    schema::read::FileIterVariant::Catalog(iter) => {
+                        for entry in iter {
+                            match entry? {
+                                schema::CatalogEntry::Producer(producer) => {
+                                    me.process_producer_ids(producer.ids)?;
+                                }
+                                schema::CatalogEntry::Product(product) => {
+                                    me.process_product_ids(product.ids)?;
+                                }
+                            }
+                        }
+                    }
+                    schema::read::FileIterVariant::Producer(iter) => {
+                        for entry in iter {
+                            match entry? {
+                                schema::ProducerEntry::Product(product) => {
+                                    me.process_product_ids(product.ids)?;
+                                }
+                                schema::ProducerEntry::Reviewer(_reviewer) => {}
+                            }
+                        }
+                    }
+                    schema::read::FileIterVariant::Review(iter) => {
+                        for entry in iter {
+                            match entry? {
+                                schema::ReviewEntry::Producer(producer) => {
+                                    me.process_producer_ids(producer.ids)?;
+                                }
+                                schema::ReviewEntry::Product(product) => {
+                                    me.process_product_ids(product.ids)?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            log::info!("Loading SubstrateAdvisor: done");
+            Ok(me)
+        } else {
+            log::warn!("Could not access {path:?}. Substrate data won't be loaded!");
+            Ok(Self::default())
+        }
+    }
+
+    fn process_producer_ids(
+        &mut self,
+        ids: schema::ProducerIds,
+    ) -> Result<(), errors::ProcessingError> {
+        if let Some(wiki) = ids.wiki {
+            for id in wiki {
+                self.producer_wiki_ids.insert(ids::WikiId::try_from(&id)?);
+            }
+        }
+        if let Some(domains) = ids.domains {
+            self.domains.extend(domains.into_iter());
+        }
+        Ok(())
+    }
+
+    fn process_product_ids(
+        &mut self,
+        ids: schema::ProductIds,
+    ) -> Result<(), errors::ProcessingError> {
+        if let Some(wiki) = ids.wiki {
+            for id in wiki {
+                self.product_wiki_ids.insert(ids::WikiId::try_from(&id)?);
+            }
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        if self.has_producer_wiki_id(&item.id.into()) {
+            return true;
+        }
+
+        if let Some(websites) = item.get_official_websites() {
+            if self.has_domains(&websites) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    #[must_use]
+    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        self.has_product_wiki_id(&item.id.into())
+    }
+
+    #[must_use]
+    pub fn has_producer_wiki_id(&self, id: &ids::WikiId) -> bool {
+        self.producer_wiki_ids.contains(id)
+    }
+
+    #[must_use]
+    pub fn has_product_wiki_id(&self, id: &ids::WikiId) -> bool {
+        self.product_wiki_ids.contains(id)
+    }
+
+    #[must_use]
+    pub fn has_domains(&self, domains: &[String]) -> bool {
+        for domain in domains {
+            if self.domains.contains(domain) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+/// Holds the information read from our internal data set.
 pub struct SustainityLibraryAdvisor {
     /// Topic info.
     info: Vec<sustainity::data::LibraryInfo>,
@@ -435,7 +583,7 @@ impl SustainityLibraryAdvisor {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(path) {
+        if utils::file_exists(path).is_ok() {
             let data = sustainity::reader::parse_library(path)?;
             Ok(Self::new(data))
         } else {
@@ -458,11 +606,7 @@ pub struct SustainityMatchesAdvisor {
 
 impl SustainityMatchesAdvisor {
     /// Constructs a new `SustainityMatchesAdvisor`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if passed data is invalid, e.g. contains invalida IDs.
-    pub fn new(map: &[sustainity::data::NameMatching]) -> Result<Self, errors::ProcessingError> {
+    pub fn new(map: &[sustainity::data::NameMatching]) -> Self {
         let mut name_to_wiki = HashMap::<String, WikiId>::new();
         for entry in map {
             if let Some(wiki_id) = entry.matched() {
@@ -470,7 +614,7 @@ impl SustainityMatchesAdvisor {
             }
         }
 
-        Ok(Self { name_to_wiki })
+        Self { name_to_wiki }
     }
 
     /// Loads a new `SustainityMatchesAdvisor` from a file.
@@ -479,12 +623,12 @@ impl SustainityMatchesAdvisor {
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(match_path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::is_path_ok(match_path) {
+        if utils::file_exists(match_path).is_ok() {
             let map = sustainity::reader::parse_id_map(match_path)?;
-            Ok(Self::new(&map)?)
+            Ok(Self::new(&map))
         } else {
             log::warn!("Could not access {match_path:?}. Sustainity match data won't be loaded!");
-            Ok(Self::new(&[])?)
+            Ok(Self::new(&[]))
         }
     }
 

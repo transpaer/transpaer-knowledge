@@ -49,7 +49,7 @@ impl Substrates {
                             id: DataSetId::new(list.len()),
                             path: path.clone(),
                             name: stem.to_owned(),
-                            source: gather::Source::from_string(stem),
+                            source: gather::Source::from_stem(stem),
                         });
                     } else {
                         report.add_path_not_unicode(path.clone());

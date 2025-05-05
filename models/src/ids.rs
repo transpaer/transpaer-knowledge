@@ -291,7 +291,59 @@ impl<'de> Deserialize<'de> for Gtin {
     }
 }
 
-/// Represents as VAT number.
+/// Represents ASIN number.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Asin(String);
+
+impl Asin {
+    /// Constructs a new `VatId`.
+    #[must_use]
+    pub fn new(id: &str) -> Self {
+        Self(id.to_owned())
+    }
+
+    /// Returns reference to the inner string.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Returns reference to the inner string.
+    #[must_use]
+    pub fn to_canonical_string(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl From<&str> for Asin {
+    fn from(id: &str) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<&String> for Asin {
+    fn from(id: &String) -> Self {
+        Self::from(id.as_str())
+    }
+}
+
+impl Serialize for Asin {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Asin {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(Self::from(s.as_str()))
+    }
+}
+
+/// Represents a VAT number.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct VatId(String);
 

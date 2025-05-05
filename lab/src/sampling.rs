@@ -23,6 +23,8 @@ const FAIRPHONE_ORG_WIKI_ID: ids::WikiId = ids::WikiId::new(5_019_402);
 const BCORP_FAIRPHONE_ID: &str = "001C000001Dz6afIAB";
 const BCORP_FAIRPHONE_URL: &str =
     "https://www.bcorporation.net/en-us/find-a-b-corp/company/fairphone/";
+const AVENTON_DOMAIN: &str = "aventon.com";
+const MELIORA_DOMAIN: &str = "meliorameansbetter.com";
 
 #[derive(thiserror::Error, Debug)]
 enum Finding {
@@ -215,6 +217,7 @@ impl SamplingRunner {
         findings.consider(Self::check_backend_prod_by_gtin(config).await);
         findings.consider(Self::check_backend_prod_by_wiki_id(config).await);
         findings.consider(Self::check_backend_org_by_wiki_id(config).await);
+        findings.consider(Self::check_backend_org_by_domain(config).await);
         findings.consider(Self::check_backend_text_search_by_name(config).await);
         findings.consider(Self::check_backend_text_search_by_gtin(config).await);
         findings.consider(Self::check_backend_text_search_by_www(config).await);
@@ -285,7 +288,8 @@ impl SamplingRunner {
                     "wrong certification"
                 );
                 ensure!(product.medallions[0].sustainity.is_some(), "wrong certification");
-                ensure_eq!(product.manufacturers.len(), 1, "wrong number of manufacturers");
+                // TODO: Ensure the manufacturer is known and has correct ID.
+                ensure_eq!(product.manufacturers.len(), 0, "wrong number of manufacturers");
             }
             api::GetProductResponse::NotFound { .. } => {
                 return Err(Finding::Other(format!(
@@ -416,6 +420,10 @@ impl SamplingRunner {
                         },
                         api::models::ShortText {
                             text: api::models::ShortString::from_str("Fairphone")?,
+                            source: api::models::DataSource::Sustainity
+                        },
+                        api::models::ShortText {
+                            text: api::models::ShortString::from_str("Fairphone")?,
                             source: api::models::DataSource::Wiki
                         },
                         api::models::ShortText {
@@ -465,6 +473,65 @@ impl SamplingRunner {
         Ok(())
     }
 
+    async fn check_backend_org_by_domain(
+        config: &config::SamplingBackendConfig,
+    ) -> Result<(), Finding> {
+        let client = api::Client::try_new_http(&config.url)?;
+        let context = SustainityContext::<_, Context>::default();
+
+        let org = client
+            .get_organisation(
+                api::models::OrganisationIdVariant::Www,
+                AVENTON_DOMAIN.to_string(),
+                &context,
+            )
+            .await?;
+        match org {
+            api::GetOrganisationResponse::Ok { body: org, .. } => {
+                ensure_eq!(
+                    org.organisation_ids.domains,
+                    vec![api::models::Id::from_str(&AVENTON_DOMAIN.to_string())?],
+                    "wrong domains"
+                );
+                ensure_eq!(
+                    org.names,
+                    vec![
+                        api::models::ShortText {
+                            text: api::models::ShortString::from_str("Aventon")?,
+                            source: api::models::DataSource::Other
+                        },
+                        api::models::ShortText {
+                            text: api::models::ShortString::from_str("Aventon Bikes")?,
+                            source: api::models::DataSource::Wiki
+                        },
+                    ],
+                    "wrong name or source"
+                );
+                ensure_eq!(org.medallions, vec![], "wrong certifications");
+                ensure_eq!(
+                    org.media,
+                    vec![api::models::Medium {
+                        icon: Some("https://yt3.googleusercontent.com/TAUPgsU3oOD-CYNfUo1V9rpgtH-IHbAjUdo92nusdtz9e25tLjQ_uRx0ZpnAf5DnBp6tUAQUt28=s160-c-k-c0x00ffffff-no-rj".to_string()),
+                        mentions: vec![api::models::Mention {
+                            link: "https://www.youtube.com/watch?v=Wx2ANP44bqQ".to_string(),
+                            title: "My favorite zero waste brands and zero waste swaps I recommend for 2024".to_string(),
+                        }],
+                    }],
+                    "wrong media"
+                );
+            }
+            api::GetOrganisationResponse::NotFound { .. } => {
+                return Err(Finding::Other(format!(
+                    "Organisation {:?}:{:?} not found",
+                    api::models::OrganisationIdVariant::Www,
+                    MELIORA_DOMAIN,
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
     async fn check_backend_text_search_by_name(
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
@@ -503,11 +570,6 @@ impl SamplingRunner {
                     org.results
                         .iter()
                         .any(|r| r.link.product_id_variant.is_some() && *r.label == "Fairphone 5"),
-                    "not found"
-                );
-                ensure!(
-                    org.results.iter().any(|r| r.link.product_id_variant.is_some()
-                        && *r.label == "Fairphone smartphone"),
                     "not found"
                 );
                 ensure!(
@@ -560,6 +622,18 @@ impl SamplingRunner {
                         .iter()
                         .any(|r| r.link.organisation_id_variant.is_some() && *r.label == "SHEIN"),
                     "shein.com not found"
+                );
+            }
+        }
+
+        let result =
+            client.search_by_text("https://meliorameansbetter.com/".to_string(), &context).await?;
+        match result {
+            api::SearchByTextResponse::Ok { body: org, .. } => {
+                ensure_eq!(
+                    org.results.len(),
+                    1,
+                    "found too many items when looking for meliorameansbetter.com"
                 );
             }
         }

@@ -38,6 +38,10 @@ pub struct Filtering2Args {
     /// Cache directory.
     #[arg(long)]
     pub cache: String,
+
+    /// Substrate directory.
+    #[arg(long)]
+    pub substrate: String,
 }
 
 /// Arguments of the `filter` command.
@@ -55,6 +59,10 @@ pub struct FilteringArgs {
     /// Cache directory.
     #[arg(long)]
     pub cache: String,
+
+    /// Substrate directory.
+    #[arg(long)]
+    pub substrate: String,
 }
 
 /// Arguments of the `filter` command.

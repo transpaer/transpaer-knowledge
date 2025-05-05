@@ -183,12 +183,11 @@ impl Coagulate {
         for (unique, entries) in parsed.producer {
             for entry in entries {
                 let external = ExternalId {
-                    data_set_id: substrates
-                        .get_id_for_name(&entry.dataset)
-                        .ok_or(CoagulationError::SubstrateIdNotFoundForName {
+                    data_set_id: *substrates.get_id_for_name(&entry.dataset).ok_or(
+                        CoagulationError::SubstrateIdNotFoundForName {
                             name: entry.dataset.clone(),
-                        })?
-                        .clone(),
+                        },
+                    )?,
                     inner: entry.inner.clone(),
                 };
                 match producer.entry(external.clone()) {
@@ -205,12 +204,11 @@ impl Coagulate {
         for (unique, entries) in parsed.product {
             for entry in entries {
                 let external = ExternalId {
-                    data_set_id: substrates
-                        .get_id_for_name(&entry.dataset)
-                        .ok_or(CoagulationError::SubstrateIdNotFoundForName {
+                    data_set_id: *substrates.get_id_for_name(&entry.dataset).ok_or(
+                        CoagulationError::SubstrateIdNotFoundForName {
                             name: entry.dataset.clone(),
-                        })?
-                        .clone(),
+                        },
+                    )?,
                     inner: entry.inner.clone(),
                 };
                 match product.entry(external.clone()) {

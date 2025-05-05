@@ -31,6 +31,14 @@ impl Oxidizer {
             let article = std::fs::read_to_string(&article_path)
                 .map_err(|e| errors::ProcessingError::Io(e, article_path.clone()))?;
             let topic = info.id.to_str().to_owned();
+            let links = info
+                .links
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|link| store::ReferenceLink { link: link.link, title: link.title })
+                .collect();
+
             library.insert(
                 &topic,
                 &store::LibraryItem {
@@ -38,6 +46,7 @@ impl Oxidizer {
                     title: info.title.clone(),
                     summary: info.summary.clone(),
                     article,
+                    links,
                 },
             )?;
         }

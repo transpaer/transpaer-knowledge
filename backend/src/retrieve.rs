@@ -6,7 +6,7 @@ use snafu::prelude::*;
 use sustainity_api::models as api;
 use sustainity_models::{
     buckets::{AppStore, DbStore},
-    ids,
+    ids, utils,
 };
 
 use crate::{
@@ -418,11 +418,10 @@ impl Retriever {
             }
 
             if !matched {
-                for domain in &organisation.ids.domains {
-                    if domain.contains(&lowercase_token) {
-                        matched = true;
-                        break;
-                    }
+                let domain = utils::extract_domain_from_str(&token)
+                    .unwrap_or_else(|| lowercase_token.to_owned());
+                if organisation.ids.domains.contains(&domain) {
+                    matched = true;
                 }
             }
 

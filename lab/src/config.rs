@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 use crate::{commands, errors::ConfigCheckError, utils};
@@ -7,25 +9,25 @@ use crate::{commands, errors::ConfigCheckError, utils};
 #[derive(Debug, Clone)]
 pub struct WikidataProducerConfig {
     /// Path to Wikidata data.
-    pub wikidata_path: std::path::PathBuf,
+    pub wikidata_path: PathBuf,
 }
 
 impl WikidataProducerConfig {
     /// Constructs a new `WikidataProducerConfig` with filteresd Wikidata dump.
     pub fn new_filtered(cache: &str) -> WikidataProducerConfig {
-        let cache = std::path::PathBuf::from(&cache);
+        let cache = PathBuf::from(&cache);
         Self { wikidata_path: cache.join("wikidata.jsonl") }
     }
 
     /// Constructs a new `WikidataProducerConfig` with full Wikidata dump.
     pub fn new_full(origin: &str) -> WikidataProducerConfig {
-        let origin = std::path::PathBuf::from(&origin);
-        Self { wikidata_path: origin.join("wikidata-20231120-all.json.gz") }
+        let origin = PathBuf::from(&origin);
+        Self { wikidata_path: origin.join("wikidata-20250519-all.json.gz") }
     }
 
     /// Constructs a new `WikidataProducerConfig`.
     pub fn new_with_path(path: &str) -> WikidataProducerConfig {
-        let wikidata_path = std::path::PathBuf::from(&path);
+        let wikidata_path = PathBuf::from(&path);
         Self { wikidata_path }
     }
 
@@ -45,12 +47,12 @@ impl WikidataProducerConfig {
 #[derive(Debug, Clone)]
 pub struct OpenFoodFactsProducerConfig {
     /// Path to Open Food Facts data.
-    pub open_food_facts_path: std::path::PathBuf,
+    pub open_food_facts_path: PathBuf,
 }
 
 impl OpenFoodFactsProducerConfig {
     pub fn new(origin: &str) -> Self {
-        let origin = std::path::PathBuf::from(origin);
+        let origin = PathBuf::from(origin);
         Self { open_food_facts_path: origin.join("en.openfoodfacts.org.products.csv") }
     }
 
@@ -70,12 +72,12 @@ impl OpenFoodFactsProducerConfig {
 #[derive(Debug, Clone)]
 pub struct EuEcolabelProducerConfig {
     /// Path to Open Food Facts data.
-    pub eu_ecolabel_path: std::path::PathBuf,
+    pub eu_ecolabel_path: PathBuf,
 }
 
 impl EuEcolabelProducerConfig {
     pub fn new(origin: &str) -> Self {
-        let origin = std::path::PathBuf::from(origin);
+        let origin = PathBuf::from(origin);
         Self { eu_ecolabel_path: origin.join("eu_ecolabel_products.csv") }
     }
 
@@ -128,44 +130,45 @@ impl FullProducerConfig {
 }
 
 /// Subconfiguration related to source files used by several other configs.
+#[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct SourcesConfig {
     /// Path to input Wikidata cache.
-    pub wikidata_cache_path: std::path::PathBuf,
+    pub wikidata_cache_path: PathBuf,
 
     /// Path to input Wikidata cache.
-    pub wikidata_path: std::path::PathBuf,
+    pub wikidata_path: PathBuf,
 
     /// Path to original B-Corp data.
-    pub bcorp_original_path: std::path::PathBuf,
+    pub bcorp_original_path: PathBuf,
 
     /// Path to B-Corp support data.
-    pub bcorp_support_path: std::path::PathBuf,
+    pub bcorp_support_path: PathBuf,
 
     /// Path to original EU Ecolabel data.
-    pub eu_ecolabel_original_path: std::path::PathBuf,
+    pub eu_ecolabel_original_path: PathBuf,
 
     /// Path to mapping from names to Wikidata IDs.
-    pub match_path: std::path::PathBuf,
+    pub match_path: PathBuf,
 
     /// Path to TCO data.
-    pub tco_path: std::path::PathBuf,
+    pub tco_path: PathBuf,
 
     /// Path to Fashion Transparency Index data.
-    pub fashion_transparency_index_path: std::path::PathBuf,
+    pub fashion_transparency_index_path: PathBuf,
 
     /// Path to file mapping Open Food Facts sell countries to Sustainity regions.
-    pub open_food_facts_countries_path: std::path::PathBuf,
+    pub open_food_facts_countries_path: PathBuf,
 }
 
 impl SourcesConfig {
     /// Constructs a new `SourceConfig`.
     pub fn new(origin: &str, source: &str, cache: &str) -> SourcesConfig {
         // TODO: rename the source path? Maybe to "support"?
-        let source = std::path::PathBuf::from(source);
-        let origin = std::path::PathBuf::from(origin);
-        let cache = std::path::PathBuf::from(cache);
+        let source = PathBuf::from(source);
+        let origin = PathBuf::from(origin);
+        let cache = PathBuf::from(cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
             wikidata_path: source.join("wikidata.yaml"),
@@ -202,13 +205,13 @@ impl SourcesConfig {
 #[derive(Debug, Clone)]
 pub struct SubstrateConfig {
     /// Path to the substrate file directory.
-    pub substrate_path: std::path::PathBuf,
+    pub substrate_path: PathBuf,
 }
 
 impl SubstrateConfig {
     /// Constructs a new `SourceConfig`.
     pub fn new(substrate: &str) -> Self {
-        let substrate_path = std::path::PathBuf::from(substrate);
+        let substrate_path = PathBuf::from(substrate);
         Self { substrate_path }
     }
 
@@ -238,7 +241,7 @@ impl SubstrateConfig {
 #[derive(Debug, Clone)]
 pub struct Filtering1Config {
     /// Path to output Wikidata cache.
-    pub wikidata_cache_path: std::path::PathBuf,
+    pub wikidata_cache_path: PathBuf,
 
     /// `WikidataGatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
@@ -247,7 +250,7 @@ pub struct Filtering1Config {
 impl Filtering1Config {
     /// Constructs a new `Filtering1`.
     pub fn new(args: &commands::Filtering1Args) -> Filtering1Config {
-        let cache = std::path::PathBuf::from(&args.cache);
+        let cache = PathBuf::from(&args.cache);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
             wikidata_gatherer: WikidataProducerConfig::new_full(&args.origin),
@@ -271,10 +274,13 @@ impl Filtering1Config {
 #[derive(Debug, Clone)]
 pub struct Filtering2Config {
     /// Path to output filtered .
-    pub wikidata_filtered_dump_path: std::path::PathBuf,
+    pub wikidata_filtered_dump_path: PathBuf,
 
     /// Data sources.
     pub sources: SourcesConfig,
+
+    /// Path to the substrate.
+    pub substrate_path: PathBuf,
 
     /// `WikidataGatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
@@ -283,10 +289,12 @@ pub struct Filtering2Config {
 impl Filtering2Config {
     /// Constructs a new `Filtering2Config`.
     pub fn new(args: &commands::Filtering2Args) -> Filtering2Config {
-        let cache = std::path::PathBuf::from(&args.cache);
+        let cache = PathBuf::from(&args.cache);
+        let substrate = PathBuf::from(&args.substrate);
         Self {
             wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
             sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
+            substrate_path: substrate,
             wikidata_gatherer: WikidataProducerConfig::new_full(&args.origin),
         }
     }
@@ -324,6 +332,7 @@ impl FilteringConfig {
             origin: args.origin.clone(),
             source: args.source.clone(),
             cache: args.cache.clone(),
+            substrate: args.substrate.clone(),
         };
         Self { filter1: Filtering1Config::new(&filter1), filter2: Filtering2Config::new(&filter2) }
     }
@@ -411,16 +420,16 @@ pub struct CoagulationConfig {
     pub substrate: SubstrateConfig,
 
     /// Runtime storage directory.
-    pub runtime: std::path::PathBuf,
+    pub runtime: PathBuf,
 
     /// Path to store the coagulate in.
-    pub coagulate: std::path::PathBuf,
+    pub coagulate: PathBuf,
 }
 
 impl CoagulationConfig {
     /// Constructs a new `CoagulationConfig`.
     pub fn new(args: &commands::CoagulationArgs) -> CoagulationConfig {
-        let coagulate = std::path::PathBuf::from(&args.coagulate);
+        let coagulate = PathBuf::from(&args.coagulate);
         Self {
             substrate: SubstrateConfig::new(&args.substrate),
             runtime: coagulate.join("runtime"),
@@ -448,21 +457,25 @@ pub struct CrystalizationConfig {
     pub substrate: SubstrateConfig,
 
     /// Path to store the coagulate in.
-    pub coagulate: std::path::PathBuf,
+    pub coagulate: PathBuf,
 
     /// Database storage..
-    pub crystal: std::path::PathBuf,
+    pub crystal: PathBuf,
+
+    /// Runtime storage..
+    pub runtime: PathBuf,
 }
 
 impl CrystalizationConfig {
     /// Constructs a new `CondensationConfig`.
     pub fn new(args: &commands::CrystalizationArgs) -> CrystalizationConfig {
-        let target = std::path::PathBuf::from(&args.target);
-        let coagulate = std::path::PathBuf::from(&args.coagulate);
+        let target = PathBuf::from(&args.target);
+        let coagulate = PathBuf::from(&args.coagulate);
         Self {
             substrate: SubstrateConfig::new(&args.substrate),
             coagulate: coagulate.join("coagulate.yaml"),
             crystal: target.join("db"),
+            runtime: target.join("runtime"),
         }
     }
 
@@ -475,6 +488,7 @@ impl CrystalizationConfig {
         self.substrate.check_read()?;
         utils::file_exists(&self.coagulate)?;
         utils::parent_creatable(&self.crystal)?;
+        utils::parent_creatable(&self.runtime)?;
         Ok(())
     }
 }
@@ -484,24 +498,24 @@ impl CrystalizationConfig {
 #[derive(Clone, Debug)]
 pub struct OxidationConfig {
     /// Path to the input library file.
-    pub library_file_path: std::path::PathBuf,
+    pub library_file_path: PathBuf,
 
     /// Path to the input library directory.
-    pub library_dir_path: std::path::PathBuf,
+    pub library_dir_path: PathBuf,
 
     /// Path to Fashion Transparency Index data.
-    pub fashion_transparency_index_path: std::path::PathBuf,
+    pub fashion_transparency_index_path: PathBuf,
 
     /// Application database storage.
-    pub app_storage: std::path::PathBuf,
+    pub app_storage: PathBuf,
 }
 
 impl OxidationConfig {
     //i/ Constructs a new `OxidationConfig`.
     pub fn new(args: &commands::OxidationArgs) -> OxidationConfig {
-        let source = std::path::PathBuf::from(&args.source);
-        let library = std::path::PathBuf::from(&args.library);
-        let target = std::path::PathBuf::from(&args.target);
+        let source = PathBuf::from(&args.source);
+        let library = PathBuf::from(&args.library);
+        let target = PathBuf::from(&args.target);
         Self {
             library_file_path: source.join("sustainity_library.yaml"),
             library_dir_path: library,
@@ -525,14 +539,15 @@ impl OxidationConfig {
 }
 
 /// Configuration for the `analyze` command.
+#[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct AnalysisConfig {
     /// Path to output Wikidata cache.
-    pub wikidata_cache_path: std::path::PathBuf,
+    pub wikidata_cache_path: PathBuf,
 
     /// Path to output Wikidata cache.
-    pub wikidata_path: std::path::PathBuf,
+    pub wikidata_path: PathBuf,
 
     /// `Wikidatagatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
@@ -541,8 +556,8 @@ pub struct AnalysisConfig {
 impl AnalysisConfig {
     /// Constructs a new `FilteringConfig`.
     pub fn new(args: &commands::AnalysisArgs) -> AnalysisConfig {
-        let cache = std::path::PathBuf::from(&args.cache);
-        let sources = std::path::PathBuf::from(&args.source);
+        let cache = PathBuf::from(&args.cache);
+        let sources = PathBuf::from(&args.source);
         Self {
             wikidata_cache_path: cache.join("wikidata_cache.json"),
             wikidata_path: sources.join("wikidata.json"),
@@ -567,13 +582,13 @@ impl AnalysisConfig {
 #[derive(Clone, Debug)]
 pub struct ConnectionConfig {
     /// Path to input EU Ecolabel data file.
-    pub eu_ecolabel_input_path: std::path::PathBuf,
+    pub eu_ecolabel_input_path: PathBuf,
 
     /// Path to input Open Food Facts data file.
-    pub open_food_facts_input_path: std::path::PathBuf,
+    pub open_food_facts_input_path: PathBuf,
 
     /// Path to output data file.
-    pub output_path: std::path::PathBuf,
+    pub output_path: PathBuf,
 
     /// `WikidataGatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
@@ -582,8 +597,8 @@ pub struct ConnectionConfig {
 impl ConnectionConfig {
     /// Constructs a new `ConnectionConfig`.
     pub fn new(args: &commands::ConnectionArgs) -> ConnectionConfig {
-        let origin = std::path::PathBuf::from(&args.origin);
-        let source = std::path::PathBuf::from(&args.source);
+        let origin = PathBuf::from(&args.origin);
+        let source = PathBuf::from(&args.source);
         Self {
             eu_ecolabel_input_path: origin.join("eu_ecolabel_products.csv"),
             open_food_facts_input_path: origin.join("en.openfoodfacts.org.products.csv"),
@@ -611,7 +626,7 @@ impl ConnectionConfig {
 #[derive(Clone, Debug)]
 pub struct SamplingTargetConfig {
     // DB storage
-    pub db_storage: std::path::PathBuf,
+    pub db_storage: PathBuf,
 }
 
 /// Configuration for the backend part of the `sample` command.
@@ -637,7 +652,7 @@ impl SamplingConfig {
     /// Constructs a new `SamplingConfig`.
     pub fn new(args: &commands::SampleArgs) -> SamplingConfig {
         let target = if let Some(target) = &args.target {
-            let target = std::path::PathBuf::from(target);
+            let target = PathBuf::from(target);
             Some(SamplingTargetConfig { db_storage: target.join("db") })
         } else {
             None
