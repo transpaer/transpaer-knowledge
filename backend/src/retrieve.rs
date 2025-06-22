@@ -418,7 +418,7 @@ impl Retriever {
             }
 
             if !matched {
-                let domain = utils::extract_domain_from_str(&token)
+                let domain = utils::extract_domain_from_str(token)
                     .unwrap_or_else(|| lowercase_token.to_owned());
                 if organisation.ids.domains.contains(&domain) {
                     matched = true;

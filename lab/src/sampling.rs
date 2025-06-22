@@ -490,7 +490,7 @@ impl SamplingRunner {
             api::GetOrganisationResponse::Ok { body: org, .. } => {
                 ensure_eq!(
                     org.organisation_ids.domains,
-                    vec![api::models::Id::from_str(&AVENTON_DOMAIN.to_string())?],
+                    vec![api::models::Id::from_str(AVENTON_DOMAIN)?],
                     "wrong domains"
                 );
                 ensure_eq!(

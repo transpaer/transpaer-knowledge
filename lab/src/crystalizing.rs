@@ -69,8 +69,8 @@ impl CrystalizationReport {
             for (data_set_id, ids) in &self.invalid_ids {
                 let path = substrates
                     .get_path_for_id(*data_set_id)
-                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{path:?}"));
-                log::warn!("  - {}: {}", path, ids.len());
+                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{}", path.display()));
+                log::warn!("  - `{}`: {}", path, ids.len());
             }
         }
         if !self.empty_ids.is_empty() {
@@ -78,8 +78,8 @@ impl CrystalizationReport {
             for (data_set_id, ids) in &self.empty_ids {
                 let path = substrates
                     .get_path_for_id(*data_set_id)
-                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{path:?}"));
-                log::warn!("  - {}: {}", path, ids.len());
+                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{}", path.display()));
+                log::warn!("  - `{}`: {}", path, ids.len());
             }
         }
         if !self.missing_inner_ids.is_empty() {
@@ -87,8 +87,8 @@ impl CrystalizationReport {
             for (data_set_id, ids) in &self.missing_inner_ids {
                 let path = substrates
                     .get_path_for_id(*data_set_id)
-                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{path:?}"));
-                log::warn!("  - {}: {}", path, ids.len());
+                    .map_or_else(|| UNKNOWN.to_string(), |path| format!("{}", path.display()));
+                log::warn!("  - `{}`: {}", path, ids.len());
             }
         }
         log::warn!("End of the report");
@@ -630,10 +630,10 @@ impl Processor {
                     }
                 }
             }
-            if !mentions.is_empty() {
-                maplit::btreeset! {gather::Medium { source, mentions }}
-            } else {
+            if mentions.is_empty() {
                 BTreeSet::new()
+            } else {
+                maplit::btreeset! {gather::Medium { source, mentions }}
             }
         } else {
             BTreeSet::new()

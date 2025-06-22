@@ -143,7 +143,7 @@ impl runners::Stash for FilteringStash {
         log::info!("Serializing...");
         let contents = serde_json::to_string_pretty(&cache).map_serde()?;
 
-        log::info!("Writing to {:?}", self.config.wikidata_cache_path);
+        log::info!("Writing to `{}`", self.config.wikidata_cache_path.display());
         std::fs::write(&self.config.wikidata_cache_path, contents)
             .map_err(|e| errors::ProcessingError::Io(e, self.config.wikidata_cache_path.clone()))?;
 

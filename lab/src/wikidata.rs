@@ -673,7 +673,6 @@ pub trait ItemExt {
     fn has_manufacturer(&self) -> bool;
 
     /// Returns IDs of entities linked with "product" property.
-    #[must_use]
     fn get_product_ids(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError>;
 
     /// Checks if has any entities linked with "product" property.
@@ -875,52 +874,42 @@ impl ItemExt for data::Item {
         self.get_entity_ids(properties::MANUFACTURER)
     }
 
-    #[must_use]
     fn has_manufacturer(&self) -> bool {
         self.has_property(properties::MANUFACTURER)
     }
 
-    #[must_use]
     fn get_product_ids(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {
         self.get_entity_ids(properties::PRODUCT_MATERIAL_OR_SERVICE)
     }
 
-    #[must_use]
     fn has_products(&self) -> bool {
         self.has_property(properties::PRODUCT_MATERIAL_OR_SERVICE)
     }
 
-    #[must_use]
     fn get_official_websites(&self) -> Option<Vec<String>> {
         self.get_strings(properties::OFFICIAL_WEBSITE)
     }
 
-    #[must_use]
     fn has_official_website(&self) -> bool {
         self.has_property(properties::OFFICIAL_WEBSITE)
     }
 
-    #[must_use]
     fn get_images(&self) -> Option<Vec<String>> {
         self.get_strings(properties::IMAGE)
     }
 
-    #[must_use]
     fn has_image(&self) -> bool {
         self.has_property(properties::IMAGE)
     }
 
-    #[must_use]
     fn get_logo_images(&self) -> Option<Vec<String>> {
         self.get_strings(properties::LOGO_IMAGE)
     }
 
-    #[must_use]
     fn has_logo_image(&self) -> bool {
         self.has_property(properties::LOGO_IMAGE)
     }
 
-    #[must_use]
     fn is_instance_of(&self, class: &str) -> bool {
         self.relates(properties::INSTANCE_OF, class)
     }
@@ -929,7 +918,6 @@ impl ItemExt for data::Item {
         self.get_entity_ids(properties::INSTANCE_OF)
     }
 
-    #[must_use]
     fn is_subclass_of(&self, class: &str) -> bool {
         self.relates(properties::SUBCLASS_OF, class)
     }
@@ -938,37 +926,30 @@ impl ItemExt for data::Item {
         self.get_entity_ids(properties::SUBCLASS_OF)
     }
 
-    #[must_use]
     fn get_gtins(&self) -> Option<Vec<String>> {
         self.get_strings(properties::GTIN)
     }
 
-    #[must_use]
     fn has_gtin(&self) -> bool {
         self.has_property(properties::GTIN)
     }
 
-    #[must_use]
     fn get_asins(&self) -> Option<Vec<String>> {
         self.get_strings(properties::ASIN)
     }
 
-    #[must_use]
     fn has_asin(&self) -> bool {
         self.has_property(properties::ASIN)
     }
 
-    #[must_use]
     fn get_eu_vat_numbers(&self) -> Option<Vec<String>> {
         self.get_strings(properties::EU_VAT_NUMBER)
     }
 
-    #[must_use]
     fn has_eu_vat_number(&self) -> bool {
         self.has_property(properties::EU_VAT_NUMBER)
     }
 
-    #[must_use]
     fn is_organisation(&self) -> bool {
         if self.has_eu_vat_number() {
             return true;
@@ -993,7 +974,6 @@ impl ItemExt for data::Item {
         false
     }
 
-    #[must_use]
     fn extract_domains(&self) -> Option<HashSet<String>> {
         self.get_official_websites().map(|u| utils::extract_domains_from_urls(&u))
     }
