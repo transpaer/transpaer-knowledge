@@ -64,14 +64,20 @@ impl BCorpAdvisor {
         let original_data = if utils::file_exists(original_path).is_ok() {
             Some(sustainity_collecting::bcorp::reader::parse(original_path)?)
         } else {
-            log::warn!("Could not access {original_path:?}. BCorp original data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. BCorp original data won't be loaded!",
+                original_path.display(),
+            );
             None
         };
 
         let support_data = if utils::file_exists(support_path).is_ok() {
             Some(crate::bcorp::reader::parse(support_path)?)
         } else {
-            log::warn!("Could not access {support_path:?}. BCorp support data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. BCorp support data won't be loaded!",
+                support_path.display(),
+            );
             None
         };
 
@@ -149,12 +155,16 @@ impl EuEcolabelAdvisor {
                 Ok(Self::new(&data, &map)?)
             } else {
                 log::warn!(
-                    "Could not access {match_path:?}. Sustainity match data won't be loaded!"
+                    "Could not access `{}`. Sustainity match data won't be loaded!",
+                    match_path.display(),
                 );
                 Ok(Self::new(&[], &[])?)
             }
         } else {
-            log::warn!("Could not access {original_path:?}. EU Ecolabel data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. EU Ecolabel data won't be loaded!",
+                original_path.display(),
+            );
             Ok(Self::new(&[], &[])?)
         }
     }
@@ -202,7 +212,10 @@ impl OpenFoodFactsAdvisor {
             }
             Ok(Self::new(country_to_regions))
         } else {
-            log::warn!("Could not access {path:?}. Open Food Facts data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. Open Food Facts data won't be loaded!",
+                path.display(),
+            );
             Ok(Self::new_empty())
         }
     }
@@ -241,7 +254,7 @@ impl TcoAdvisor {
             let data = tco::reader::parse(path)?;
             Ok(Self::new(&data))
         } else {
-            log::warn!("Could not access {path:?}. TCO data won't be loaded!");
+            log::warn!("Could not access `{}`. TCO data won't be loaded!", path.display());
             Ok(Self::new(&[]))
         }
     }
@@ -299,7 +312,8 @@ impl FashionTransparencyIndexAdvisor {
             Ok(result)
         } else {
             log::warn!(
-                "Could not access {path:?}. Fashion Transparency Index data won't be loaded!"
+                "Could not access `{}`. Fashion Transparency Index data won't be loaded!",
+                path.display(),
             );
             let result = Self::new(&[])?;
             Ok(result)
@@ -491,7 +505,7 @@ impl SubstrateAdvisor {
             log::info!("Loading SubstrateAdvisor: done");
             Ok(me)
         } else {
-            log::warn!("Could not access {path:?}. Substrate data won't be loaded!");
+            log::warn!("Could not access `{}`. Substrate data won't be loaded!", path.display());
             Ok(Self::default())
         }
     }
@@ -506,7 +520,7 @@ impl SubstrateAdvisor {
             }
         }
         if let Some(domains) = ids.domains {
-            self.domains.extend(domains.into_iter());
+            self.domains.extend(domains);
         }
         Ok(())
     }
@@ -535,7 +549,7 @@ impl SubstrateAdvisor {
             }
         }
 
-        return false;
+        false
     }
 
     #[must_use]
@@ -544,11 +558,13 @@ impl SubstrateAdvisor {
     }
 
     #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn has_producer_wiki_id(&self, id: &ids::WikiId) -> bool {
         self.producer_wiki_ids.contains(id)
     }
 
     #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn has_product_wiki_id(&self, id: &ids::WikiId) -> bool {
         self.product_wiki_ids.contains(id)
     }
@@ -560,7 +576,7 @@ impl SubstrateAdvisor {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 
@@ -587,7 +603,10 @@ impl SustainityLibraryAdvisor {
             let data = sustainity::reader::parse_library(path)?;
             Ok(Self::new(data))
         } else {
-            log::warn!("Could not access {path:?}. Sustainity library data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. Sustainity library data won't be loaded!",
+                path.display()
+            );
             Ok(Self::new(Vec::new()))
         }
     }
@@ -627,7 +646,10 @@ impl SustainityMatchesAdvisor {
             let map = sustainity::reader::parse_id_map(match_path)?;
             Ok(Self::new(&map))
         } else {
-            log::warn!("Could not access {match_path:?}. Sustainity match data won't be loaded!");
+            log::warn!(
+                "Could not access `{}`. Sustainity match data won't be loaded!",
+                match_path.display()
+            );
             Ok(Self::new(&[]))
         }
     }

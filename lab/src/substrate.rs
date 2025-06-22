@@ -122,13 +122,13 @@ impl SubstratesReport {
         if !self.no_stem.is_empty() {
             log::warn!(" no stem:");
             for path in &self.no_stem {
-                log::warn!("  - {path:?}");
+                log::warn!("  - `{}`", path.display());
             }
         }
         if !self.not_unicode.is_empty() {
             log::warn!(" not unicode:");
             for path in &self.not_unicode {
-                log::warn!("  - {path:?}");
+                log::warn!("  - `{}`", path.display());
             }
         }
         log::warn!("End of the report");

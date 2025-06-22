@@ -40,7 +40,7 @@ pub fn extract_domain_from_str(mut string: &str) -> Option<String> {
         let domain = if let Some((host, _path)) = string.split_once('/') { host } else { string };
         Some(domain.to_lowercase())
     } else {
-        return None;
+        None
     }
 }
 

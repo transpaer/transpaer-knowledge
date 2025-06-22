@@ -46,7 +46,7 @@ impl runners::WikidataWorker for FilteringWorker {
         match entity {
             Entity::Item(item) => {
                 if self.should_keep(&item) {
-                    for (_, sl) in &item.sitelinks {
+                    for sl in item.sitelinks.values() {
                         if sl.site == "enwiki" {
                             wiki = true;
                             break;
