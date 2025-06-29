@@ -12,7 +12,7 @@ pub enum InputVariant {
 
 impl std::fmt::Display for InputVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -32,7 +32,7 @@ pub enum BackendError {
 impl From<BackendError> for swagger::ApiError {
     fn from(error: BackendError) -> Self {
         let message = error.to_string();
-        log::error!("{}", message);
+        log::error!("{message}");
         Self(message)
     }
 }

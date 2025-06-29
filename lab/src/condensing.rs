@@ -6,21 +6,110 @@ use std::{
 use async_trait::async_trait;
 
 use sustainity_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
-use sustainity_models::{gather as models, ids::WikiId, utils::extract_domain_from_url};
+use sustainity_models::{
+    gather as models,
+    ids::WikiId,
+    utils::{extract_domain_from_url, extract_domains_from_urls},
+};
 use sustainity_schema as schema;
 use sustainity_wikidata::{
     data::{Entity, Item},
     errors::ParseIdError,
 };
 
-use crate::{
-    advisors, categories, config, errors, parallel, runners, sources,
-    sources::Sourceable,
-    utils,
-    wikidata::{ignored, ItemExt},
-};
+use crate::{advisors, config, errors, parallel, runners, utils, wikidata::ItemExt};
 
 const LANG_EN: &str = "en";
+
+/// Holds all the supplementary source data.
+pub struct CondensationSources {
+    /// Wikidata data.
+    pub wikidata: advisors::WikidataAdvisor,
+
+    /// Names (company, brand, etc...) matched to Wikidata items representing them.
+    pub matches: advisors::SustainityMatchesAdvisor,
+
+    /// B-Corp data.
+    pub bcorp: advisors::BCorpAdvisor,
+
+    /// EU Ecolabel data.
+    pub eu_ecolabel: advisors::EuEcolabelAdvisor,
+
+    /// TCO data.
+    pub tco: advisors::TcoAdvisor,
+
+    /// Fashion Transparency Index data.
+    pub fti: advisors::FashionTransparencyIndexAdvisor,
+
+    /// Open Food Facts advisor.
+    pub off: advisors::OpenFoodFactsAdvisor,
+}
+
+impl CondensationSources {
+    #[allow(clippy::unused_self)]
+    #[must_use]
+    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        item.has_manufacturer() || item.has_gtin()
+    }
+
+    #[must_use]
+    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        if self.is_product(item) {
+            return false;
+        }
+
+        if item.is_organisation() {
+            return true;
+        }
+
+        if self.wikidata.has_manufacturer_id(&item.id) {
+            return true;
+        }
+
+        if self.fti.has_company(&item.id) || self.tco.has_company(&item.id) {
+            return true;
+        }
+
+        if let Some(websites) = item.get_official_websites() {
+            let domains = extract_domains_from_urls(&websites);
+            if self.bcorp.has_domains(&domains) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+impl CondensationSources {
+    /// Constructs a new `CondensationSources`.
+    fn load(config: &config::CondensationConfig) -> Result<Self, errors::ProcessingError> {
+        let wikidata = advisors::WikidataAdvisor::load(
+            &config.cache.wikidata_cache_path,
+            &config.meta.wikidata_regions_path,
+            &config.meta.wikidata_categories_path,
+        )?;
+        let matches = advisors::SustainityMatchesAdvisor::load(&config.meta.match_path)?;
+        let bcorp = advisors::BCorpAdvisor::load(
+            &config.origin.bcorp_path,
+            &config.meta.bcorp_regions_path,
+        )?;
+        let eu_ecolabel = advisors::EuEcolabelAdvisor::load(
+            &config.origin.eu_ecolabel_path,
+            &config.meta.match_path,
+        )?;
+        let tco = advisors::TcoAdvisor::load(&config.support.tco_path)?;
+        let fti = advisors::FashionTransparencyIndexAdvisor::load(
+            &config.support.fashion_transparency_index_path,
+        )?;
+        let off = advisors::OpenFoodFactsAdvisor::load(
+            &config.meta.open_food_facts_regions_path,
+            &config.meta.open_food_facts_categories_path,
+        )?;
+
+        Ok(Self { wikidata, matches, bcorp, eu_ecolabel, tco, fti, off })
+    }
+}
 
 fn prepare_meta(variant: schema::ProviderVariant) -> schema::Meta {
     schema::Meta {
@@ -48,7 +137,7 @@ fn merge_review_producers(p1: &mut schema::ReviewProducer, p2: &schema::ReviewPr
 pub trait Collector: Clone + Default + Send {
     type About: Clone + Send;
 
-    fn build_substrate(self, about: Self::About) -> schema::Root;
+    fn build_substrate(self, about: Self::About) -> schema::Substrate;
     fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError>;
 }
 
@@ -64,17 +153,19 @@ pub struct CatalogerCollector {
 impl Collector for CatalogerCollector {
     type About = schema::AboutCataloger;
 
-    fn build_substrate(mut self, about: Self::About) -> schema::Root {
+    fn build_substrate(mut self, about: Self::About) -> schema::Substrate {
         let mut producers: Vec<schema::CatalogProducer> = self.producers.into_values().collect();
         producers.sort_by(|a, b| a.id.cmp(&b.id));
         self.products.sort_by(|a, b| a.id.cmp(&b.id));
 
-        schema::Root::CatalogerRoot(schema::CatalogerRoot {
+        schema::Substrate {
             meta: prepare_meta(schema::ProviderVariant::Cataloger),
-            cataloger: about,
-            producers,
-            products: self.products,
-        })
+            data: schema::Data::Cataloger(schema::CatalogerData {
+                cataloger: about,
+                producers,
+                products: self.products,
+            }),
+        }
     }
 
     fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError> {
@@ -113,17 +204,19 @@ pub struct ReviewerCollector {
 impl Collector for ReviewerCollector {
     type About = schema::AboutReviewer;
 
-    fn build_substrate(mut self, about: Self::About) -> schema::Root {
+    fn build_substrate(mut self, about: Self::About) -> schema::Substrate {
         let mut producers: Vec<schema::ReviewProducer> = self.producers.into_values().collect();
         producers.sort_by(|a, b| a.id.cmp(&b.id));
         self.products.sort_by(|a, b| a.id.cmp(&b.id));
 
-        schema::Root::ReviewerRoot(schema::ReviewerRoot {
+        schema::Substrate {
             meta: prepare_meta(schema::ProviderVariant::Reviewer),
-            reviewer: about,
-            producers,
-            products: self.products,
-        })
+            data: schema::Data::Reviewer(schema::ReviewerData {
+                reviewer: about,
+                producers,
+                products: self.products,
+            }),
+        }
     }
 
     fn merge(&mut self, other: Self) -> Result<(), errors::CondensationError> {
@@ -169,7 +262,7 @@ impl About for AboutBCorp {
     }
 
     fn variant() -> schema::SubstrateExtension {
-        schema::SubstrateExtension::Json
+        schema::SubstrateExtension::JsonLines
     }
 
     fn build() -> schema::AboutReviewer {
@@ -196,7 +289,7 @@ impl About for AboutEu {
     }
 
     fn variant() -> schema::SubstrateExtension {
-        schema::SubstrateExtension::Json
+        schema::SubstrateExtension::JsonLines
     }
 
     fn build() -> schema::AboutReviewer {
@@ -223,7 +316,7 @@ impl About for AboutFti {
     }
 
     fn variant() -> schema::SubstrateExtension {
-        schema::SubstrateExtension::Json
+        schema::SubstrateExtension::JsonLines
     }
 
     fn build() -> schema::AboutReviewer {
@@ -280,7 +373,7 @@ impl About for AboutTco {
     }
 
     fn variant() -> schema::SubstrateExtension {
-        schema::SubstrateExtension::Json
+        schema::SubstrateExtension::JsonLines
     }
 
     fn build() -> schema::AboutReviewer {
@@ -323,50 +416,63 @@ impl About for AboutWiki {
 
 #[derive(Clone)]
 pub struct CondensingWikidataWorker {
-    sources: Arc<sources::FullSources>,
+    sources: Arc<CondensationSources>,
     collector: CatalogerCollector,
 }
 
 impl CondensingWikidataWorker {
     #[must_use]
-    pub fn new(sources: Arc<sources::FullSources>) -> Self {
+    pub fn new(sources: Arc<CondensationSources>) -> Self {
         Self { collector: CatalogerCollector::default(), sources }
     }
 
-    /// Checks if the passed item is an instance of at least of one of the passed categories.
-    fn has_categories(item: &Item, categories: &[&str]) -> bool {
-        for category in categories {
-            if item.is_instance_of(category) {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Extracts categories from a Wikidata item.
-    fn extract_wikidata_categories(item: &Item) -> Vec<Vec<String>> {
-        let mut result = Vec::new();
-        for (name, wiki_categories) in categories::CATEGORIES {
-            if Self::has_categories(item, wiki_categories) {
-                result.push(vec![(*name).to_string()]);
+    fn extract_wikidata_categories(
+        &self,
+        item: &Item,
+    ) -> Result<Vec<String>, errors::ProcessingError> {
+        let mut result = HashSet::<String>::new();
+
+        if let Some(classes) = item.get_classes()? {
+            for class in classes {
+                if let Some(categories) = self.sources.wikidata.get_categories(&class) {
+                    result.extend(categories.iter().cloned());
+                }
             }
         }
-        result
+
+        if let Some(classes) = item.get_superclasses()? {
+            for class in classes {
+                if let Some(categories) = self.sources.wikidata.get_categories(&class) {
+                    result.extend(categories.iter().cloned());
+                }
+            }
+        }
+
+        Ok(result.into_iter().collect())
     }
 
     /// Extracts countries from a Wikidata item.
-    fn extract_wikidata_countries(
+    fn extract_wikidata_regions(
         &self,
         item: &Item,
     ) -> Result<Option<schema::RegionList>, ParseIdError> {
+        let mut result = HashSet::<isocountry::CountryCode>::new();
         let countries = item.get_countries()?;
-        let mut result = Vec::new();
         for country_id in countries.unwrap_or_default() {
-            if let Some(code) = self.sources.wikidata.get_country(&country_id) {
-                result.push(code.alpha3().to_owned());
+            match self.sources.wikidata.get_regions(&country_id) {
+                Some(models::Regions::List(list)) => result.extend(list.iter()),
+                Some(models::Regions::Unknown | models::Regions::World) | None => {}
             }
         }
-        Ok(if result.is_empty() { None } else { Some(schema::RegionList(result)) })
+
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(schema::RegionList(
+                result.into_iter().map(|code| code.alpha3().to_owned()).collect(),
+            )))
+        }
     }
 }
 
@@ -384,75 +490,73 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
             Entity::Item(item) => {
                 // Gather all products
                 if self.sources.is_product(&item) {
-                    let categories = Self::extract_wikidata_categories(&item);
-                    if !categories.is_empty() || !Self::has_categories(&item, ignored::ALL) {
-                        let regions = self.extract_wikidata_countries(&item)?;
-                        let product = schema::CatalogProduct {
-                            id: item.id.to_id(),
-                            ids: schema::ProductIds {
-                                ean: None,
-                                gtin: item.get_gtins(),
-                                wiki: Some(vec![item.id.to_id()]),
-                            },
-                            names: item.get_labels().into_iter().map(ToString::to_string).collect(),
-                            description: item
-                                .descriptions
-                                .get(LANG_EN)
-                                .map(|label| label.value.clone()),
-                            images: item.get_images().unwrap_or_default(),
-                            categorisation: Some(schema::ProductCategorisation {
-                                categories: categories
-                                    .into_iter()
-                                    .map(schema::ProductCategory)
-                                    .collect(),
-                            }),
-                            origins: Some(schema::ProductOrigins {
-                                producer_ids: item
-                                    .get_manufacturer_ids()?
+                    let categories = self.extract_wikidata_categories(&item)?;
+                    let regions = self.extract_wikidata_regions(&item)?;
+                    let product = schema::CatalogProduct {
+                        id: item.id.to_id(),
+                        ids: schema::ProductIds {
+                            ean: None,
+                            gtin: item.get_gtins(),
+                            wiki: Some(vec![item.id.to_id()]),
+                        },
+                        names: item.get_labels().into_iter().map(ToString::to_string).collect(),
+                        description: item
+                            .descriptions
+                            .get(LANG_EN)
+                            .map(|label| label.value.clone()),
+                        images: item.get_images().unwrap_or_default(),
+                        categorisation: Some(schema::ProductCategorisation {
+                            categories: categories
+                                .into_iter()
+                                .map(schema::ProductCategory)
+                                .collect(),
+                        }),
+                        origins: Some(schema::ProductOrigins {
+                            producer_ids: item
+                                .get_manufacturer_ids()?
+                                .unwrap_or_default()
+                                .iter()
+                                .map(sustainity_collecting::data::WikiId::to_id)
+                                .collect(),
+                            regions,
+                        }),
+                        availability: None,
+                        related: Some(schema::RelatedProducts {
+                            preceded_by: Some(
+                                item.get_follows()?
                                     .unwrap_or_default()
                                     .iter()
                                     .map(sustainity_collecting::data::WikiId::to_id)
                                     .collect(),
-                                regions,
-                            }),
-                            availability: None,
-                            related: Some(schema::RelatedProducts {
-                                preceded_by: Some(
-                                    item.get_follows()?
-                                        .unwrap_or_default()
-                                        .iter()
-                                        .map(sustainity_collecting::data::WikiId::to_id)
-                                        .collect(),
-                                ),
-                                followed_by: Some(
-                                    item.get_followed_by()?
-                                        .unwrap_or_default()
-                                        .iter()
-                                        .map(sustainity_collecting::data::WikiId::to_id)
-                                        .collect(),
-                                ),
-                            }),
-                            shopping: item.get_asins().map(|asins| {
-                                schema::Shopping(
-                                    asins
-                                        .iter()
-                                        .map(|asin| schema::ShoppingEntry {
-                                            id: asin.clone(),
-                                            description: String::new(),
-                                            shop: schema::VerifiedShop::Amazon,
-                                        })
-                                        .collect(),
-                                )
-                            }),
-                        };
+                            ),
+                            followed_by: Some(
+                                item.get_followed_by()?
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .map(sustainity_collecting::data::WikiId::to_id)
+                                    .collect(),
+                            ),
+                        }),
+                        shopping: item.get_asins().map(|asins| {
+                            schema::Shopping(
+                                asins
+                                    .iter()
+                                    .map(|asin| schema::ShoppingEntry {
+                                        id: asin.clone(),
+                                        description: String::new(),
+                                        shop: schema::VerifiedShop::Amazon,
+                                    })
+                                    .collect(),
+                            )
+                        }),
+                    };
 
-                        self.collector.add_product(product);
-                    }
+                    self.collector.add_product(product);
                 }
 
                 // Collect all organisations
                 if self.sources.is_organisation(&item) {
-                    let regions = self.extract_wikidata_countries(&item)?;
+                    let regions = self.extract_wikidata_regions(&item)?;
                     let producer = schema::CatalogProducer {
                         id: item.id.to_id(),
                         ids: schema::ProducerIds {
@@ -488,37 +592,38 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
 
 #[derive(Clone)]
 pub struct CondensingOpenFoodFactsWorker {
-    sources: Arc<sources::FullSources>,
+    sources: Arc<CondensationSources>,
     collector: CatalogerCollector,
 }
 
 impl CondensingOpenFoodFactsWorker {
     #[must_use]
-    pub fn new(sources: Arc<sources::FullSources>) -> Self {
+    pub fn new(sources: Arc<CondensationSources>) -> Self {
         Self { collector: CatalogerCollector::default(), sources }
     }
 
     /// Extracts categories from a Wikidata item.
     fn extract_open_food_facts_categories(
+        &self,
         record: &open_food_facts::data::Record,
-    ) -> Vec<Vec<String>> {
-        let mut result = Vec::<Vec<String>>::new();
+    ) -> Vec<String> {
+        let mut result = HashSet::<String>::new();
         for tag in record.food_groups_tags.split(',') {
-            if tag.len() > 3 && tag.starts_with("en:") {
-                result.push(vec![tag[3..].to_string()]);
+            if let Some(categories) = self.sources.off.get_categories(tag) {
+                result.extend(categories.iter().cloned());
             }
         }
-        result
+        result.into_iter().collect()
     }
 
     /// Extracts production regions from Open Food Facts record.
     fn extract_open_food_facts_production_regions(
+        &self,
         record: &open_food_facts::data::Record,
-        off: &advisors::OpenFoodFactsAdvisor,
     ) -> Option<schema::RegionList> {
         let mut result = HashSet::<isocountry::CountryCode>::new();
         for tag in record.extract_sell_countries() {
-            match off.get_countries(&tag) {
+            match self.sources.off.get_countries(&tag) {
                 Some(models::Regions::List(list)) => result.extend(list.iter()),
                 Some(models::Regions::Unknown | models::Regions::World) | None => {}
             }
@@ -611,7 +716,7 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
         // Those are probably some internal bar codes, not GTINs.
         // Let's ignore them for now.
         if let Ok(gtin) = models::Gtin::try_from(&record.code) {
-            let categories = Self::extract_open_food_facts_categories(&record);
+            let categories = self.extract_open_food_facts_categories(&record);
             let producer_id = Self::get_producer_id(&record);
 
             let product = schema::CatalogProduct {
@@ -629,10 +734,7 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                 }),
                 origins: Some(schema::ProductOrigins {
                     producer_ids: producer_id.as_ref().map_or_else(Vec::new, |id| vec![id.clone()]),
-                    regions: Self::extract_open_food_facts_production_regions(
-                        &record,
-                        &self.sources.off,
-                    ),
+                    regions: self.extract_open_food_facts_production_regions(&record),
                 }),
                 availability: Some(schema::ProductAvailability {
                     regions: Self::extract_open_food_facts_sell_regions(&record, &self.sources.off),
@@ -658,10 +760,7 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
                     names: record.extract_brand_labels(),
                     websites: Vec::new(),
                     origins: Some(schema::ProducerOrigins {
-                        regions: Self::extract_open_food_facts_production_regions(
-                            &record,
-                            &self.sources.off,
-                        ),
+                        regions: self.extract_open_food_facts_production_regions(&record),
                     }),
                 };
 
@@ -682,13 +781,13 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
 
 #[derive(Clone)]
 pub struct CondensingEuEcolabelWorker {
-    sources: Arc<sources::FullSources>,
+    sources: Arc<CondensationSources>,
     collector: ReviewerCollector,
 }
 
 impl CondensingEuEcolabelWorker {
     #[must_use]
-    pub fn new(sources: Arc<sources::FullSources>) -> Self {
+    pub fn new(sources: Arc<CondensationSources>) -> Self {
         Self { collector: ReviewerCollector::default(), sources }
     }
 
@@ -802,11 +901,11 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
 
 struct BCorpCondenser {
     /// Sources configuration.
-    config: config::SourcesConfig,
+    config: config::CondensationConfig,
 }
 
 impl BCorpCondenser {
-    pub fn new(config: config::SourcesConfig) -> Self {
+    pub fn new(config: config::CondensationConfig) -> Self {
         Self { config }
     }
 
@@ -827,13 +926,19 @@ impl BCorpCondenser {
         record: &bcorp::data::Record,
         advisor: &advisors::BCorpAdvisor,
     ) -> Option<schema::ProducerOrigins> {
-        if let Some(region) = advisor.get_country_code(&record.country) {
-            Some(schema::ProducerOrigins {
-                regions: Some(schema::RegionList(vec![region.alpha3().to_owned()])),
-            })
-        } else {
-            log::warn!("Missing BCorp country mapping to country code for '{}'", record.country);
-            None
+        match advisor.get_regions(&record.country) {
+            Some(models::Regions::List(list)) => Some(schema::ProducerOrigins {
+                regions: Some(schema::RegionList(
+                    list.iter().map(|code| code.alpha3().to_owned()).collect(),
+                )),
+            }),
+            Some(models::Regions::Unknown | models::Regions::World) | None => {
+                log::warn!(
+                    "Missing BCorp country mapping to country code for '{}'",
+                    record.country
+                );
+                None
+            }
         }
     }
 }
@@ -847,10 +952,10 @@ impl parallel::RefProducer for BCorpCondenser {
         let mut collector = ReviewerCollector::default();
 
         let advisor = advisors::BCorpAdvisor::load(
-            &self.config.bcorp_original_path,
-            &self.config.bcorp_support_path,
+            &self.config.origin.bcorp_path,
+            &self.config.meta.bcorp_regions_path,
         )?;
-        let original_data = bcorp::reader::parse(&self.config.bcorp_original_path)?;
+        let original_data = bcorp::reader::parse(&self.config.origin.bcorp_path)?;
 
         // The same company may have multiple records.
         // We use only the latest one.
@@ -906,11 +1011,11 @@ impl parallel::RefProducer for BCorpCondenser {
 
 struct FtiCondenser {
     /// Sources configuration.
-    config: config::SourcesConfig,
+    config: config::CondensationConfig,
 }
 
 impl FtiCondenser {
-    pub fn new(config: config::SourcesConfig) -> Self {
+    pub fn new(config: config::CondensationConfig) -> Self {
         Self { config }
     }
 }
@@ -924,7 +1029,7 @@ impl parallel::RefProducer for FtiCondenser {
         let mut collector = ReviewerCollector::default();
 
         let data = fashion_transparency_index::reader::parse(
-            &self.config.fashion_transparency_index_path,
+            &self.config.support.fashion_transparency_index_path,
         )?;
         for entry in data {
             collector.insert_producer(schema::ReviewProducer {
@@ -960,11 +1065,11 @@ impl parallel::RefProducer for FtiCondenser {
 
 struct TcoCondenser {
     /// Sources configuration.
-    config: config::SourcesConfig,
+    config: config::CondensationConfig,
 }
 
 impl TcoCondenser {
-    pub fn new(config: config::SourcesConfig) -> Self {
+    pub fn new(config: config::CondensationConfig) -> Self {
         Self { config }
     }
 }
@@ -977,7 +1082,7 @@ impl parallel::RefProducer for TcoCondenser {
     async fn produce(&self, tx: parallel::Sender<Self::Output>) -> Result<(), Self::Error> {
         let mut collector = ReviewerCollector::default();
 
-        let data = tco::reader::parse(&self.config.tco_path)?;
+        let data = tco::reader::parse(&self.config.support.tco_path)?;
         for entry in data {
             collector.insert_producer(schema::ReviewProducer {
                 id: entry.company_name.clone(),
@@ -1051,7 +1156,7 @@ where
 pub struct SaveMessage {
     name: String,
     variant: schema::SubstrateExtension,
-    substrate: schema::Root,
+    substrate: schema::Substrate,
 }
 
 pub struct SubstrateSaver {
@@ -1096,58 +1201,66 @@ pub struct CondensingRunner;
 
 impl CondensingRunner {
     pub fn run(config: &config::CondensationConfig) -> Result<(), errors::ProcessingError> {
-        let (wiki_process_tx, wiki_process_rx) = parallel::bounded::<String>();
-        let (wiki_combine_tx, wiki_combine_rx) = parallel::bounded::<CatalogerCollector>();
-        let (off_process_tx, off_process_rx) =
-            parallel::bounded::<runners::OpenFoodFactsRunnerMessage>();
-        let (off_combine_tx, off_combine_rx) = parallel::bounded::<CatalogerCollector>();
-        let (eu_process_tx, eu_process_rx) =
-            parallel::bounded::<runners::EuEcolabelRunnerMessage>();
-        let (eu_combine_tx, eu_combine_rx) = parallel::bounded::<ReviewerCollector>();
+        let sources = Arc::new(CondensationSources::load(&config.clone())?);
+        let mut flow = parallel::Flow::new();
+
         let (save_tx, save_rx) = parallel::bounded::<SaveMessage>();
-
-        let sources = Arc::new(sources::FullSources::load(&config.into())?);
-
-        let wiki_producer = runners::WikidataProducer::new(&config.into())?;
-        let wiki_worker = CondensingWikidataWorker::new(sources.clone());
-        let wiki_worker = runners::WikidataProcessor::new(wiki_worker);
-        let wiki_combiner = Combiner::<AboutWiki>::default();
-
-        let off_producer = runners::OpenFoodFactsProducer::new(config.into())?;
-        let off_worker = CondensingOpenFoodFactsWorker::new(sources.clone());
-        let off_worker = runners::OpenFoodFactsProcessor::new(off_worker);
-        let off_combiner = Combiner::<AboutOff>::default();
-
-        let eu_producer = runners::EuEcolabelProducer::new(config.into())?;
-        let eu_worker = CondensingEuEcolabelWorker::new(sources.clone());
-        let eu_worker = runners::EuEcolabelProcessor::new(eu_worker);
-        let eu_combiner = Combiner::<AboutEu>::default();
-
-        let bcorp_producer = Box::new(BCorpCondenser::new(config.sources.clone()));
-        let fti_producer = Box::new(FtiCondenser::new(config.sources.clone()));
-        let tco_producer = Box::new(TcoCondenser::new(config.sources.clone()));
-
         let saver = SubstrateSaver::new(config.clone());
+        flow = flow.name("saver").spawn_consumer(saver, save_rx)?;
 
-        parallel::Flow::new()
-            .name("saver")
-            .spawn_consumer(saver, save_rx)?
-            .name("wiki")
-            .spawn_producer(wiki_producer, wiki_process_tx)?
-            .spawn_processors(wiki_worker, wiki_process_rx, wiki_combine_tx)?
-            .spawn_processor(wiki_combiner, wiki_combine_rx, save_tx.clone())?
-            .name("off")
-            .spawn_producer(off_producer, off_process_tx)?
-            .spawn_processors(off_worker, off_process_rx, off_combine_tx)?
-            .spawn_processor(off_combiner, off_combine_rx, save_tx.clone())?
-            .name("eu")
-            .spawn_producer(eu_producer, eu_process_tx)?
-            .spawn_processors(eu_worker, eu_process_rx, eu_combine_tx)?
-            .spawn_processor(eu_combiner, eu_combine_rx, save_tx.clone())?
-            .name("small")
-            .spawn_producers(vec![bcorp_producer, fti_producer, tco_producer], save_tx)?
-            .join();
+        if config.group != config::CondensationGroup::Immediate {
+            let (wiki_process_tx, wiki_process_rx) = parallel::bounded::<String>();
+            let (wiki_combine_tx, wiki_combine_rx) = parallel::bounded::<CatalogerCollector>();
+            let wiki_producer = runners::WikidataProducer::new(&config.into())?;
+            let wiki_worker = CondensingWikidataWorker::new(sources.clone());
+            let wiki_worker = runners::WikidataProcessor::new(wiki_worker);
+            let wiki_combiner = Combiner::<AboutWiki>::default();
+            flow = flow
+                .name("wiki")
+                .spawn_producer(wiki_producer, wiki_process_tx)?
+                .spawn_processors(wiki_worker, wiki_process_rx, wiki_combine_tx)?
+                .spawn_processor(wiki_combiner, wiki_combine_rx, save_tx.clone())?;
+        }
 
+        if config.group != config::CondensationGroup::Filtered {
+            let (off_process_tx, off_process_rx) =
+                parallel::bounded::<runners::OpenFoodFactsRunnerMessage>();
+            let (off_combine_tx, off_combine_rx) = parallel::bounded::<CatalogerCollector>();
+            let off_producer = runners::OpenFoodFactsProducer::new(config.into())?;
+            let off_worker = CondensingOpenFoodFactsWorker::new(sources.clone());
+            let off_worker = runners::OpenFoodFactsProcessor::new(off_worker);
+            let off_combiner = Combiner::<AboutOff>::default();
+            flow = flow
+                .name("off")
+                .spawn_producer(off_producer, off_process_tx)?
+                .spawn_processors(off_worker, off_process_rx, off_combine_tx)?
+                .spawn_processor(off_combiner, off_combine_rx, save_tx.clone())?;
+
+            let (eu_process_tx, eu_process_rx) =
+                parallel::bounded::<runners::EuEcolabelRunnerMessage>();
+            let (eu_combine_tx, eu_combine_rx) = parallel::bounded::<ReviewerCollector>();
+            let eu_producer = runners::EuEcolabelProducer::new(config.into())?;
+            let eu_worker = CondensingEuEcolabelWorker::new(sources.clone());
+            let eu_worker = runners::EuEcolabelProcessor::new(eu_worker);
+            let eu_combiner = Combiner::<AboutEu>::default();
+            flow = flow
+                .name("eu")
+                .spawn_producer(eu_producer, eu_process_tx)?
+                .spawn_processors(eu_worker, eu_process_rx, eu_combine_tx)?
+                .spawn_processor(eu_combiner, eu_combine_rx, save_tx.clone())?;
+
+            let bcorp_producer = Box::new(BCorpCondenser::new(config.clone()));
+            let fti_producer = Box::new(FtiCondenser::new(config.clone()));
+            let tco_producer = Box::new(TcoCondenser::new(config.clone()));
+            flow = flow.name("small").spawn_producers(
+                vec![bcorp_producer, fti_producer, tco_producer],
+                save_tx.clone(),
+            )?;
+        }
+
+        drop(save_tx);
+
+        flow.join();
         Ok(())
     }
 }

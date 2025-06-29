@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// Arguments of the `filter1` command.
 #[derive(Parser, Debug)]
@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
                   To mitigate that problem we preprocess that data by filtering out the entriess \
                   that we are not interested in. We do that intwo steps and this the first of those steps."
 )]
-pub struct Filtering1Args {
+pub struct ExtractingArgs {
     /// Origin data directory.
     #[arg(long)]
     pub origin: String,
@@ -26,35 +26,14 @@ pub struct Filtering1Args {
                   To mitigate that problem we preprocess that data by filtering out the entriess \
                   that we are not interested in. We do that intwo steps and this the second of those steps."
 )]
-pub struct Filtering2Args {
-    /// Origin data directory.
-    #[arg(long)]
-    pub origin: String,
-
-    /// Source data directory.
-    #[arg(long)]
-    pub source: String,
-
-    /// Cache directory.
-    #[arg(long)]
-    pub cache: String,
-
-    /// Substrate directory.
-    #[arg(long)]
-    pub substrate: String,
-}
-
-/// Arguments of the `filter` command.
-#[derive(Parser, Debug)]
-#[command(about = "Filtering", long_about = "Runs both steps of filtering.")]
 pub struct FilteringArgs {
     /// Origin data directory.
     #[arg(long)]
     pub origin: String,
 
-    /// Source data directory.
+    /// Meta data directory.
     #[arg(long)]
-    pub source: String,
+    pub meta: String,
 
     /// Cache directory.
     #[arg(long)]
@@ -65,28 +44,44 @@ pub struct FilteringArgs {
     pub substrate: String,
 }
 
-/// Arguments of the `filter` command.
+/// Arguments of the `update` command.
 #[derive(Parser, Debug)]
 #[command(
-    about = "Update source files",
-    long_about = "Some data we are processing need to be augmented we additional information \
+    about = "Update meta files",
+    long_about = "Some data we are processing need to be augmented with additional information \
                   which we prepare manually. With new versions of the original data those manually created \
                   data may become insufficient or obsolete. This command updates the data and points to \
-                  any further manual updates required.\n\nCurrently this command updates mapping from \
-                  Open Food Facts countries to Sustaininty regions."
+                  any further manual updates required.\n\nCurrently this command updates mapping \
+                  from Open Food Facts countries to Sustainity regions, \
+                  from Open Food Facts categories to Sustainity categories, \
+                  from Wikidata countries to Sustainity regions and \
+                  from Wikidata classes to Sustainity categories, \
+                  "
 )]
 pub struct UpdatingArgs {
     /// Origin data directory.
     #[arg(long)]
     pub origin: String,
 
-    /// Source data directory.
+    /// Meta data directory.
     #[arg(long)]
-    pub source: String,
+    pub meta: String,
 
-    /// Cache directory.
+    /// Cache data directory.
     #[arg(long)]
     pub cache: String,
+
+    /// Substrate directory.
+    #[arg(long)]
+    pub substrate: String,
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+#[clap(rename_all = "kebab_case")]
+pub enum CondensationGroup {
+    Filtered,
+    Immediate,
+    All,
 }
 
 /// Arguments of the `condense` command.
@@ -104,9 +99,13 @@ pub struct CondensationArgs {
     #[arg(long)]
     pub origin: String,
 
-    /// Source data directory.
+    /// Meta data directory.
     #[arg(long)]
-    pub source: String,
+    pub meta: String,
+
+    /// Support data directory.
+    #[arg(long)]
+    pub support: String,
 
     /// Cache directory.
     #[arg(long)]
@@ -115,6 +114,10 @@ pub struct CondensationArgs {
     /// Substrate directory.
     #[arg(long)]
     pub substrate: String,
+
+    /// Skips the substrates that need the filtering step.
+    #[clap(long, action)]
+    pub group: CondensationGroup,
 }
 
 /// Arguments of the `coagulate` command.
@@ -165,9 +168,9 @@ pub struct CrystalizationArgs {
                   articles we show on the web page) into a format that can be imported by the database."
 )]
 pub struct OxidationArgs {
-    /// Source data directory.
+    /// Support data directory.
     #[arg(long)]
-    pub source: String,
+    pub support: String,
 
     /// Library data directory.
     #[arg(long)]
@@ -176,24 +179,6 @@ pub struct OxidationArgs {
     /// Target data directory.
     #[arg(long)]
     pub target: String,
-}
-
-/// Arguments of the `analyse` command.
-#[derive(Parser, Debug)]
-#[command(
-    about = "Run an analysis of input data",
-    long_about = "Runs an analysis of input data to find ways to improve the processing of those data.\n\n\
-                  Currently this command only looks for entry classes in Wikidata and looks for those \
-                  contain but do not correspond to any product category."
-)]
-pub struct AnalysisArgs {
-    /// Cache directory.
-    #[arg(long)]
-    pub cache: String,
-
-    /// Source data directory.
-    #[arg(long)]
-    pub source: String,
 }
 
 /// Arguments of the `connect` command.
@@ -213,7 +198,7 @@ pub struct ConnectionArgs {
     pub origin: String,
 
     #[arg(long)]
-    pub source: String,
+    pub meta: String,
 }
 
 /// Arguments of the `sample` command.
@@ -233,15 +218,13 @@ pub struct SampleArgs {
 /// All arguments of the program.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Filter1(Filtering1Args),
-    Filter2(Filtering2Args),
-    Filter(FilteringArgs),
-    Update(UpdatingArgs),
+    Extract(ExtractingArgs),
     Condense(CondensationArgs),
+    Filter(FilteringArgs),
     Coagulate(CoagulationArgs),
     Crystalize(CrystalizationArgs),
     Oxidize(OxidationArgs),
-    Analyze(AnalysisArgs),
+    Update(UpdatingArgs),
     Connect(ConnectionArgs),
     Sample(SampleArgs),
 }

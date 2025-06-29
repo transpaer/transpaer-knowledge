@@ -103,6 +103,13 @@ pub trait Consumer: Send {
     async fn finish(self) -> Result<(), Self::Error>;
 }
 
+#[async_trait]
+pub trait Isolate: Send {
+    type Error: std::error::Error;
+
+    async fn process(self) -> Result<(), Self::Error>;
+}
+
 #[derive(Debug, Default)]
 pub struct Flow {
     name: Option<String>,
@@ -227,6 +234,26 @@ impl Flow {
                                 break;
                             }
                         }
+                    }
+                });
+            })
+            .map_err(errors::ProcessingError::Thread)?;
+        self.handlers.push(handler);
+        Ok(self)
+    }
+
+    pub fn spawn_isolate<I>(mut self, isolate: I) -> Result<Self, errors::ProcessingError>
+    where
+        I: Isolate + 'static,
+    {
+        let name =
+            self.name.as_ref().map_or_else(|| "flow-iso".to_string(), |n| format!("fiso-{n}"));
+        let handler: std::thread::JoinHandle<()> = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
+                futures::executor::block_on(async {
+                    if let Err(err) = isolate.process().await {
+                        log::error!("Flow isolate: {err}");
                     }
                 });
             })

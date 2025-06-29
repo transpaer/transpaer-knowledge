@@ -118,11 +118,64 @@ pub mod data {
             }
         }
     }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub enum Regions {
+        #[serde(rename = "all")]
+        World,
+
+        #[serde(rename = "unknown")]
+        Unknown,
+
+        #[serde(rename = "list")]
+        List(Vec<String>),
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub struct CountryEntry {
+        pub tag: String,
+
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub description: Option<String>,
+
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub regions: Option<Regions>,
+
+        pub count: usize,
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+    pub struct Countries {
+        pub countries: Vec<CountryEntry>,
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub struct CategoryEntry {
+        pub tag: String,
+
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub description: Option<String>,
+
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub categories: Option<Vec<crate::categories::Category>>,
+
+        pub count: usize,
+
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub delete: Option<bool>,
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+    pub struct Categories {
+        pub categories: Vec<CategoryEntry>,
+    }
 }
 
-/// Reader to loading sustainity data.
+/// Readers for loading sustainity data.
 pub mod reader {
-    use super::data::{LibraryInfo, NameMatching};
+    use std::collections::HashMap;
+
+    use super::data::{Categories, Countries, LibraryInfo, NameMatching, Regions};
     use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
 
     /// Loads the sustainity library data from a file.
@@ -145,5 +198,128 @@ pub mod reader {
         let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: Vec<NameMatching> = serde_yaml::from_str(&contents).map_with_path(path)?;
         Ok(parsed)
+    }
+
+    /// Loads the file with mapping from country tags to Sustainity regions.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn parse_countries(path: &std::path::Path) -> Result<Countries, IoOrSerdeError> {
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
+        let parsed: Countries = serde_yaml::from_str(&contents).map_with_path(path)?;
+        Ok(parsed)
+    }
+
+    /// Loads the file with mapping from source categories to to Sustainity categories.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn parse_categories(path: &std::path::Path) -> Result<Categories, IoOrSerdeError> {
+        let contents = std::fs::read_to_string(path).map_with_path(path)?;
+        let parsed: Categories = serde_yaml::from_str(&contents).map_with_path(path)?;
+        Ok(parsed)
+    }
+
+    pub struct RegionMapEntry {
+        regions: Option<Regions>,
+    }
+
+    pub struct RegionMap {
+        map: HashMap<String, RegionMapEntry>,
+    }
+
+    impl RegionMap {
+        #[must_use]
+        pub fn from_countries(countries: Countries) -> Self {
+            let mut map = HashMap::new();
+            for country in countries.countries {
+                map.insert(country.tag, RegionMapEntry { regions: country.regions });
+            }
+            Self { map }
+        }
+
+        #[must_use]
+        pub fn contains_tag(&self, tag: &str) -> bool {
+            self.map.contains_key(tag)
+        }
+
+        #[must_use]
+        pub fn get_regions(&self, tag: &str) -> Option<&Regions> {
+            self.map.get(tag).and_then(|value| value.regions.as_ref())
+        }
+    }
+
+    pub struct CategoryMapEntry {
+        pub description: Option<String>,
+        pub categories: Option<Vec<crate::categories::Category>>,
+        pub delete: Option<bool>,
+    }
+
+    pub struct CategoryMap {
+        map: HashMap<String, CategoryMapEntry>,
+    }
+
+    impl CategoryMap {
+        #[must_use]
+        pub fn from_categories(categories: Categories) -> Self {
+            let mut map = HashMap::new();
+            for entry in categories.categories {
+                map.insert(
+                    entry.tag,
+                    CategoryMapEntry {
+                        description: entry.description,
+                        categories: entry.categories,
+                        delete: entry.delete,
+                    },
+                );
+            }
+            Self { map }
+        }
+
+        #[must_use]
+        pub fn contains_tag(&self, tag: &str) -> bool {
+            self.map.contains_key(tag)
+        }
+
+        #[must_use]
+        pub fn get(&self, tag: &str) -> Option<&CategoryMapEntry> {
+            self.map.get(tag)
+        }
+    }
+}
+
+/// Writers for saving sustainity data.
+pub mod writer {
+    use super::data::{Categories, Countries};
+    use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
+
+    /// Saves the given countries to the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to write to the `path` or serialize the contents.
+    pub fn save_countries(
+        countries: &Countries,
+        path: &std::path::Path,
+    ) -> Result<(), IoOrSerdeError> {
+        let contents = serde_yaml::to_string(countries).map_serde()?;
+        std::fs::write(path, contents).map_with_path(path)?;
+        Ok(())
+    }
+
+    /// Saves the given categories to the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to write to the `path` or serialize the contents.
+    pub fn save_categories(
+        categories: &Categories,
+        path: &std::path::Path,
+    ) -> Result<(), IoOrSerdeError> {
+        let contents = serde_yaml::to_string(categories).map_serde()?;
+        std::fs::write(path, contents).map_with_path(path)?;
+        Ok(())
     }
 }

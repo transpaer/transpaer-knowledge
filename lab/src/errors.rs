@@ -169,6 +169,9 @@ pub enum ProcessingError {
 
     #[error("Mutex lock")]
     MutexLock,
+
+    #[error("After processing the data collector was empty")]
+    EmptyCollector,
 }
 
 impl<T> From<std::sync::PoisonError<T>> for ProcessingError {

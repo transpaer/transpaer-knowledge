@@ -4,19 +4,29 @@ use async_trait::async_trait;
 
 use sustainity_wikidata::data::{Entity, Item};
 
-use crate::{advisors, config, errors, parallel, runners, sources, sources::Sourceable};
+use crate::{advisors, config, errors, parallel, runners, wikidata::ItemExt};
+
+const WIKIDATA_SUBSTRATE_NAME: &str = "wikidata";
+
+#[derive(Clone)]
+pub struct Message {
+    entry: String,
+    has_wikipedia_page: bool,
+}
 
 /// Filters product entries out from the wikidata dump file.
 #[derive(Clone)]
 pub struct FilteringWorker {
-    wiki: usize,
-    sources: Arc<sources::FullSources>,
+    wikidata: Arc<advisors::WikidataAdvisor>,
     substrate: Arc<advisors::SubstrateAdvisor>,
 }
 
 impl FilteringWorker {
-    fn new(sources: Arc<sources::FullSources>, substrate: Arc<advisors::SubstrateAdvisor>) -> Self {
-        Self { sources, substrate, wiki: 0 }
+    fn new(
+        wikidata: Arc<advisors::WikidataAdvisor>,
+        substrate: Arc<advisors::SubstrateAdvisor>,
+    ) -> Self {
+        Self { wikidata, substrate }
     }
 
     /// Decides if the passed item should be kept or filtered out.
@@ -25,16 +35,33 @@ impl FilteringWorker {
     /// - is a product or
     /// - is a manufacturer.
     fn should_keep(&self, item: &Item) -> bool {
-        self.sources.is_product(item)
-            || self.sources.is_organisation(item)
-            || self.substrate.is_product(item)
-            || self.substrate.is_organisation(item)
+        // Is a product or organisation according to wikidata?
+        if self.wikidata.is_product(item) || self.wikidata.is_organisation(item) {
+            return true;
+        }
+
+        // Is a product according to any of the substrates?
+        if self.substrate.has_product_wiki_id(&item.id.into()) {
+            return true;
+        }
+
+        // Is an organisation according to any of the substrates?
+        if self.substrate.has_producer_wiki_id(&item.id.into()) {
+            return true;
+        }
+        if let Some(websites) = item.get_official_websites() {
+            if self.substrate.has_domains(&websites) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
 #[async_trait]
 impl runners::WikidataWorker for FilteringWorker {
-    type Output = String;
+    type Output = Message;
 
     async fn process(
         &mut self,
@@ -42,23 +69,20 @@ impl runners::WikidataWorker for FilteringWorker {
         entity: Entity,
         tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
-        let mut wiki = false;
         match entity {
             Entity::Item(item) => {
+                let mut has_wikipedia_page = false;
                 if self.should_keep(&item) {
                     for sl in item.sitelinks.values() {
                         if sl.site == "enwiki" {
-                            wiki = true;
+                            has_wikipedia_page = true;
                             break;
                         }
                     }
-                    tx.send(msg.to_string()).await;
+                    tx.send(Message { entry: msg.to_string(), has_wikipedia_page }).await;
                 }
             }
             Entity::Property(_property) => {}
-        }
-        if wiki {
-            self.wiki += 1;
         }
         Ok(())
     }
@@ -77,18 +101,28 @@ pub struct FilteringStash {
     /// Filtered Wikidata entries.
     entries: Vec<String>,
 
+    /// Number of all entries.
+    all_entries: usize,
+
+    /// Number of entries with a corresponding wikipedia page.
+    with_wikipedia_page: usize,
+
     /// Configuration.
-    config: config::Filtering2Config,
+    config: config::FilteringConfig,
 }
 
 impl FilteringStash {
     #[must_use]
-    pub fn new(config: config::Filtering2Config) -> Self {
-        Self { entries: Vec::new(), config }
+    pub fn new(config: config::FilteringConfig) -> Self {
+        Self { entries: Vec::new(), all_entries: 0, with_wikipedia_page: 0, config }
     }
 
-    pub fn add_entry(&mut self, entry: String) {
-        self.entries.push(entry);
+    pub fn add_input(&mut self, input: Message) {
+        self.entries.push(input.entry);
+        self.all_entries += 1;
+        if input.has_wikipedia_page {
+            self.with_wikipedia_page += 1;
+        }
     }
 
     #[must_use]
@@ -118,10 +152,10 @@ impl FilteringStash {
 
 #[async_trait]
 impl runners::Stash for FilteringStash {
-    type Input = String;
+    type Input = Message;
 
-    fn stash(&mut self, entry: Self::Input) -> Result<(), errors::ProcessingError> {
-        self.add_entry(entry);
+    fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
+        self.add_input(input);
 
         // Periodically save data to file to avoid running out of memory.
         if self.is_full() {
@@ -138,6 +172,8 @@ impl runners::Stash for FilteringStash {
         self.save().map_err(|e| {
             errors::ProcessingError::Io(e, self.config.wikidata_filtered_dump_path.clone())
         })?;
+        log::info!(" - {} processed entries", self.all_entries);
+        log::info!(" - {} entries have a corresponding wikipedia page", self.with_wikipedia_page);
         Ok(())
     }
 }
@@ -145,11 +181,17 @@ impl runners::Stash for FilteringStash {
 pub struct FilteringRunner;
 
 impl FilteringRunner {
-    pub fn run(config: &config::Filtering2Config) -> Result<(), errors::ProcessingError> {
-        let substrate = Arc::new(advisors::SubstrateAdvisor::load(&config.substrate_path)?);
-        let sources = Arc::new(sources::FullSources::load(&config.into())?);
+    pub fn run(config: &config::FilteringConfig) -> Result<(), errors::ProcessingError> {
+        let excludes = maplit::hashset! { WIKIDATA_SUBSTRATE_NAME.to_string() };
+        let substrate =
+            Arc::new(advisors::SubstrateAdvisor::load(&config.substrate_path, &excludes)?);
+        let wikidata = Arc::new(advisors::WikidataAdvisor::load(
+            &config.cache.wikidata_cache_path,
+            &config.meta.wikidata_regions_path,
+            &config.meta.wikidata_categories_path,
+        )?);
 
-        let worker = FilteringWorker::new(sources, substrate);
+        let worker = FilteringWorker::new(wikidata, substrate);
         let stash = FilteringStash::new(config.clone());
 
         let flow = parallel::Flow::new();

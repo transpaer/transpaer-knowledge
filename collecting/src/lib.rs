@@ -8,6 +8,8 @@ pub mod data {
 
 pub mod errors;
 
+pub mod categories;
+
 pub mod bcorp;
 pub mod eu_ecolabel;
 pub mod fashion_transparency_index;

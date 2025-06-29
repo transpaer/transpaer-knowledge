@@ -17,7 +17,7 @@ use crate::{
 
 const MAX_CATEGORY_PRODUCT_NUM: usize = 300_000;
 
-// TODO: Rework as repotts per data source
+// TODO: Rework as reports per data source
 #[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Debug, Default)]
@@ -92,6 +92,52 @@ impl CrystalizationReport {
             }
         }
         log::warn!("End of the report");
+    }
+}
+
+/// Prepares  the crystalization report fron the collector.
+#[derive(Debug)]
+pub struct Summary {
+    num_products: usize,
+    num_products_with_category: usize,
+    products_in_category: BTreeMap<String, usize>,
+}
+
+impl Summary {
+    pub fn create(collector: &CrystalizationCollector) -> Result<Self, BucketError> {
+        log::info!("Sumarizing...");
+
+        let mut products_in_category = BTreeMap::new();
+        let products = collector.get_product_bucket()?;
+        let num_products = products.len();
+        let mut num_products_with_category = 0;
+        for item in products.iter() {
+            let (_, product) = item?;
+            if !product.categories.is_empty() {
+                num_products_with_category += 1;
+            }
+            for category in &product.categories {
+                products_in_category
+                    .entry(category.to_string())
+                    .and_modify(|amount| *amount += 1)
+                    .or_insert_with(|| 1);
+            }
+        }
+
+        Ok(Self { num_products, num_products_with_category, products_in_category })
+    }
+
+    pub fn report(&self) {
+        log::info!("Summary:");
+        log::info!(
+            " * {} out of {} products have a category",
+            self.num_products_with_category,
+            self.num_products
+        );
+        log::info!(" * products per category:");
+        for (category, amount) in &self.products_in_category {
+            log::info!("   - {category: <120} {amount: >5}");
+        }
     }
 }
 
@@ -309,7 +355,7 @@ impl Processor {
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
                 categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
-                    c.categories.iter().map(|c| c.join("/")).collect()
+                    c.categories.iter().map(|c| c.0.clone()).collect()
                 }),
                 regions: Self::extract_regions(product.availability.as_ref()).map_err(
                     |source| errors::CrystalizationError::IsoCountry {
@@ -369,7 +415,7 @@ impl Processor {
                     .into_iter()
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
-                categories: product.categorisation.categories.iter().map(|c| c.join("/")).collect(),
+                categories: product.categorisation.categories.iter().map(|c| c.0.clone()).collect(),
                 regions: Self::extract_regions(product.availability.as_ref()).map_err(
                     |source| errors::CrystalizationError::IsoCountry {
                         source,
@@ -483,7 +529,7 @@ impl Processor {
                     .map(|image| gather::Image { image, source: substrate.source.clone() })
                     .collect(),
                 categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
-                    c.categories.iter().map(|c| c.join("/")).collect()
+                    c.categories.iter().map(|c| c.0.clone()).collect()
                 }),
                 regions: Self::extract_regions(product.availability.as_ref()).map_err(
                     |source| errors::CrystalizationError::IsoCountry {
@@ -1218,6 +1264,7 @@ impl Crystalizer {
             let (collector, crystalizer_report) =
                 Processor::new(&config.runtime)?.process(&substrates, &coagulate)?;
             crystalizer_report.report(&substrates);
+            Summary::create(&collector)?.report();
 
             let store = DbStore::new(&config.crystal)?;
             Saver::new(store).store_all(&collector)?;

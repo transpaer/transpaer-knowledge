@@ -6,56 +6,36 @@ use merge::Merge;
 use sustainity_collecting::{data::WikiId, errors::MapSerde};
 use sustainity_wikidata::data::Entity;
 
-use crate::{cache, config, errors, parallel, runners, sources::Sourceable, wikidata::ItemExt};
-
-/// Holds all the supplementary source data.
-#[derive(Debug)]
-pub struct FilteringSources;
-
-impl Sourceable for FilteringSources {
-    type Config = config::Filtering1Config;
-
-    fn load(_config: &Self::Config) -> Result<Self, errors::ProcessingError> {
-        Ok(Self)
-    }
-}
+use crate::{cache, config, errors, parallel, runners, utils, wikidata::ItemExt};
 
 /// Data storage for gathered data.
 ///
 /// Allows merging different instances.
 #[derive(Default, Debug, Clone)]
-pub struct FilteringCollector {
+pub struct ExtractingCollector {
     /// IDs of manufacturers.
     manufacturer_ids: HashSet<WikiId>,
-
-    /// IDs of product classes.
-    classes: HashSet<WikiId>,
 }
 
-impl FilteringCollector {
+impl ExtractingCollector {
     pub fn add_manufacturer_ids(&mut self, ids: &[WikiId]) {
         self.manufacturer_ids.extend(ids.iter().copied());
     }
-
-    pub fn add_classes(&mut self, classes: &[WikiId]) {
-        self.classes.extend(classes.iter().copied());
-    }
 }
 
-impl merge::Merge for FilteringCollector {
+impl merge::Merge for ExtractingCollector {
     fn merge(&mut self, other: Self) {
         self.manufacturer_ids.extend(other.manufacturer_ids);
-        self.classes.extend(other.classes);
     }
 }
 
 /// Filters product entries out from the wikidata dump file.
 #[derive(Clone, Debug, Default)]
-pub struct FilteringWorker {
-    collector: FilteringCollector,
+pub struct ExtractingWorker {
+    collector: ExtractingCollector,
 }
 
-impl FilteringWorker {
+impl ExtractingWorker {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -63,8 +43,8 @@ impl FilteringWorker {
 }
 
 #[async_trait]
-impl runners::WikidataWorker for FilteringWorker {
-    type Output = FilteringCollector;
+impl runners::WikidataWorker for ExtractingWorker {
+    type Output = ExtractingCollector;
 
     async fn process(
         &mut self,
@@ -76,12 +56,6 @@ impl runners::WikidataWorker for FilteringWorker {
             Entity::Item(item) => {
                 if let Some(manufacturer_ids) = item.get_manufacturer_ids()? {
                     self.collector.add_manufacturer_ids(&manufacturer_ids);
-                }
-                if let Some(class_ids) = item.get_superclasses()? {
-                    self.collector.add_classes(&class_ids);
-                }
-                if let Some(class_ids) = item.get_classes()? {
-                    self.collector.add_classes(&class_ids);
                 }
             }
             Entity::Property(_property) => (),
@@ -99,64 +73,59 @@ impl runners::WikidataWorker for FilteringWorker {
 }
 
 #[derive(Clone, Debug)]
-pub struct FilteringStash {
+pub struct ExtractingStash {
     /// Collected data.
-    collector: FilteringCollector,
+    collector: ExtractingCollector,
 
     /// Configuration.
-    config: config::Filtering1Config,
+    config: config::ExtractingConfig,
 }
 
-impl FilteringStash {
+impl ExtractingStash {
     #[must_use]
-    pub fn new(config: config::Filtering1Config) -> Self {
-        Self { collector: FilteringCollector::default(), config }
+    pub fn new(config: config::ExtractingConfig) -> Self {
+        Self { collector: ExtractingCollector::default(), config }
     }
 }
 
 #[async_trait]
-impl runners::Stash for FilteringStash {
-    type Input = FilteringCollector;
+impl runners::Stash for ExtractingStash {
+    type Input = ExtractingCollector;
 
     fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
-        log::info!(
-            "Merging {} manufacturers and {} products or classes",
-            input.manufacturer_ids.len(),
-            input.classes.len()
-        );
+        log::info!("Merging {} manufacturers", input.manufacturer_ids.len(),);
         self.collector.merge(input);
         Ok(())
     }
 
     fn finish(self) -> Result<(), errors::ProcessingError> {
         log::info!("Found {} manufacturers", self.collector.manufacturer_ids.len());
-        log::info!("Found {} products or classes", self.collector.classes.len());
 
         let mut cache = cache::Wikidata {
             manufacturer_ids: self.collector.manufacturer_ids.iter().copied().collect(),
-            classes: self.collector.classes.iter().copied().collect(),
         };
 
         cache.manufacturer_ids.sort();
-        cache.classes.sort();
 
         log::info!("Serializing...");
         let contents = serde_json::to_string_pretty(&cache).map_serde()?;
 
-        log::info!("Writing to `{}`", self.config.wikidata_cache_path.display());
-        std::fs::write(&self.config.wikidata_cache_path, contents)
-            .map_err(|e| errors::ProcessingError::Io(e, self.config.wikidata_cache_path.clone()))?;
+        let path = &self.config.cache.wikidata_cache_path;
+        log::info!("Writing to `{}`", path.display());
+        utils::create_parent(path)?;
+        std::fs::write(path, contents)
+            .map_err(|e| errors::ProcessingError::Io(e, path.to_owned()))?;
 
         Ok(())
     }
 }
 
-pub struct FilteringRunner;
+pub struct ExtractingRunner;
 
-impl FilteringRunner {
-    pub fn run(config: &config::Filtering1Config) -> Result<(), errors::ProcessingError> {
-        let worker = FilteringWorker::new();
-        let stash = FilteringStash::new(config.clone());
+impl ExtractingRunner {
+    pub fn run(config: &config::ExtractingConfig) -> Result<(), errors::ProcessingError> {
+        let worker = ExtractingWorker::new();
+        let stash = ExtractingStash::new(config.clone());
 
         let flow = parallel::Flow::new();
         runners::WikidataRunner::flow(flow, config, worker, stash)?.join();

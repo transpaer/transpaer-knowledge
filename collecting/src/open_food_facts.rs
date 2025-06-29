@@ -76,33 +76,23 @@ pub mod data {
                 self.countries_tags.split(',').map(String::from).collect()
             }
         }
-    }
 
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub enum Regions {
-        #[serde(rename = "all")]
-        World,
-
-        #[serde(rename = "unknown")]
-        Unknown,
-
-        #[serde(rename = "list")]
-        List(Vec<String>),
-    }
-
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct CountryEntry {
-        #[serde(rename = "tag")]
-        pub country_tag: String,
-        pub regions: Option<Regions>,
-        pub count: usize,
+        /// Extracts category tags.
+        #[must_use]
+        pub fn extract_categories(&self) -> Vec<String> {
+            if self.categories_tags.is_empty() {
+                Vec::new()
+            } else {
+                self.categories_tags.split(',').map(String::from).collect()
+            }
+        }
     }
 }
 
 /// Reader for loading Open Food Facts data.
 pub mod reader {
-    use super::data::{CountryEntry, Record};
-    use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
+    use super::data::Record;
+    use crate::errors::{IoOrSerdeError, MapSerde};
 
     /// Iterator over Open Food Facts CSV file records.
     pub struct Iter {
@@ -151,16 +141,5 @@ pub mod reader {
             result += 1;
         }
         Ok(result)
-    }
-
-    /// Loads the file with mapping from Open Food Facts sell country tags to Sustainity regions.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn parse_countries(path: &std::path::Path) -> Result<Vec<CountryEntry>, IoOrSerdeError> {
-        let contents = std::fs::read_to_string(path).map_with_path(path)?;
-        let parsed: Vec<CountryEntry> = serde_yaml::from_str(&contents).map_with_path(path)?;
-        Ok(parsed)
     }
 }

@@ -18,13 +18,14 @@ struct Context {}
 swagger::new_context_type!(SustainityContext, EmptyContext, XSpanIdString);
 
 const TONYS_GTIN: ids::Gtin = ids::Gtin::new(8_717_677_339_556);
+const MISSING_GTIN: ids::Gtin = ids::Gtin::new(12_890_567_456_123);
 const FAIRPHONE_4_WIKI_ID: ids::WikiId = ids::WikiId::new(109_851_604);
 const FAIRPHONE_ORG_WIKI_ID: ids::WikiId = ids::WikiId::new(5_019_402);
 const BCORP_FAIRPHONE_ID: &str = "001C000001Dz6afIAB";
 const BCORP_FAIRPHONE_URL: &str =
     "https://www.bcorporation.net/en-us/find-a-b-corp/company/fairphone/";
 const AVENTON_DOMAIN: &str = "aventon.com";
-const MELIORA_DOMAIN: &str = "meliorameansbetter.com";
+const PLAINE_DOMAIN: &str = "plaineproducts.com";
 
 #[derive(thiserror::Error, Debug)]
 enum Finding {
@@ -215,6 +216,7 @@ impl SamplingRunner {
 
         findings.consider(Self::check_backend_library(config).await);
         findings.consider(Self::check_backend_prod_by_gtin(config).await);
+        findings.consider(Self::check_backend_prod_by_invalid_gtin(config).await);
         findings.consider(Self::check_backend_prod_by_wiki_id(config).await);
         findings.consider(Self::check_backend_org_by_wiki_id(config).await);
         findings.consider(Self::check_backend_org_by_domain(config).await);
@@ -232,7 +234,7 @@ impl SamplingRunner {
         let library = client.get_library(&context).await?;
         match library {
             api::GetLibraryResponse::Ok { body: library, .. } => {
-                ensure_eq!(library.items.len(), 10, "wrong library length");
+                ensure_eq!(library.items.len(), 11, "wrong library length");
             }
         }
 
@@ -298,6 +300,27 @@ impl SamplingRunner {
                     TONYS_GTIN,
                 )));
             }
+        }
+        Ok(())
+    }
+
+    async fn check_backend_prod_by_invalid_gtin(
+        config: &config::SamplingBackendConfig,
+    ) -> Result<(), Finding> {
+        let client = api::Client::try_new_http(&config.url)?;
+        let context = SustainityContext::<_, Context>::default();
+        let gtin = MISSING_GTIN.to_string();
+
+        let product = client
+            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, &context)
+            .await?;
+        match product {
+            api::GetProductResponse::Ok { .. } => {
+                return Err(Finding::Other(format!(
+                    "Product found for a GTIN that sould be missing from the DB: {MISSING_GTIN}"
+                )));
+            }
+            api::GetProductResponse::NotFound { .. } => {}
         }
         Ok(())
     }
@@ -370,7 +393,7 @@ impl SamplingRunner {
                 ensure_eq!(product.alternatives.len(), 1, "wrong number of category alternatives");
                 ensure_eq!(
                     product.alternatives[0].category,
-                    "smartphone",
+                    "electronics/communications/telephony/mobile_phones",
                     "unwexpected category name"
                 );
                 ensure_eq!(
@@ -473,6 +496,7 @@ impl SamplingRunner {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn check_backend_org_by_domain(
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
@@ -524,7 +548,72 @@ impl SamplingRunner {
                 return Err(Finding::Other(format!(
                     "Organisation {:?}:{:?} not found",
                     api::models::OrganisationIdVariant::Www,
-                    MELIORA_DOMAIN,
+                    AVENTON_DOMAIN,
+                )));
+            }
+        }
+
+        let org = client
+            .get_organisation(
+                api::models::OrganisationIdVariant::Www,
+                PLAINE_DOMAIN.to_string(),
+                &context,
+            )
+            .await?;
+        match org {
+            api::GetOrganisationResponse::Ok { body: org, .. } => {
+                ensure_eq!(
+                    org.organisation_ids.domains,
+                    vec![api::models::Id::from_str(PLAINE_DOMAIN)?],
+                    "wrong domains"
+                );
+                ensure_eq!(
+                    org.names,
+                    vec![
+                        api::models::ShortText {
+                            text: api::models::ShortString::from_str("Plaine Products")?,
+                            source: api::models::DataSource::BCorp
+                        },
+                        api::models::ShortText {
+                            text: api::models::ShortString::from_str("Plaine Products")?,
+                            source: api::models::DataSource::Other,
+                        },
+                    ],
+                    "wrong name or source"
+                );
+                ensure_eq!(org.descriptions.len(), 1, "Wrong number of descriptions");
+                if let Some(desc) = org.descriptions.first() {
+                    ensure_eq!(desc.source, api::models::DataSource::BCorp, "wrong source");
+                }
+                ensure_eq!(org.medallions.len(), 1, "wrong number of certifications");
+                if let Some(med) = org.medallions.first() {
+                    ensure_eq!(
+                        med.variant,
+                        api::models::MedallionVariant::BCorp,
+                        "wrong certification"
+                    );
+                    ensure_eq!(med.bcorp.is_some(), true, "BCorp medallion empty");
+                    if let Some(bcorp) = &med.bcorp {
+                        ensure_eq!(*bcorp.report_url, "https://www.bcorporation.net/en-us/find-a-b-corp/company/plaine-products/", "wrong BCorp link");
+                    }
+                }
+                ensure_eq!(
+                    org.media,
+                    vec![api::models::Medium {
+                        icon: Some("https://yt3.googleusercontent.com/TAUPgsU3oOD-CYNfUo1V9rpgtH-IHbAjUdo92nusdtz9e25tLjQ_uRx0ZpnAf5DnBp6tUAQUt28=s160-c-k-c0x00ffffff-no-rj".to_string()),
+                        mentions: vec![api::models::Mention {
+                            link: "https://www.youtube.com/watch?v=Wx2ANP44bqQ".to_string(),
+                            title: "My favorite zero waste brands and zero waste swaps I recommend for 2024".to_string(),
+                        }],
+                    }],
+                    "wrong media"
+                );
+            }
+            api::GetOrganisationResponse::NotFound { .. } => {
+                return Err(Finding::Other(format!(
+                    "Organisation {:?}:{:?} not found",
+                    api::models::OrganisationIdVariant::Www,
+                    PLAINE_DOMAIN,
                 )));
             }
         }
