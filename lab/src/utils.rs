@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use serde::{de::Deserializer, Deserialize};
-
 use crate::errors;
 
 /// Verifies that the path exists and is a file.
@@ -60,6 +58,30 @@ pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckE
     Ok(())
 }
 
+/// Verifies that the path can be created or already exists and is a directory.
+///
+/// # Errors
+///
+/// Returns an error if the path does not exist or is not a directory.
+pub fn dir_usable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+    if path.exists() {
+        if !path.is_dir() {
+            return Err(errors::ConfigCheckError::NotADir(path.to_owned()));
+        }
+    } else if let Some(base) = path.parent() {
+        if !base.exists() {
+            return Err(errors::ConfigCheckError::DoesNotExist(base.to_owned()));
+        }
+        if !base.is_dir() {
+            return Err(errors::ConfigCheckError::NotADir(base.to_owned()));
+        }
+    } else {
+        return Err(errors::ConfigCheckError::NoParent(path.to_owned()));
+    }
+
+    Ok(())
+}
+
 /// Verifies that the parent of the given path itself does not exist,
 /// but it's parent exists and is a directory.
 ///
@@ -71,6 +93,17 @@ pub fn parent_creatable(path: &std::path::Path) -> Result<(), errors::ConfigChec
         path_creatable(base)
     } else {
         Err(errors::ConfigCheckError::NoParent(path.to_owned()))
+    }
+}
+
+/// Creates the parent of the given path.
+pub fn create_parent(path: &std::path::Path) -> Result<(), errors::ProcessingError> {
+    if let Some(base) = path.parent() {
+        std::fs::create_dir_all(base)
+            .map_err(|e| errors::ProcessingError::Io(e, path.to_owned()))?;
+        Ok(())
+    } else {
+        Err(errors::ConfigCheckError::NoParent(path.to_owned()).into())
     }
 }
 
@@ -105,33 +138,6 @@ where
     for (key, value2) in m2 {
         m1.entry(key).and_modify(|value1| m(value1, &value2)).or_insert_with(|| value2);
     }
-}
-
-/// Helper for deserializing `isocountry::countryCode` from alpha3 strings.
-pub fn deserialize_country_code_from_alpha3<'de, D>(
-    d: D,
-) -> Result<isocountry::CountryCode, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(d)?;
-    isocountry::CountryCode::for_alpha3(s.as_str()).map_err(serde::de::Error::custom)
-}
-
-/// Helper for deserializing `isocountry::countryCode` from alpha3 strings.
-pub fn deserialize_optional_country_code_from_alpha3<'de, D>(
-    d: D,
-) -> Result<Option<isocountry::CountryCode>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = Option::<String>::deserialize(d)?;
-    Ok(match s {
-        Some(s) => Some(
-            isocountry::CountryCode::for_alpha3(s.as_str()).map_err(serde::de::Error::custom)?,
-        ),
-        None => None,
-    })
 }
 
 #[cfg(test)]

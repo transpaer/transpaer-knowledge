@@ -16,22 +16,15 @@ fn format_elapsed_time(duration: std::time::Duration) -> String {
 async fn run() -> Result<(), sustainity_lab::ProcessingError> {
     use sustainity_lab::Config;
     match Config::new_from_args() {
-        Config::Filtering1(config) => {
+        Config::Extracting(config) => {
             config.check()?;
-            log::info!("Start filtering, phase 1");
-            sustainity_lab::Filtering1Runner::run(&config)?;
-        }
-        Config::Filtering2(config) => {
-            config.check()?;
-            log::info!("Start filtering, phase 2");
-            sustainity_lab::Filtering2Runner::run(&config)?;
+            log::info!("Start extracting");
+            sustainity_lab::ExtractingRunner::run(&config)?;
         }
         Config::Filtering(config) => {
             config.check()?;
-            log::info!("Start filtering, phase 1");
-            sustainity_lab::Filtering1Runner::run(&config.filter1)?;
-            log::info!("Continue filtering, phase 2");
-            sustainity_lab::Filtering2Runner::run(&config.filter2)?;
+            log::info!("Start filtering");
+            sustainity_lab::FilteringRunner::run(&config)?;
         }
         Config::Updating(config) => {
             config.check()?;
@@ -57,11 +50,6 @@ async fn run() -> Result<(), sustainity_lab::ProcessingError> {
             config.check()?;
             log::info!("Start oxidizing!");
             sustainity_lab::Oxidizer::run(&config)?;
-        }
-        Config::Analysis(config) => {
-            config.check()?;
-            log::info!("Start analysis!");
-            sustainity_lab::AnalysisRunner::run(&config)?;
         }
         Config::Connection(config) => {
             config.check()?;
@@ -100,6 +88,7 @@ async fn main() {
 
     if let Err(err) = run().await {
         log::error!("Processing error:\n{err}");
+        std::process::exit(1);
     }
 
     log::info!("Done! Elapsed time: {}", format_elapsed_time(start_time.elapsed()));

@@ -18,6 +18,8 @@ use sustainity_schema as schema;
 use crate::ids;
 
 pub type LibraryTopic = String;
+
+// TODO: Validate the domain when deserializing.
 pub type Domain = String;
 
 #[cfg(feature = "into-api")]

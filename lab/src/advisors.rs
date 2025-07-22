@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use sustainity_collecting::{
-    bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, sustainity, tco,
+    bcorp, categories::Category, eu_ecolabel, fashion_transparency_index, sustainity, tco,
 };
 use sustainity_models::{gather as models, ids, utils::extract_domain_from_url};
 use sustainity_schema as schema;
@@ -12,7 +12,7 @@ use crate::{
     cache, convert, errors,
     substrate::Substrates,
     utils,
-    wikidata::{self, ItemExt, WikiId},
+    wikidata::{ItemExt, WikiId},
 };
 
 /// Holds the information read from the `BCorp` data.
@@ -21,16 +21,23 @@ pub struct BCorpAdvisor {
     domain_to_name: HashMap<String, String>,
 
     /// Map from `BCorp` country name to country code.
-    country_to_code: HashMap<String, isocountry::CountryCode>,
+    country_to_regions: HashMap<String, models::Regions>,
 }
 
 impl BCorpAdvisor {
     /// Constructs a new `BCorpAdvisor`.
     #[must_use]
     pub fn new(
-        records: Option<&[bcorp::data::Record]>,
-        data: Option<&crate::bcorp::data::Data>,
+        domain_to_name: HashMap<String, String>,
+        country_to_regions: HashMap<String, models::Regions>,
     ) -> Self {
+        Self { domain_to_name, country_to_regions }
+    }
+
+    pub fn assemble(
+        records: Option<Vec<bcorp::data::Record>>,
+        country_data: Option<sustainity::data::Countries>,
+    ) -> Result<Self, errors::ProcessingError> {
         let domain_to_name = if let Some(records) = records {
             records
                 .iter()
@@ -40,16 +47,19 @@ impl BCorpAdvisor {
             HashMap::new()
         };
 
-        let country_to_code = if let Some(data) = data {
-            data.countries
-                .iter()
-                .map(|country| (country.country.clone(), country.code))
-                .collect::<HashMap<_, _>>()
+        let country_to_regions = if let Some(data) = country_data {
+            let mut country_to_regions = HashMap::new();
+            for entry in data.countries {
+                if let Some(regions) = entry.regions {
+                    country_to_regions.insert(entry.tag, convert::to_model_regions(&regions)?);
+                }
+            }
+            country_to_regions
         } else {
             HashMap::new()
         };
 
-        Self { domain_to_name, country_to_code }
+        Ok(Self::new(domain_to_name, country_to_regions))
     }
 
     /// Loads a new `BCorpAdvisor` from a file.
@@ -57,31 +67,33 @@ impl BCorpAdvisor {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load(
-        original_path: &std::path::Path,
-        support_path: &std::path::Path,
-    ) -> Result<Self, errors::ProcessingError> {
-        let original_data = if utils::file_exists(original_path).is_ok() {
-            Some(sustainity_collecting::bcorp::reader::parse(original_path)?)
+    pub fn load<P>(original_path: P, regions_path: P) -> Result<Self, errors::ProcessingError>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let path = original_path.as_ref();
+        let original_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity_collecting::bcorp::reader::parse(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. BCorp original data won't be loaded!",
-                original_path.display(),
+                path.display(),
             );
             None
         };
 
-        let support_data = if utils::file_exists(support_path).is_ok() {
-            Some(crate::bcorp::reader::parse(support_path)?)
+        let path = regions_path.as_ref();
+        let regions_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity::reader::parse_countries(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. BCorp support data won't be loaded!",
-                support_path.display(),
+                path.display(),
             );
             None
         };
 
-        Ok(Self::new(original_data.as_deref(), support_data.as_ref()))
+        Self::assemble(original_data, regions_data)
     }
 
     /// Checks if at least one of the passed domains corresponds to a `BCorp` company.
@@ -96,8 +108,8 @@ impl BCorpAdvisor {
     }
 
     #[must_use]
-    pub fn get_country_code(&self, name: &str) -> Option<&isocountry::CountryCode> {
-        self.country_to_code.get(name)
+    pub fn get_regions(&self, name: &str) -> Option<&models::Regions> {
+        self.country_to_regions.get(name)
     }
 }
 
@@ -180,19 +192,54 @@ impl EuEcolabelAdvisor {
 pub struct OpenFoodFactsAdvisor {
     /// Map from Open Food facts countries to Sustainity regionss.
     country_to_regions: HashMap<String, models::Regions>,
+
+    /// Map from Open Food facts category tags to Sustainity categories.
+    tags_to_categories: HashMap<String, HashSet<String>>,
 }
 
 impl OpenFoodFactsAdvisor {
-    /// Constructs a new empty `OpenFoodFactsAdvisor`.
-    #[must_use]
-    pub fn new_empty() -> Self {
-        Self { country_to_regions: HashMap::new() }
-    }
-
     /// Constructs a new `OpenFoodFactsAdvisor`.
     #[must_use]
-    pub fn new(country_to_regions: HashMap<String, models::Regions>) -> Self {
-        Self { country_to_regions }
+    pub fn new(
+        country_to_regions: HashMap<String, models::Regions>,
+        tags_to_categories: HashMap<String, HashSet<String>>,
+    ) -> Self {
+        Self { country_to_regions, tags_to_categories }
+    }
+
+    /// Constructs a new `OpenFoodFactsAdvisor` with loaded data.
+    pub fn assemble(
+        country_data: Option<sustainity::data::Countries>,
+        category_data: Option<sustainity::data::Categories>,
+    ) -> Result<Self, errors::ProcessingError> {
+        let country_to_regions = if let Some(data) = country_data {
+            let mut country_to_regions = HashMap::new();
+            for entry in data.countries {
+                if let Some(regions) = entry.regions {
+                    country_to_regions.insert(entry.tag, convert::to_model_regions(&regions)?);
+                }
+            }
+            country_to_regions
+        } else {
+            HashMap::new()
+        };
+
+        let tags_to_categories = if let Some(data) = category_data {
+            let mut tags_to_categories = HashMap::new();
+            for entry in data.categories {
+                if entry.delete != Some(true) {
+                    if let Some(categories) = entry.categories {
+                        let categories = categories.iter().map(Category::get_string).collect();
+                        tags_to_categories.insert(entry.tag, categories);
+                    }
+                }
+            }
+            tags_to_categories
+        } else {
+            HashMap::new()
+        };
+
+        Ok(Self::new(country_to_regions, tags_to_categories))
     }
 
     /// Loads a new `OpenFoodFactsdvisor` from a file.
@@ -200,33 +247,47 @@ impl OpenFoodFactsAdvisor {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
-        if utils::file_exists(path).is_ok() {
-            let data = open_food_facts::reader::parse_countries(path)?;
-            let mut country_to_regions = HashMap::new();
-            for entry in data {
-                if let Some(regions) = entry.regions {
-                    country_to_regions
-                        .insert(entry.country_tag, convert::to_model_regions(&regions)?);
-                }
-            }
-            Ok(Self::new(country_to_regions))
+    pub fn load<P>(country_path: P, category_path: P) -> Result<Self, errors::ProcessingError>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let path = country_path.as_ref();
+        let country_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity::reader::parse_countries(path)?)
         } else {
             log::warn!(
-                "Could not access `{}`. Open Food Facts data won't be loaded!",
+                "Could not access `{}`. Open Food Facts country data won't be loaded!",
                 path.display(),
             );
-            Ok(Self::new_empty())
-        }
+            None
+        };
+
+        let path = category_path.as_ref();
+        let category_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity::reader::parse_categories(path)?)
+        } else {
+            log::warn!(
+                "Could not access `{}`. Open Food Facts category data won't be loaded!",
+                path.display(),
+            );
+            None
+        };
+
+        Self::assemble(country_data, category_data)
     }
 
     #[must_use]
     pub fn get_countries(&self, country_tag: &str) -> Option<&models::Regions> {
         self.country_to_regions.get(country_tag)
     }
+
+    #[must_use]
+    pub fn get_categories(&self, category_tag: &str) -> Option<&HashSet<String>> {
+        self.tags_to_categories.get(category_tag)
+    }
 }
 
-/// Holds the information read from the `BCorp` data.
+/// Holds the information read from the `TCO` data.
 pub struct TcoAdvisor {
     /// Map from Wikidata IDs of companies certifies by TCO to their names.
     companies: HashMap<WikiId, String>,
@@ -353,42 +414,66 @@ pub struct WikidataAdvisor {
     /// Topic info.
     manufacturer_ids: HashSet<WikiId>,
 
-    /// Topic info.
-    class_ids: HashSet<WikiId>,
+    /// Map from Wikidata countries to Sustainity regionss.
+    country_to_regions: HashMap<WikiId, models::Regions>,
 
-    /// Wikidata ID to alpha3 country code
-    country_to_region: HashMap<WikiId, isocountry::CountryCode>,
+    /// Map from Wikidata countries to Sustainity regionss.
+    class_to_categories: HashMap<WikiId, HashSet<String>>,
 }
 
+// TODO: Introduce the `new`, `assemble`, `load` pattern for every advisor.
 impl WikidataAdvisor {
     /// Constructs a new `WikidataAdvisor` with loaded data.
     pub fn new(
-        cache: Option<&cache::Wikidata>,
-        data: Option<&wikidata::support::Data>,
+        manufacturer_ids: HashSet<WikiId>,
+        country_to_regions: HashMap<WikiId, models::Regions>,
+        class_to_categories: HashMap<WikiId, HashSet<String>>,
+    ) -> Self {
+        Self { manufacturer_ids, country_to_regions, class_to_categories }
+    }
+
+    /// Constructs a new `WikidataAdvisor` with loaded data.
+    pub fn assemble(
+        cache: Option<cache::Wikidata>,
+        country_data: Option<sustainity::data::Countries>,
+        category_data: Option<sustainity::data::Categories>,
     ) -> Result<Self, errors::ProcessingError> {
-        let country_to_region = if let Some(data) = data {
-            let mut country_to_region = HashMap::new();
-            for country in &data.countries {
-                if let Some(code) = country.country {
-                    let wiki_id = WikiId::try_from(&country.wiki_id)?;
-                    country_to_region.insert(wiki_id, code);
+        let country_to_regions = if let Some(data) = country_data {
+            let mut country_to_regions = HashMap::new();
+            for entry in data.countries {
+                if let Some(regions) = entry.regions {
+                    let id = WikiId::try_from(&entry.tag)?;
+                    country_to_regions.insert(id, convert::to_model_regions(&regions)?);
                 }
             }
-            country_to_region
+            country_to_regions
         } else {
             HashMap::new()
         };
 
-        let (manufacturer_ids, class_ids) = if let Some(cache) = cache {
-            (
-                cache.manufacturer_ids.iter().copied().collect(),
-                cache.classes.iter().copied().collect(),
-            )
+        let class_to_categories = if let Some(data) = category_data {
+            let mut class_to_categories = HashMap::new();
+            for entry in data.categories {
+                if entry.delete != Some(true) {
+                    if let Some(categories) = entry.categories {
+                        let id = WikiId::try_from(&entry.tag)?;
+                        let categories = categories.iter().map(Category::get_string).collect();
+                        class_to_categories.insert(id, categories);
+                    }
+                }
+            }
+            class_to_categories
         } else {
-            (HashSet::new(), HashSet::new())
+            HashMap::new()
         };
 
-        Ok(Self { manufacturer_ids, class_ids, country_to_region })
+        let manufacturer_ids = if let Some(cache) = cache {
+            cache.manufacturer_ids.iter().copied().collect()
+        } else {
+            HashSet::new()
+        };
+
+        Ok(Self::new(manufacturer_ids, country_to_regions, class_to_categories))
     }
 
     /// Loads a new `WikidataAdvisor` from a file.
@@ -396,25 +481,42 @@ impl WikidataAdvisor {
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load<P>(cache_path: P, source_path: P) -> Result<Self, errors::ProcessingError>
+    pub fn load<P>(
+        cache_path: P,
+        region_path: P,
+        category_path: P,
+    ) -> Result<Self, errors::ProcessingError>
     where
-        P: AsRef<std::path::Path> + std::fmt::Debug,
+        P: AsRef<std::path::Path>,
     {
-        let cache = if utils::file_exists(cache_path.as_ref()).is_ok() {
-            Some(cache::load(cache_path.as_ref())?)
+        let path = cache_path.as_ref();
+        let cache = if utils::file_exists(path).is_ok() {
+            Some(cache::load(path)?)
         } else {
-            log::warn!("Could not access {cache_path:?}. Wikidata cache won't be loaded!");
+            log::warn!("Could not access `{}`. Wikidata cache won't be loaded!", path.display());
             None
         };
 
-        let data = if utils::file_exists(source_path.as_ref()).is_ok() {
-            Some(wikidata::support::parse(source_path.as_ref())?)
+        let path = region_path.as_ref();
+        let region_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity::reader::parse_countries(path)?)
         } else {
-            log::warn!("Could not access {source_path:?}. Wikidata source won't be loaded!");
+            log::warn!("Could not access `{}`. Wikidata region won't be loaded!", path.display());
             None
         };
 
-        Self::new(cache.as_ref(), data.as_ref())
+        let path = category_path.as_ref();
+        let category_data = if utils::file_exists(path).is_ok() {
+            Some(sustainity::reader::parse_categories(path)?)
+        } else {
+            log::warn!(
+                "Could not access `{}`. Wikidata categories won't be loaded!",
+                path.display()
+            );
+            None
+        };
+
+        Self::assemble(cache, region_data, category_data)
     }
 
     /// Checks if the passed ID belongs to a known manufacturer.
@@ -424,22 +526,44 @@ impl WikidataAdvisor {
         self.manufacturer_ids.contains(id)
     }
 
-    /// Checks if the passed ID belongs to a known item class.
-    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
-    pub fn has_class_id(&self, id: &WikiId) -> bool {
-        self.class_ids.contains(id)
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn get_regions(&self, country_id: &WikiId) -> Option<&models::Regions> {
+        self.country_to_regions.get(country_id)
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
     #[must_use]
-    pub fn get_country(&self, country_id: &WikiId) -> Option<&isocountry::CountryCode> {
-        self.country_to_region.get(country_id)
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn get_categories(&self, class_id: &WikiId) -> Option<&HashSet<String>> {
+        self.class_to_categories.get(class_id)
+    }
+
+    #[allow(clippy::unused_self)]
+    #[must_use]
+    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        item.has_manufacturer() || item.has_gtin()
+    }
+
+    #[must_use]
+    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+        if self.is_product(item) {
+            return false;
+        }
+
+        if item.is_organisation() {
+            return true;
+        }
+
+        if self.has_manufacturer_id(&item.id) {
+            return true;
+        }
+
+        false
     }
 }
 
 /// Holds the information read from the substrate data.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SubstrateAdvisor {
     /// All producer wiki IDs.
     producer_wiki_ids: HashSet<ids::WikiId>,
@@ -452,19 +576,41 @@ pub struct SubstrateAdvisor {
 }
 
 impl SubstrateAdvisor {
-    /// Loads a new `SubstrateAdvisor` from a file.
+    /// Loads a new `SubstrateAdvisor` from a file with no excludes.
     ///
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
-    pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+    pub fn load_all(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
+        Self::load(path, &HashSet::new())
+    }
+
+    /// Loads a new `SubstrateAdvisor` from a file with specified substrates excluded.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if fails to read from `path` or parse the contents.
+    pub fn load(
+        path: &std::path::Path,
+        exclude: &HashSet<String>,
+    ) -> Result<Self, errors::ProcessingError> {
+        let mut me = Self {
+            producer_wiki_ids: HashSet::new(),
+            product_wiki_ids: HashSet::new(),
+            domains: HashSet::new(),
+        };
+
         if utils::dir_exists(path).is_ok() {
             log::info!("Loading SubstrateAdvisor");
-            let mut me = Self::default();
 
             let (substrates, _report) = Substrates::prepare(path)?;
             for substrate in substrates.list() {
+                if exclude.contains(&substrate.name) {
+                    log::info!(" -> {} (SKIP)", substrate.name);
+                    continue;
+                }
                 log::info!(" -> {}", substrate.name);
+
                 match schema::read::iter_file(&substrate.path)? {
                     schema::read::FileIterVariant::Catalog(iter) => {
                         for entry in iter {
@@ -503,11 +649,10 @@ impl SubstrateAdvisor {
                 }
             }
             log::info!("Loading SubstrateAdvisor: done");
-            Ok(me)
         } else {
             log::warn!("Could not access `{}`. Substrate data won't be loaded!", path.display());
-            Ok(Self::default())
         }
+        Ok(me)
     }
 
     fn process_producer_ids(
@@ -535,26 +680,6 @@ impl SubstrateAdvisor {
             }
         }
         Ok(())
-    }
-
-    #[must_use]
-    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
-        if self.has_producer_wiki_id(&item.id.into()) {
-            return true;
-        }
-
-        if let Some(websites) = item.get_official_websites() {
-            if self.has_domains(&websites) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    #[must_use]
-    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
-        self.has_product_wiki_id(&item.id.into())
     }
 
     #[must_use]

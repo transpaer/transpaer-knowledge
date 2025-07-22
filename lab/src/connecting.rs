@@ -7,7 +7,7 @@ use serde::Serialize;
 use sustainity_collecting::{errors::MapSerde, eu_ecolabel, open_food_facts, sustainity};
 use sustainity_wikidata::data::{Entity, Item};
 
-use crate::{config, errors, parallel, runners, sources::Sourceable, utils, wikidata::ItemExt};
+use crate::{config, errors, parallel, runners, utils, wikidata::ItemExt};
 
 /// Calculates similarity of entry in some data to entry in Wikidata.
 #[derive(Serialize, Clone, Debug, Hash, PartialEq, Eq)]
@@ -128,10 +128,8 @@ pub struct ConnectionSources {
     data: HashMap<String, Matcher>,
 }
 
-impl Sourceable for ConnectionSources {
-    type Config = config::ConnectionConfig;
-
-    fn load(config: &Self::Config) -> Result<Self, errors::ProcessingError> {
+impl ConnectionSources {
+    fn load(config: &config::ConnectionConfig) -> Result<Self, errors::ProcessingError> {
         let mut eu_data = HashMap::<String, Matcher>::new();
         for record in eu_ecolabel::reader::parse(&config.eu_ecolabel_input_path)? {
             let name = utils::disambiguate_name(&record.company_name);

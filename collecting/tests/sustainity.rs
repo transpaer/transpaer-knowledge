@@ -1,20 +1,29 @@
 #[test]
 fn country_entry_serde() {
-    use sustainity_collecting::open_food_facts::data::{CountryEntry, Regions};
+    use sustainity_collecting::sustainity::data::{CountryEntry, Regions};
 
-    let original_string_none = "tag: tag\nregions: null\ncount: 1\n".to_string();
+    let original_string_none = "tag: tag\ncount: 1\n".to_string();
     let original_string_world = "tag: tag\nregions: all\ncount: 2\n".to_string();
     let original_string_unknown = "tag: tag\nregions: unknown\ncount: 3\n".to_string();
     let original_string_list = "tag: tag\nregions: !list\n- FRA\n- USA\ncount: 4\n".to_string();
 
     let original_entry_none =
-        CountryEntry { country_tag: "tag".to_string(), regions: None, count: 1 };
-    let original_entry_world =
-        CountryEntry { country_tag: "tag".to_string(), regions: Some(Regions::World), count: 2 };
-    let original_entry_unknown =
-        CountryEntry { country_tag: "tag".to_string(), regions: Some(Regions::Unknown), count: 3 };
+        CountryEntry { tag: "tag".to_string(), description: None, regions: None, count: 1 };
+    let original_entry_world = CountryEntry {
+        tag: "tag".to_string(),
+        description: None,
+        regions: Some(Regions::World),
+        count: 2,
+    };
+    let original_entry_unknown = CountryEntry {
+        tag: "tag".to_string(),
+        description: None,
+        regions: Some(Regions::Unknown),
+        count: 3,
+    };
     let original_entry_list = CountryEntry {
-        country_tag: "tag".to_string(),
+        tag: "tag".to_string(),
+        description: None,
         regions: Some(Regions::List(vec!["FRA".to_string(), "USA".to_string()])),
         count: 4,
     };

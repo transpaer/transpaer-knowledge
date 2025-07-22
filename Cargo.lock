@@ -2038,7 +2038,7 @@ dependencies = [
 [[package]]
 name = "sustainity-schema"
 version = "0.1.0"
-source = "git+https://github.com/sustainity-dev/sustainity-schema-rust.git?branch=main#a38cd05724402dceb2e1956ee1239f0626b063b3"
+source = "git+https://github.com/sustainity-dev/sustainity-schema-rust.git?branch=main#f4a06548d926a8908034140b9e5d978d3a50a16e"
 dependencies = [
  "chrono",
  "serde",

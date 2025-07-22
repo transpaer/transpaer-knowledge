@@ -1,3 +1,5 @@
+// TODO: There is a lot of dead code here. Maybe time for cleanup?
+
 use async_trait::async_trait;
 
 use sustainity_collecting::{eu_ecolabel, open_food_facts};
@@ -10,7 +12,7 @@ use crate::{
 pub trait Stash: Send {
     type Input: Clone + Send;
 
-    fn stash(&mut self, entry: Self::Input) -> Result<(), errors::ProcessingError>;
+    fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError>;
 
     fn finish(self) -> Result<(), errors::ProcessingError>;
 }
@@ -315,6 +317,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct OpenFoodFactsRunner<W, S, C>
 where
     W: OpenFoodFactsWorker,
@@ -324,6 +327,7 @@ where
     phantom: std::marker::PhantomData<(W, S, C)>,
 }
 
+#[allow(dead_code)]
 impl<W, S, C> OpenFoodFactsRunner<W, S, C>
 where
     W: OpenFoodFactsWorker + Sync + 'static,
@@ -361,7 +365,7 @@ pub struct EuEcolabelRunnerMessage {
     headers: csv::StringRecord,
 }
 
-/// Implementation of `Producer` trait for Wikidata data.
+/// Implementation of `Producer` trait for EU Ecolabel data.
 #[must_use]
 #[derive(Debug)]
 pub struct EuEcolabelProducer {

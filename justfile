@@ -1,0 +1,65 @@
+E := "5"
+S := "1"
+C := "1"
+T := "1"
+
+origin := "../data/origin"
+meta := "../data/meta"
+support := "../data/support"
+substrate0 := "../data/substrate"
+library := "../data/library"
+cache := "../data/cache-" + E
+substrate := "../data/substrate-" + E + "-" + S
+coagulate := "../data/coagulate-" + E + "-" + S + "-" + C
+target := "../data/target-" + E + "-" + S + "-" + C + "-" + T
+
+kickstart:
+    cargo run --release --bin sustainity-lab -- extract \
+        --origin {{origin}} \
+        --cache {{cache}}
+
+    cargo run --release --bin sustainity-lab -- condense \
+        --group immediate \
+        --origin {{origin}} \
+        --meta {{meta}} \
+        --support {{support}} \
+        --cache {{cache}} \
+        --substrate {{substrate}}
+
+    cp -a {{substrate0}}/* {{substrate}}
+
+    cargo run --release --bin sustainity-lab -- filter \
+        --origin {{origin}} \
+        --meta {{meta}} \
+        --cache {{cache}} \
+        --substrate {{substrate}}
+
+    cargo run --release --bin sustainity-lab -- condense \
+        --group filtered \
+        --origin {{origin}} \
+        --meta {{meta}} \
+        --support {{support}} \
+        --cache {{cache}} \
+        --substrate {{substrate}}
+
+    cargo run --release --bin sustainity-lab -- coagulate \
+       --substrate {{substrate}} \
+       --coagulate {{coagulate}}
+
+    cargo run --release --bin sustainity-lab -- crystalize \
+        --substrate {{substrate}} \
+        --coagulate {{coagulate}} \
+        --target {{target}}
+
+    cargo run --release --bin sustainity-lab -- oxidize \
+        --support {{support}} \
+        --library {{library}} \
+        --target {{target}}
+
+    cargo run --release --bin sustainity-lab -- update \
+        --origin {{origin}} \
+        --cache {{cache}} \
+        --substrate {{substrate}} \
+        --meta {{meta}}
+
+    echo DONE

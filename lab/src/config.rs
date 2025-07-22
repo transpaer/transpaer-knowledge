@@ -4,6 +4,8 @@ use clap::Parser;
 
 use crate::{commands, errors::ConfigCheckError, utils};
 
+pub use commands::CondensationGroup;
+
 /// Configuration for `WikidataGather`.
 #[must_use]
 #[derive(Debug, Clone)]
@@ -129,56 +131,25 @@ impl FullProducerConfig {
     }
 }
 
-/// Subconfiguration related to source files used by several other configs.
+/// Subconfiguration related to origin files used by several other configs.
 #[allow(clippy::struct_field_names)]
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct SourcesConfig {
-    /// Path to input Wikidata cache.
-    pub wikidata_cache_path: PathBuf,
-
-    /// Path to input Wikidata cache.
-    pub wikidata_path: PathBuf,
-
+pub struct OriginConfig {
     /// Path to original B-Corp data.
-    pub bcorp_original_path: PathBuf,
-
-    /// Path to B-Corp support data.
-    pub bcorp_support_path: PathBuf,
+    pub bcorp_path: PathBuf,
 
     /// Path to original EU Ecolabel data.
-    pub eu_ecolabel_original_path: PathBuf,
-
-    /// Path to mapping from names to Wikidata IDs.
-    pub match_path: PathBuf,
-
-    /// Path to TCO data.
-    pub tco_path: PathBuf,
-
-    /// Path to Fashion Transparency Index data.
-    pub fashion_transparency_index_path: PathBuf,
-
-    /// Path to file mapping Open Food Facts sell countries to Sustainity regions.
-    pub open_food_facts_countries_path: PathBuf,
+    pub eu_ecolabel_path: PathBuf,
 }
 
-impl SourcesConfig {
-    /// Constructs a new `SourceConfig`.
-    pub fn new(origin: &str, source: &str, cache: &str) -> SourcesConfig {
-        // TODO: rename the source path? Maybe to "support"?
-        let source = PathBuf::from(source);
+impl OriginConfig {
+    /// Constructs a new `OriginConfig`.
+    pub fn new(origin: &str) -> Self {
         let origin = PathBuf::from(origin);
-        let cache = PathBuf::from(cache);
         Self {
-            wikidata_cache_path: cache.join("wikidata_cache.json"),
-            wikidata_path: source.join("wikidata.yaml"),
-            bcorp_original_path: origin.join("bcorp.csv"),
-            bcorp_support_path: source.join("bcorp.yaml"),
-            eu_ecolabel_original_path: origin.join("eu_ecolabel_products.csv"),
-            match_path: source.join("matches.yaml"),
-            tco_path: source.join("tco.yaml"),
-            fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
-            open_food_facts_countries_path: source.join("open_food_facts_countries.yaml"),
+            bcorp_path: origin.join("bcorp.csv"),
+            eu_ecolabel_path: origin.join("eu_ecolabel_products.csv"),
         }
     }
 
@@ -188,14 +159,131 @@ impl SourcesConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::file_exists(&self.wikidata_cache_path)?;
-        utils::file_exists(&self.bcorp_original_path)?;
-        utils::file_exists(&self.bcorp_support_path)?;
-        utils::file_exists(&self.eu_ecolabel_original_path)?;
-        utils::file_exists(&self.match_path)?;
+        utils::file_exists(&self.bcorp_path)?;
+        utils::file_exists(&self.eu_ecolabel_path)?;
+        Ok(())
+    }
+}
+
+/// Subconfiguration related to support files used by several other configs.
+#[allow(clippy::struct_field_names)]
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct SupportConfig {
+    /// Path to TCO data.
+    pub tco_path: PathBuf,
+
+    /// Path to Fashion Transparency Index data.
+    pub fashion_transparency_index_path: PathBuf,
+}
+
+impl SupportConfig {
+    /// Constructs a new `SupportConfig`.
+    pub fn new(support: &str) -> Self {
+        let support = PathBuf::from(support);
+        Self {
+            tco_path: support.join("tco.yaml"),
+            fashion_transparency_index_path: support.join("fashion_transparency_index.yaml"),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::file_exists(&self.tco_path)?;
         utils::file_exists(&self.fashion_transparency_index_path)?;
-        utils::file_exists(&self.open_food_facts_countries_path)?;
+        Ok(())
+    }
+}
+
+/// Subconfiguration related to meta files used by several other configs.
+#[allow(clippy::struct_field_names)]
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct MetaConfig {
+    /// Path to file mapping Wikidata countries to Sustainity regions.
+    pub wikidata_regions_path: PathBuf,
+
+    /// Path to file mapping Wikidata classes to Sustainity categories.
+    pub wikidata_categories_path: PathBuf,
+
+    /// Path to file mapping Open Food Facts sell countries to Sustainity regions.
+    pub open_food_facts_regions_path: PathBuf,
+
+    /// Path to file mapping Open Food Facts categories to Sustainity categories.
+    pub open_food_facts_categories_path: PathBuf,
+
+    /// Path to file mapping B-Corp countries to Sustainity regions.
+    pub bcorp_regions_path: PathBuf,
+
+    /// Path to mapping from names to Wikidata IDs.
+    pub match_path: PathBuf,
+}
+
+impl MetaConfig {
+    /// Constructs a new `MetaConfig`.
+    pub fn new(meta: &str) -> Self {
+        let meta = PathBuf::from(meta);
+        Self {
+            wikidata_regions_path: meta.join("wikidata_regions.yaml"),
+            wikidata_categories_path: meta.join("wikidata_categories.yaml"),
+            open_food_facts_regions_path: meta.join("open_food_facts_regions.yaml"),
+            open_food_facts_categories_path: meta.join("open_food_facts_categories.yaml"),
+            bcorp_regions_path: meta.join("bcorp_regions.yaml"),
+            match_path: meta.join("matches.yaml"),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::file_exists(&self.wikidata_regions_path)?;
+        utils::file_exists(&self.open_food_facts_regions_path)?;
+        utils::file_exists(&self.bcorp_regions_path)?;
+        utils::file_exists(&self.match_path)?;
+        Ok(())
+    }
+}
+
+/// Subconfiguration related to cache files used by several other configs.
+#[allow(clippy::struct_field_names)]
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// Path to the cache wikidata path.
+    pub wikidata_cache_path: PathBuf,
+}
+
+impl CacheConfig {
+    /// Constructs a new `CacheConfig`.
+    pub fn new(cache: &str) -> Self {
+        let cache = PathBuf::from(cache);
+        Self { wikidata_cache_path: cache.join("wikidata_cache.json") }
+    }
+
+    /// Checks validity of the configuration for reading.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check_read(&self) -> Result<(), ConfigCheckError> {
+        utils::file_exists(&self.wikidata_cache_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for writing.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check_write(&self) -> Result<(), ConfigCheckError> {
+        utils::parent_creatable(&self.wikidata_cache_path)?;
         Ok(())
     }
 }
@@ -209,7 +297,7 @@ pub struct SubstrateConfig {
 }
 
 impl SubstrateConfig {
-    /// Constructs a new `SourceConfig`.
+    /// Constructs a new `SubstrateConfig`.
     pub fn new(substrate: &str) -> Self {
         let substrate_path = PathBuf::from(substrate);
         Self { substrate_path }
@@ -231,7 +319,7 @@ impl SubstrateConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check_write(&self) -> Result<(), ConfigCheckError> {
-        utils::path_creatable(&self.substrate_path)?;
+        utils::dir_usable(&self.substrate_path)?;
         Ok(())
     }
 }
@@ -239,20 +327,19 @@ impl SubstrateConfig {
 /// Configuration for the `filter1` command.
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct Filtering1Config {
+pub struct ExtractingConfig {
     /// Path to output Wikidata cache.
-    pub wikidata_cache_path: PathBuf,
+    pub cache: CacheConfig,
 
     /// `WikidataGatherer` config.
     pub wikidata_gatherer: WikidataProducerConfig,
 }
 
-impl Filtering1Config {
-    /// Constructs a new `Filtering1`.
-    pub fn new(args: &commands::Filtering1Args) -> Filtering1Config {
-        let cache = PathBuf::from(&args.cache);
+impl ExtractingConfig {
+    /// Constructs a new `ExtractingConfig`.
+    pub fn new(args: &commands::ExtractingArgs) -> ExtractingConfig {
         Self {
-            wikidata_cache_path: cache.join("wikidata_cache.json"),
+            cache: CacheConfig::new(&args.cache),
             wikidata_gatherer: WikidataProducerConfig::new_full(&args.origin),
         }
     }
@@ -263,7 +350,7 @@ impl Filtering1Config {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::path_creatable(&self.wikidata_cache_path)?;
+        self.cache.check_write()?;
         self.wikidata_gatherer.check()?;
         Ok(())
     }
@@ -272,12 +359,15 @@ impl Filtering1Config {
 /// Configuration for the `filter2` command.
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct Filtering2Config {
+pub struct FilteringConfig {
     /// Path to output filtered .
     pub wikidata_filtered_dump_path: PathBuf,
 
-    /// Data sources.
-    pub sources: SourcesConfig,
+    /// Paths to meta files.
+    pub meta: MetaConfig,
+
+    /// Paths to cache files.
+    pub cache: CacheConfig,
 
     /// Path to the substrate.
     pub substrate_path: PathBuf,
@@ -286,14 +376,15 @@ pub struct Filtering2Config {
     pub wikidata_gatherer: WikidataProducerConfig,
 }
 
-impl Filtering2Config {
-    /// Constructs a new `Filtering2Config`.
-    pub fn new(args: &commands::Filtering2Args) -> Filtering2Config {
+impl FilteringConfig {
+    /// Constructs a new `FilteringConfig`.
+    pub fn new(args: &commands::FilteringArgs) -> FilteringConfig {
         let cache = PathBuf::from(&args.cache);
         let substrate = PathBuf::from(&args.substrate);
         Self {
             wikidata_filtered_dump_path: cache.join("wikidata.jsonl"),
-            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
+            meta: MetaConfig::new(&args.meta),
+            cache: CacheConfig::new(&args.cache),
             substrate_path: substrate,
             wikidata_gatherer: WikidataProducerConfig::new_full(&args.origin),
         }
@@ -306,44 +397,10 @@ impl Filtering2Config {
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::path_creatable(&self.wikidata_filtered_dump_path)?;
-        self.sources.check()?;
+        self.meta.check()?;
+        self.cache.check_read()?;
+        utils::dir_exists(&self.substrate_path)?;
         self.wikidata_gatherer.check()?;
-        Ok(())
-    }
-}
-
-/// Configuration for the `filter` command.
-#[must_use]
-#[derive(Debug, Clone)]
-pub struct FilteringConfig {
-    /// Configuration for the first phase of filtering.
-    pub filter1: Filtering1Config,
-
-    /// Configuration for the first phase of filtering.
-    pub filter2: Filtering2Config,
-}
-
-impl FilteringConfig {
-    /// Constructs a new `Filtering2Config`.
-    pub fn new(args: &commands::FilteringArgs) -> FilteringConfig {
-        let filter1 =
-            commands::Filtering1Args { origin: args.origin.clone(), cache: args.cache.clone() };
-        let filter2 = commands::Filtering2Args {
-            origin: args.origin.clone(),
-            source: args.source.clone(),
-            cache: args.cache.clone(),
-            substrate: args.substrate.clone(),
-        };
-        Self { filter1: Filtering1Config::new(&filter1), filter2: Filtering2Config::new(&filter2) }
-    }
-
-    /// Checks validity of the configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
-    pub fn check(&self) -> Result<(), ConfigCheckError> {
-        self.filter1.check()?;
         Ok(())
     }
 }
@@ -351,50 +408,23 @@ impl FilteringConfig {
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct UpdatingConfig {
+    pub wikidata_gatherer: WikidataProducerConfig,
     pub off: OpenFoodFactsProducerConfig,
-    pub sources: SourcesConfig,
+    pub bcorp_original_path: PathBuf,
+    pub meta: MetaConfig,
+    pub substrate: SubstrateConfig,
 }
 
 impl UpdatingConfig {
     /// Constructs a new `UpdatingConfig`.
     pub fn new(args: &commands::UpdatingArgs) -> UpdatingConfig {
+        let origin = PathBuf::from(&args.origin);
+
         Self {
+            wikidata_gatherer: WikidataProducerConfig::new_filtered(&args.cache),
             off: OpenFoodFactsProducerConfig::new(&args.origin),
-            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
-        }
-    }
-
-    /// Checks validity of the configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
-    pub fn check(&self) -> Result<(), ConfigCheckError> {
-        self.off.check()?;
-        Ok(())
-    }
-}
-
-/// Configuration for the `condense` command.
-#[must_use]
-#[derive(Debug, Clone)]
-pub struct CondensationConfig {
-    /// Data sources.
-    pub sources: SourcesConfig,
-
-    /// Full producer config.
-    pub full_producer: FullProducerConfig,
-
-    /// Substrate config.
-    pub substrate: SubstrateConfig,
-}
-
-impl CondensationConfig {
-    /// Constructs a new `CondensationConfig`.
-    pub fn new(args: &commands::CondensationArgs) -> CondensationConfig {
-        Self {
-            sources: SourcesConfig::new(&args.origin, &args.source, &args.cache),
-            full_producer: FullProducerConfig::new(&args.origin, &args.cache),
+            bcorp_original_path: origin.join("bcorp.csv"),
+            meta: MetaConfig::new(&args.meta),
             substrate: SubstrateConfig::new(&args.substrate),
         }
     }
@@ -405,8 +435,79 @@ impl CondensationConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        self.sources.check()?;
-        self.full_producer.check()?;
+        self.wikidata_gatherer.check()?;
+        self.off.check()?;
+        utils::file_exists(&self.bcorp_original_path)?;
+        self.meta.check()?;
+        self.substrate.check_read()?;
+        self.off.check()?;
+        Ok(())
+    }
+}
+
+/// Configuration for the `condense` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct CondensationConfig {
+    /// Skip substrates that require filtration.
+    pub group: CondensationGroup,
+
+    /// Paths to origin files.
+    pub origin: OriginConfig,
+
+    /// Paths to support files.
+    pub support: SupportConfig,
+
+    /// Paths to meta files.
+    pub meta: MetaConfig,
+
+    /// Paths to cache files.
+    pub cache: CacheConfig,
+
+    /// Wikidata gatherer config.
+    pub wiki: WikidataProducerConfig,
+
+    /// Open Food Facts gatherer config.
+    pub off: OpenFoodFactsProducerConfig,
+
+    /// EU Ecolabel gatherer config.
+    pub eu_ecolabel: EuEcolabelProducerConfig,
+
+    /// Substrate config.
+    pub substrate: SubstrateConfig,
+}
+
+impl CondensationConfig {
+    /// Constructs a new `CondensationConfig`.
+    pub fn new(args: &commands::CondensationArgs) -> CondensationConfig {
+        Self {
+            group: args.group,
+            origin: OriginConfig::new(&args.origin),
+            meta: MetaConfig::new(&args.meta),
+            support: SupportConfig::new(&args.support),
+            cache: CacheConfig::new(&args.cache),
+            wiki: WikidataProducerConfig::new_filtered(&args.cache),
+            off: OpenFoodFactsProducerConfig::new(&args.origin),
+            eu_ecolabel: EuEcolabelProducerConfig::new(&args.origin),
+            substrate: SubstrateConfig::new(&args.substrate),
+        }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        self.origin.check()?;
+        self.meta.check()?;
+        self.support.check()?;
+        self.cache.check_read()?;
+        if self.group != CondensationGroup::Immediate {
+            self.wiki.check()?;
+        }
+        self.off.check()?;
+        self.eu_ecolabel.check()?;
         self.substrate.check_write()?;
         Ok(())
     }
@@ -513,13 +614,14 @@ pub struct OxidationConfig {
 impl OxidationConfig {
     //i/ Constructs a new `OxidationConfig`.
     pub fn new(args: &commands::OxidationArgs) -> OxidationConfig {
-        let source = PathBuf::from(&args.source);
+        // TODO: Read TFI data from substrate
+        let support = PathBuf::from(&args.support);
         let library = PathBuf::from(&args.library);
         let target = PathBuf::from(&args.target);
         Self {
-            library_file_path: source.join("sustainity_library.yaml"),
+            library_file_path: library.join("library.yaml"),
             library_dir_path: library,
-            fashion_transparency_index_path: source.join("fashion_transparency_index.yaml"),
+            fashion_transparency_index_path: support.join("fashion_transparency_index.yaml"),
             app_storage: target.join("app"),
         }
     }
@@ -534,45 +636,6 @@ impl OxidationConfig {
         utils::dir_exists(&self.library_dir_path)?;
         utils::file_exists(&self.fashion_transparency_index_path)?;
         utils::path_creatable(&self.app_storage)?;
-        Ok(())
-    }
-}
-
-/// Configuration for the `analyze` command.
-#[allow(clippy::struct_field_names)]
-#[must_use]
-#[derive(Clone, Debug)]
-pub struct AnalysisConfig {
-    /// Path to output Wikidata cache.
-    pub wikidata_cache_path: PathBuf,
-
-    /// Path to output Wikidata cache.
-    pub wikidata_path: PathBuf,
-
-    /// `Wikidatagatherer` config.
-    pub wikidata_gatherer: WikidataProducerConfig,
-}
-
-impl AnalysisConfig {
-    /// Constructs a new `FilteringConfig`.
-    pub fn new(args: &commands::AnalysisArgs) -> AnalysisConfig {
-        let cache = PathBuf::from(&args.cache);
-        let sources = PathBuf::from(&args.source);
-        Self {
-            wikidata_cache_path: cache.join("wikidata_cache.json"),
-            wikidata_path: sources.join("wikidata.json"),
-            wikidata_gatherer: WikidataProducerConfig::new_filtered(&args.cache),
-        }
-    }
-
-    /// Checks validity of the configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
-    pub fn check(&self) -> Result<(), ConfigCheckError> {
-        utils::file_exists(&self.wikidata_cache_path)?;
-        self.wikidata_gatherer.check()?;
         Ok(())
     }
 }
@@ -598,11 +661,11 @@ impl ConnectionConfig {
     /// Constructs a new `ConnectionConfig`.
     pub fn new(args: &commands::ConnectionArgs) -> ConnectionConfig {
         let origin = PathBuf::from(&args.origin);
-        let source = PathBuf::from(&args.source);
+        let meta = PathBuf::from(&args.meta);
         Self {
             eu_ecolabel_input_path: origin.join("eu_ecolabel_products.csv"),
             open_food_facts_input_path: origin.join("en.openfoodfacts.org.products.csv"),
-            output_path: source.join("matches.yaml"),
+            output_path: meta.join("matches.yaml"),
             wikidata_gatherer: WikidataProducerConfig::new_with_path(&args.wikidata_path),
         }
     }
@@ -692,21 +755,15 @@ impl From<&FullProducerConfig> for EuEcolabelProducerConfig {
     }
 }
 
-impl From<&CondensationConfig> for FullProducerConfig {
-    fn from(config: &CondensationConfig) -> FullProducerConfig {
-        config.full_producer.clone()
-    }
-}
-
 impl From<&CondensationConfig> for WikidataProducerConfig {
     fn from(config: &CondensationConfig) -> WikidataProducerConfig {
-        config.full_producer.wiki.clone()
+        config.wiki.clone()
     }
 }
 
 impl From<&CondensationConfig> for OpenFoodFactsProducerConfig {
     fn from(config: &CondensationConfig) -> OpenFoodFactsProducerConfig {
-        config.full_producer.off.clone()
+        config.off.clone()
     }
 }
 
@@ -716,26 +773,26 @@ impl From<&UpdatingConfig> for OpenFoodFactsProducerConfig {
     }
 }
 
+impl From<&UpdatingConfig> for WikidataProducerConfig {
+    fn from(config: &UpdatingConfig) -> WikidataProducerConfig {
+        config.wikidata_gatherer.clone()
+    }
+}
+
 impl From<&CondensationConfig> for EuEcolabelProducerConfig {
     fn from(config: &CondensationConfig) -> EuEcolabelProducerConfig {
-        config.full_producer.eu_ecolabel.clone()
+        config.eu_ecolabel.clone()
     }
 }
 
-impl From<&Filtering2Config> for WikidataProducerConfig {
-    fn from(config: &Filtering2Config) -> WikidataProducerConfig {
+impl From<&FilteringConfig> for WikidataProducerConfig {
+    fn from(config: &FilteringConfig) -> WikidataProducerConfig {
         config.wikidata_gatherer.clone()
     }
 }
 
-impl From<&Filtering1Config> for WikidataProducerConfig {
-    fn from(config: &Filtering1Config) -> WikidataProducerConfig {
-        config.wikidata_gatherer.clone()
-    }
-}
-
-impl From<&AnalysisConfig> for WikidataProducerConfig {
-    fn from(config: &AnalysisConfig) -> WikidataProducerConfig {
+impl From<&ExtractingConfig> for WikidataProducerConfig {
+    fn from(config: &ExtractingConfig) -> WikidataProducerConfig {
         config.wikidata_gatherer.clone()
     }
 }
@@ -743,24 +800,6 @@ impl From<&AnalysisConfig> for WikidataProducerConfig {
 impl From<&ConnectionConfig> for WikidataProducerConfig {
     fn from(config: &ConnectionConfig) -> WikidataProducerConfig {
         config.wikidata_gatherer.clone()
-    }
-}
-
-impl From<&CondensationConfig> for SourcesConfig {
-    fn from(config: &CondensationConfig) -> SourcesConfig {
-        config.sources.clone()
-    }
-}
-
-impl From<&Filtering2Config> for SourcesConfig {
-    fn from(config: &Filtering2Config) -> SourcesConfig {
-        config.sources.clone()
-    }
-}
-
-impl From<&UpdatingConfig> for SourcesConfig {
-    fn from(config: &UpdatingConfig) -> SourcesConfig {
-        config.sources.clone()
     }
 }
 
@@ -774,15 +813,13 @@ impl From<&CrystalizationConfig> for SubstrateConfig {
 #[must_use]
 #[derive(Debug, Clone)]
 pub enum Config {
-    Filtering1(Filtering1Config),
-    Filtering2(Filtering2Config),
+    Extracting(ExtractingConfig),
     Filtering(FilteringConfig),
     Updating(UpdatingConfig),
     Condensation(CondensationConfig),
     Coagulation(CoagulationConfig),
     Crystalization(CrystalizationConfig),
     Oxidation(OxidationConfig),
-    Analysis(AnalysisConfig),
     Connection(ConnectionConfig),
     Sample(SamplingConfig),
 }
@@ -794,15 +831,13 @@ impl Config {
 
         let args = Args::parse();
         match args.command {
-            Commands::Filter1(args) => Config::Filtering1(Filtering1Config::new(&args)),
-            Commands::Filter2(args) => Config::Filtering2(Filtering2Config::new(&args)),
+            Commands::Extract(args) => Config::Extracting(ExtractingConfig::new(&args)),
             Commands::Filter(args) => Config::Filtering(FilteringConfig::new(&args)),
             Commands::Update(args) => Config::Updating(UpdatingConfig::new(&args)),
             Commands::Condense(args) => Config::Condensation(CondensationConfig::new(&args)),
             Commands::Coagulate(args) => Config::Coagulation(CoagulationConfig::new(&args)),
             Commands::Crystalize(args) => Config::Crystalization(CrystalizationConfig::new(&args)),
             Commands::Oxidize(args) => Config::Oxidation(OxidationConfig::new(&args)),
-            Commands::Analyze(args) => Config::Analysis(AnalysisConfig::new(&args)),
             Commands::Connect(args) => Config::Connection(ConnectionConfig::new(&args)),
             Commands::Sample(args) => Config::Sample(SamplingConfig::new(&args)),
         }
