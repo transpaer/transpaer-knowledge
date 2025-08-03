@@ -26,6 +26,8 @@ const BCORP_FAIRPHONE_URL: &str =
     "https://www.bcorporation.net/en-us/find-a-b-corp/company/fairphone/";
 const AVENTON_DOMAIN: &str = "aventon.com";
 const PLAINE_DOMAIN: &str = "plaineproducts.com";
+const SMARTPHONE_CATEGORY_LABEL: &str = "electronics/communications/telephony/mobile_phones";
+const SMARTPHONE_CATEGORY_ID: &str = "electronics.communications.telephony.mobile_phones";
 
 #[derive(thiserror::Error, Debug)]
 enum Finding {
@@ -220,6 +222,8 @@ impl SamplingRunner {
         findings.consider(Self::check_backend_prod_by_wiki_id(config).await);
         findings.consider(Self::check_backend_org_by_wiki_id(config).await);
         findings.consider(Self::check_backend_org_by_domain(config).await);
+        findings.consider(Self::check_backend_deep_category(config).await);
+        findings.consider(Self::check_backend_root_category(config).await);
         findings.consider(Self::check_backend_text_search_by_name(config).await);
         findings.consider(Self::check_backend_text_search_by_gtin(config).await);
         findings.consider(Self::check_backend_text_search_by_www(config).await);
@@ -392,9 +396,14 @@ impl SamplingRunner {
                 ensure!(product.medallions[2].sustainity.is_some(), "wrong certification");
                 ensure_eq!(product.alternatives.len(), 1, "wrong number of category alternatives");
                 ensure_eq!(
-                    product.alternatives[0].category,
+                    product.alternatives[0].category_label,
                     "electronics/communications/telephony/mobile_phones",
-                    "unwexpected category name"
+                    "unwexpected category label"
+                );
+                ensure_eq!(
+                    product.alternatives[0].category_id,
+                    "electronics.communications.telephony.mobile_phones",
+                    "unwexpected category ID"
                 );
                 ensure_eq!(
                     product.alternatives[0].alternatives.len(),
@@ -615,6 +624,86 @@ impl SamplingRunner {
                     api::models::OrganisationIdVariant::Www,
                     PLAINE_DOMAIN,
                 )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn check_backend_deep_category(
+        config: &config::SamplingBackendConfig,
+    ) -> Result<(), Finding> {
+        let client = api::Client::try_new_http(&config.url)?;
+        let context = SustainityContext::<_, Context>::default();
+
+        let cat = client.get_category(SMARTPHONE_CATEGORY_ID.to_string(), &context).await?;
+        match cat {
+            api::GetCategoryResponse::Ok { body: cat, .. } => {
+                ensure_eq!(cat.label, SMARTPHONE_CATEGORY_LABEL, "wrong label");
+                ensure_eq!(cat.products.len(), 100, "wrong number of products");
+                ensure_eq!(cat.status, api::models::CategoryStatus::Incomplete, "wrong status");
+                ensure_eq!(cat.subcategories, vec![], "wrong subcategories");
+                ensure_eq!(cat.supercategories.len(), 4, "wrong number of supercategories");
+                ensure_eq!(
+                    cat.supercategories[0],
+                    api::models::CategoryShort {
+                        id: "electronics".to_string(),
+                        label: "electronics".to_string(),
+                    },
+                    "wrong supercategory 0"
+                );
+                ensure_eq!(
+                    cat.supercategories[1],
+                    api::models::CategoryShort {
+                        id: "electronics.communications".to_string(),
+                        label: "communications".to_string(),
+                    },
+                    "wrong supercategory 1"
+                );
+                ensure_eq!(
+                    cat.supercategories[2],
+                    api::models::CategoryShort {
+                        id: "electronics.communications.telephony".to_string(),
+                        label: "telephony".to_string(),
+                    },
+                    "wrong supercategory 2"
+                );
+                ensure_eq!(
+                    cat.supercategories[3],
+                    api::models::CategoryShort {
+                        id: "electronics.communications.telephony.mobile_phones".to_string(),
+                        label: "mobile_phones".to_string(),
+                    },
+                    "wrong supercategory 3"
+                );
+            }
+            api::GetCategoryResponse::NotFound { .. } => {
+                return Err(Finding::Other(format!(
+                    "Category {SMARTPHONE_CATEGORY_LABEL:?} not found"
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn check_backend_root_category(
+        config: &config::SamplingBackendConfig,
+    ) -> Result<(), Finding> {
+        let client = api::Client::try_new_http(&config.url)?;
+        let context = SustainityContext::<_, Context>::default();
+
+        let cat = client.get_category(String::new(), &context).await?;
+        match cat {
+            api::GetCategoryResponse::Ok { body: cat, .. } => {
+                ensure_eq!(cat.label, "", "wrong label");
+                ensure_eq!(cat.products.len(), 0, "wrong number of products");
+                ensure_eq!(cat.status, api::models::CategoryStatus::Exploratory, "wrong status");
+                ensure_eq!(cat.subcategories.len(), 8, "wrong number of subcategories");
+                ensure_eq!(cat.supercategories.len(), 0, "wrong number of supercategories");
+            }
+            api::GetCategoryResponse::NotFound { .. } => {
+                return Err(Finding::Other("Root category not found".to_string()));
             }
         }
 

@@ -46,8 +46,8 @@ thiserror = { version = "1.0" }
 tokio = { version = "1.24" }
 
 sustainity-api = { git = "https://github.com/sustainity-dev/sustainity-api-rust.git", branch = "main", default-features = false }
-sustainity-schema = { git = "https://github.com/sustainity-dev/sustainity-schema-rust.git", branch = "main" }
 # sustainity-api = { path = "../sustainity-api-rust/sustainity_api", default-features = false }
+sustainity-schema = { git = "https://github.com/sustainity-dev/sustainity-schema-rust.git", branch = "main" }
 # sustainity-schema = { path = "../sustainity-schema-rust/sustainity-schema" }
 
 sustainity-collecting = { path = "collecting" }

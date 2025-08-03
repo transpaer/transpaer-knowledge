@@ -6,13 +6,16 @@ use snafu::prelude::*;
 use sustainity_api::models as api;
 use sustainity_models::{
     buckets::{AppStore, DbStore},
-    ids, utils,
+    ids, store, utils,
 };
 
 use crate::{
     errors::{self, BackendError},
     models::{OrganisationSearchResult, ProductSearchResult, SearchResultId},
 };
+
+const CATEGORY_DBID_SEPARATOR: char = '/';
+const CATEGORY_PARAM_SEPARATOR: char = '.';
 
 #[derive(Clone, Debug, PartialEq)]
 struct ScoredResult {
@@ -194,6 +197,42 @@ impl Retriever {
         }
     }
 
+    pub fn category(
+        &self,
+        category_param: String,
+    ) -> Result<Option<api::CategoryFull>, BackendError> {
+        let category_name = Self::decode_category_param(&category_param);
+        let categories = self.db.get_categories_bucket()?;
+        let products = self.db.get_product_bucket()?;
+
+        if let Some(category) = categories.get(&category_name)? {
+            let mut results = Vec::new();
+            if let Some(products_ids) = &category.products {
+                for product_id in products_ids {
+                    if let Some(product) = products.get(product_id)? {
+                        results.push((product.score(), product));
+                    }
+                }
+            }
+            results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            results.truncate(100);
+            let results = results.iter().map(|r| r.1.clone().into_api_short()).collect();
+            let subcategories = Self::prepare_subcategories(&category_param, &category);
+            let supercategories = Self::prepare_supercategories(&category_param);
+
+            Ok(Some(api::CategoryFull {
+                label: category_name.to_string(),
+                products: results,
+                status: category.status.into_api(),
+                subcategories,
+                supercategories,
+            }))
+        } else {
+            log::warn!("Category `{category_name}` not found");
+            Ok(None)
+        }
+    }
+
     pub fn search_by_text(
         &self,
         query: String,
@@ -333,11 +372,21 @@ impl Retriever {
         region_code: Option<&str>,
     ) -> Result<Vec<api::CategoryAlternatives>, BackendError> {
         let mut result = Vec::new();
-        for category in categories.iter().cloned() {
+        for category in categories.iter() {
+            // TODO: format the category nicely.
+            let category_label = category.clone();
+            let category_id = Self::encode_category_param(category);
+
             let excluded = vec![id.clone()];
-            let alternatives =
-                self.product_category_alternatives(&category, region_code, &excluded)?;
-            result.push(api::CategoryAlternatives { category, alternatives });
+            if let Some(alternatives) =
+                self.product_category_alternatives(category, region_code, &excluded)?
+            {
+                result.push(api::CategoryAlternatives {
+                    category_id,
+                    category_label,
+                    alternatives,
+                });
+            }
         }
         Ok(result)
     }
@@ -347,38 +396,35 @@ impl Retriever {
         category: &String,
         region_code: Option<&str>,
         excluded: &[ids::ProductId],
-    ) -> Result<Vec<api::ProductShort>, BackendError> {
+    ) -> Result<Option<Vec<api::ProductShort>>, BackendError> {
         let categories = self.db.get_categories_bucket()?;
         let products = self.db.get_product_bucket()?;
         if let Some(category) = categories.get(category)? {
             let mut rng = rand::rng();
             // TODO: Do this during precomputation and here only filter by region
             let mut results = Vec::new();
-            for product_id in &category {
-                if excluded.contains(product_id) {
-                    continue;
-                }
-                if let Some(product) = products.get(product_id)? {
-                    if product.regions.is_available_in(region_code) {
+            if let Some(product_ids) = &category.products {
+                for product_id in product_ids {
+                    if excluded.contains(product_id) {
                         continue;
                     }
+                    if let Some(product) = products.get(product_id)? {
+                        if product.regions.is_available_in(region_code) {
+                            continue;
+                        }
 
-                    let score = product.score();
-                    let randomized_score = score + rng.random_range(0.0..0.01);
-                    results.push((randomized_score, product));
+                        let score = product.score();
+                        let randomized_score = score + rng.random_range(0.0..0.01);
+                        results.push((randomized_score, product));
+                    }
                 }
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-            Ok(results
-                .chunks(10)
-                .next()
-                .unwrap_or(&results)
-                .iter()
-                .map(|r| r.1.clone().into_api_short())
-                .collect())
+            results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            results.truncate(10);
+            Ok(Some(results.iter().map(|r| r.1.clone().into_api_short()).collect()))
         } else {
             log::warn!("Category `{category}` not found");
-            Ok(Vec::new())
+            Ok(None)
         }
     }
 
@@ -472,6 +518,52 @@ impl Retriever {
             }
         }
         Ok(results)
+    }
+
+    fn decode_category_param(param: &str) -> String {
+        param.replace(CATEGORY_PARAM_SEPARATOR, &CATEGORY_DBID_SEPARATOR.to_string())
+    }
+
+    fn encode_category_param(param: &str) -> String {
+        param.replace(CATEGORY_DBID_SEPARATOR, &CATEGORY_PARAM_SEPARATOR.to_string())
+    }
+
+    fn prepare_subcategories(
+        category_name: &str,
+        category: &store::Category,
+    ) -> Vec<api::CategoryShort> {
+        let sep = CATEGORY_PARAM_SEPARATOR.to_string();
+        category
+            .subcategories
+            .iter()
+            .map(|part| {
+                let id = if category_name.is_empty() {
+                    part.to_string()
+                } else {
+                    [category_name, part].join(&sep)
+                };
+                api::CategoryShort { id, label: part.to_string() }
+            })
+            .collect()
+    }
+
+    fn prepare_supercategories(category_name: &str) -> Vec<api::CategoryShort> {
+        if category_name.is_empty() {
+            return Vec::new();
+        }
+
+        let sep = CATEGORY_PARAM_SEPARATOR.to_string();
+        let mut supercategories = Vec::new();
+        let mut buffer = String::with_capacity(category_name.len());
+        for part in category_name.split(&sep) {
+            if !buffer.is_empty() {
+                buffer += &sep;
+            }
+            buffer += part;
+            supercategories
+                .push(api::CategoryShort { id: buffer.clone(), label: part.to_string() });
+        }
+        supercategories
     }
 }
 
@@ -591,5 +683,73 @@ mod tests {
         collector.add(&[r3.clone(), r1.clone()], "Fairphone", None);
 
         assert_eq!(collector.gather_scored_results(), expected_results);
+    }
+
+    /// Tests if the subcategories are prepared correctly in the most common case.
+    #[test]
+    fn prepare_subcategories() {
+        let category = store::Category {
+            status: store::CategoryStatus::Incomplete,
+            subcategories: vec!["mobile_phones".to_string()],
+            products: None,
+        };
+        let obtained =
+            Retriever::prepare_subcategories("electronics.communications.telephony", &category);
+        let expected = vec![api::CategoryShort {
+            id: "electronics.communications.telephony.mobile_phones".to_owned(),
+            label: "mobile_phones".to_owned(),
+        }];
+        assert_eq!(obtained, expected);
+    }
+
+    /// Tests if the subcategories are prepared correctly in case they are prepared for the root category.
+    #[test]
+    fn prepare_root_subcategories() {
+        let category = store::Category {
+            status: store::CategoryStatus::Incomplete,
+            subcategories: vec!["sub1".to_string(), "sub2".to_string()],
+            products: None,
+        };
+        let obtained = Retriever::prepare_subcategories("", &category);
+        let expected = vec![
+            api::CategoryShort { id: "sub1".to_owned(), label: "sub1".to_owned() },
+            api::CategoryShort { id: "sub2".to_owned(), label: "sub2".to_owned() },
+        ];
+        assert_eq!(obtained, expected);
+    }
+
+    /// Tests if the supercategories are prepared correctly in the most common case.
+    #[test]
+    fn prepare_supercategories() {
+        let obtained = Retriever::prepare_supercategories("electronics.communications.telephony");
+        let expected = vec![
+            api::CategoryShort { id: "electronics".to_owned(), label: "electronics".to_owned() },
+            api::CategoryShort {
+                id: "electronics.communications".to_owned(),
+                label: "communications".to_owned(),
+            },
+            api::CategoryShort {
+                id: "electronics.communications.telephony".to_owned(),
+                label: "telephony".to_owned(),
+            },
+        ];
+
+        assert_eq!(obtained, expected);
+    }
+
+    /// Tests if the supercategories are prepared correctly in case they are prepared for the root category.
+    #[test]
+    fn prepare_root_supercategories() {
+        let obtained = Retriever::prepare_supercategories("");
+        let expected = Vec::new();
+        assert_eq!(obtained, expected);
+    }
+
+    /// Tests if the supercategories are prepared correctly in case they are prepared for a top-level category.
+    #[test]
+    fn prepare_top_supercategories() {
+        let obtained = Retriever::prepare_supercategories("top");
+        let expected = vec![api::CategoryShort { id: "top".to_owned(), label: "top".to_owned() }];
+        assert_eq!(obtained, expected);
     }
 }

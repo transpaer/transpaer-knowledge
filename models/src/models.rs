@@ -229,6 +229,12 @@ impl Regions {
     }
 }
 
+impl Default for Regions {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
 impl merge::Merge for Regions {
     fn merge(&mut self, other: Self) {
         match other {
@@ -924,7 +930,7 @@ impl StoreOrganisation {
 }
 
 /// Represents a set of product IDs.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherProductIds {
     /// GTIN of the product.
     pub eans: BTreeSet<ids::Ean>,
@@ -1017,7 +1023,7 @@ impl StoreProductIds {
 }
 
 /// Represents a product.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatherProduct {
     /// Product ID.
     pub ids: GatherProductIds,
@@ -1104,6 +1110,22 @@ impl GatherProduct {
             followed_by,
             sustainity_score,
         }
+    }
+
+    pub fn all_categories(&self, category_separator: char) -> BTreeSet<String> {
+        let sep = category_separator.to_string();
+        let mut result = BTreeSet::new();
+        for category in &self.categories {
+            let mut buffer = String::with_capacity(category.len());
+            for part in category.split(category_separator) {
+                if !buffer.is_empty() {
+                    buffer += &sep;
+                }
+                buffer += part;
+                result.insert(buffer.clone());
+            }
+        }
+        result
     }
 }
 
@@ -1211,6 +1233,44 @@ impl StoreProduct {
             + 0.6 * self.certifications.fti.as_ref().map(|c| 0.01 * c.score as f64).unwrap_or(0.0)
             + 0.3 * self.certifications.tco.is_some() as u32 as f64
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum CategoryStatus {
+    Exploratory,
+    Incomplete,
+    Satisfactory,
+    Complete,
+    Broad,
+}
+
+#[cfg(feature = "into-api")]
+impl CategoryStatus {
+    pub fn into_api(self) -> api::CategoryStatus {
+        match self {
+            Self::Exploratory => api::CategoryStatus::Exploratory,
+            Self::Incomplete => api::CategoryStatus::Incomplete,
+            Self::Satisfactory => api::CategoryStatus::Satisfactory,
+            Self::Complete => api::CategoryStatus::Complete,
+            Self::Broad => api::CategoryStatus::Broad,
+        }
+    }
+}
+
+/// Stores all relevant info about a category.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Category {
+    /// Progress of the work on this category.
+    pub status: CategoryStatus,
+
+    /// List of subcategories.
+    pub subcategories: Vec<String>,
+
+    /// List of products in this categories.
+    ///
+    /// If `None`, the the category does not need products, e.g. it's a very broad category
+    /// and product comparisons don't make sense.
+    pub products: Option<Vec<ids::ProductId>>,
 }
 
 /// One enttry in `PresentationData::Scored`.
@@ -1384,5 +1444,26 @@ mod tests {
         let deserialized_presentation: Presentation =
             postcard::from_bytes(&serialized_presentation).unwrap();
         assert_eq!(deserialized_presentation, original_presentation);
+    }
+
+    #[test]
+    fn products_all_categories() {
+        let product = GatherProduct {
+            categories: maplit::btreeset! {
+                "aaa/bbb/ccc".to_string(),
+                "aaa/bbb".to_string(),
+                "ddd/eee".to_string(),
+            },
+            ..GatherProduct::default()
+        };
+        let expected = maplit::btreeset! {
+                "aaa/bbb/ccc".to_string(),
+                "aaa/bbb".to_string(),
+                "aaa".to_string(),
+                "ddd/eee".to_string(),
+                "ddd".to_string(),
+        };
+        let obtained = product.all_categories('/');
+        assert_eq!(expected, obtained);
     }
 }
