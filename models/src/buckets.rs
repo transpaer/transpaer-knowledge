@@ -280,9 +280,7 @@ impl DbStore {
         Bucket::obtain(&self.store, "organisation.www_domain => organisation.id")
     }
 
-    pub fn get_categories_bucket(
-        &self,
-    ) -> Result<Bucket<String, Vec<store::ProductId>>, BucketError> {
+    pub fn get_categories_bucket(&self) -> Result<Bucket<String, store::Category>, BucketError> {
         Bucket::obtain(&self.store, "product.category => [product.id]")
     }
 

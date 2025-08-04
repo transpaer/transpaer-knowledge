@@ -2,6 +2,7 @@ use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 
 use merge::Merge;
 
+use sustainity_collecting::categories::{self, Category};
 use sustainity_models::{
     buckets::{Bucket, BucketError, DbStore},
     gather, store, utils,
@@ -14,8 +15,6 @@ use crate::{
     errors::{self, CrystalizationError},
     substrate::{DataSetId, Substrate, Substrates},
 };
-
-const MAX_CATEGORY_PRODUCT_NUM: usize = 300_000;
 
 // TODO: Rework as reports per data source
 #[allow(clippy::struct_field_names)]
@@ -116,7 +115,7 @@ impl Summary {
             if !product.categories.is_empty() {
                 num_products_with_category += 1;
             }
-            for category in &product.categories {
+            for category in &product.all_categories(categories::SEPARATOR) {
                 products_in_category
                     .entry(category.to_string())
                     .and_modify(|amount| *amount += 1)
@@ -901,6 +900,19 @@ impl Saver {
         Ok(())
     }
 
+    fn convert_category_status(
+        status: sustainity_collecting::categories::Status,
+    ) -> store::CategoryStatus {
+        use sustainity_collecting::categories::Status;
+        match status {
+            Status::Exploratory => store::CategoryStatus::Exploratory,
+            Status::Incomplete => store::CategoryStatus::Incomplete,
+            Status::Satisfactory => store::CategoryStatus::Satisfactory,
+            Status::Complete => store::CategoryStatus::Complete,
+            Status::Broad => store::CategoryStatus::Broad,
+        }
+    }
+
     /// Runs a quick sanity check: the `unique` should contain as many elements as `all`.
     fn uniqueness_check<T1, T2, T3>(
         unique: &HashSet<T1>,
@@ -1208,7 +1220,7 @@ impl Saver {
         let mut data = BTreeMap::<String, Vec<store::ProductId>>::new();
         for item in products.iter() {
             let (product_id, product) = item?;
-            for category in product.categories {
+            for category in product.all_categories(categories::SEPARATOR) {
                 data.entry(category.clone())
                     .and_modify(|ids| ids.push(product_id.clone()))
                     .or_insert_with(|| vec![product_id.clone()]);
@@ -1216,10 +1228,37 @@ impl Saver {
         }
 
         let bucket = self.store.get_categories_bucket()?;
-        for (keyword, ids) in data {
-            if ids.len() < MAX_CATEGORY_PRODUCT_NUM {
-                bucket.insert(&keyword, &ids)?;
-            }
+
+        #[allow(clippy::unwrap_used)]
+        let info = Category::new(String::new())
+            .expect("root category must exist")
+            .get_info()
+            .expect("root category must exist");
+        bucket.insert(
+            &String::new(),
+            &store::Category {
+                status: store::CategoryStatus::Broad,
+                subcategories: info.subcategories,
+                products: None,
+            },
+        )?;
+
+        for (category_name, ids) in data {
+            #[allow(clippy::unwrap_used)]
+            let info = Category::new(category_name.clone())
+                .expect("all categories should be valid at this point")
+                .get_info()
+                .expect("all categories should be valid at this point");
+
+            let product_ids = if info.status.are_products_comparable() { Some(ids) } else { None };
+
+            let category = store::Category {
+                status: Self::convert_category_status(info.status),
+                subcategories: info.subcategories,
+                products: product_ids,
+            };
+
+            bucket.insert(&category_name, &category)?;
         }
 
         bucket.flush()?;

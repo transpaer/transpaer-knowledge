@@ -7,8 +7,8 @@ use sustainity_api::{
     models::{
         LibraryContents, LibraryTopic, OrganisationIdVariant, ProductIdVariant, TextSearchResults,
     },
-    Api, CheckHealthResponse, GetAlternativesResponse, GetLibraryItemResponse, GetLibraryResponse,
-    GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
+    Api, CheckHealthResponse, GetAlternativesResponse, GetCategoryResponse, GetLibraryItemResponse,
+    GetLibraryResponse, GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
 };
 
 use crate::retrieve;
@@ -147,5 +147,26 @@ where
             access_control_allow_methods: CORS_METHODS.to_string(),
             access_control_allow_headers: CORS_HEADERS.to_string(),
         })
+    }
+
+    async fn get_category(
+        &self,
+        category_id: String,
+        _context: &C,
+    ) -> Result<GetCategoryResponse, ApiError> {
+        if let Some(category) = self.retriever.category(category_id)? {
+            Ok(GetCategoryResponse::Ok {
+                body: category,
+                access_control_allow_origin: CORS_ORIGIN.to_string(),
+                access_control_allow_methods: CORS_METHODS.to_string(),
+                access_control_allow_headers: CORS_HEADERS.to_string(),
+            })
+        } else {
+            Ok(GetCategoryResponse::NotFound {
+                access_control_allow_origin: CORS_ORIGIN.to_string(),
+                access_control_allow_methods: CORS_METHODS.to_string(),
+                access_control_allow_headers: CORS_HEADERS.to_string(),
+            })
+        }
     }
 }
