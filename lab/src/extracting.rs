@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use merge::Merge;
 
-use sustainity_collecting::{data::WikiId, errors::MapSerde};
-use sustainity_wikidata::data::Entity;
+use transpaer_collecting::{data::WikiId, errors::MapSerde};
+use transpaer_wikidata::data::Entity;
 
 use crate::{cache, config, errors, parallel, runners, utils, wikidata::ItemExt};
 

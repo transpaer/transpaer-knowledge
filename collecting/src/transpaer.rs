@@ -1,4 +1,4 @@
-/// Data structures for parsing sustainity data.
+/// Data structures for parsing transpaer data.
 pub mod data {
     use serde::{Deserialize, Serialize};
 
@@ -58,7 +58,7 @@ pub mod data {
         pub link: String,
     }
 
-    /// Sustainity topic entry.
+    /// Transpaer topic entry.
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct LibraryInfo {
         #[serde(rename = "id")]
@@ -80,7 +80,7 @@ pub mod data {
     #[derive(Clone, Debug)]
     pub struct Match {
         /// Wikidata ID.
-        pub wiki_id: sustainity_wikidata::data::Id,
+        pub wiki_id: transpaer_wikidata::data::Id,
 
         /// Match accuracy.
         pub match_accuracy: f64,
@@ -98,9 +98,9 @@ pub mod data {
         /// Wikidata IDs.
         #[serde(
             rename = "ids",
-            deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_string"
+            deserialize_with = "transpaer_wikidata::data::deserialize_vec_id_from_vec_string"
         )]
-        pub ids: Vec<sustainity_wikidata::data::Id>,
+        pub ids: Vec<transpaer_wikidata::data::Id>,
 
         /// Measure of certainty that the matched IDs really belong to the correct entry.
         #[serde(rename = "similarity")]
@@ -171,14 +171,14 @@ pub mod data {
     }
 }
 
-/// Readers for loading sustainity data.
+/// Readers for loading transpaer data.
 pub mod reader {
     use std::collections::HashMap;
 
     use super::data::{Categories, Countries, LibraryInfo, NameMatching, Regions};
     use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
 
-    /// Loads the sustainity library data from a file.
+    /// Loads the transpaer library data from a file.
     ///
     /// # Errors
     ///
@@ -200,7 +200,7 @@ pub mod reader {
         Ok(parsed)
     }
 
-    /// Loads the file with mapping from country tags to Sustainity regions.
+    /// Loads the file with mapping from country tags to Transpaer regions.
     ///
     /// # Errors
     ///
@@ -211,7 +211,7 @@ pub mod reader {
         Ok(parsed)
     }
 
-    /// Loads the file with mapping from source categories to to Sustainity categories.
+    /// Loads the file with mapping from source categories to to Transpaer categories.
     ///
     /// # Errors
     ///
@@ -290,7 +290,7 @@ pub mod reader {
     }
 }
 
-/// Writers for saving sustainity data.
+/// Writers for saving transpaer data.
 pub mod writer {
     use super::data::{Categories, Countries};
     use crate::errors::{IoOrSerdeError, MapIo, MapSerde};

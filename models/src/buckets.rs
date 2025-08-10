@@ -252,65 +252,67 @@ impl DbStore {
 
     pub fn get_organisation_bucket(
         &self,
-    ) -> Result<Bucket<store::OrganisationId, store::Organisation>, BucketError> {
+    ) -> Result<Bucket<'_, store::OrganisationId, store::Organisation>, BucketError> {
         Bucket::obtain(&self.store, "organisation.id => organisation")
     }
 
     pub fn get_keyword_to_organisation_ids_bucket(
         &self,
-    ) -> Result<Bucket<String, Vec<store::OrganisationId>>, BucketError> {
+    ) -> Result<Bucket<'_, String, Vec<store::OrganisationId>>, BucketError> {
         Bucket::obtain(&self.store, "keyword => [organisation.id]")
     }
 
     pub fn get_vat_id_to_organisation_id_bucket(
         &self,
-    ) -> Result<Bucket<store::VatId, store::OrganisationId>, BucketError> {
+    ) -> Result<Bucket<'_, store::VatId, store::OrganisationId>, BucketError> {
         Bucket::obtain(&self.store, "organisation.vat_id => organisation.id")
     }
 
     pub fn get_wiki_id_to_organisation_id_bucket(
         &self,
-    ) -> Result<Bucket<store::WikiId, store::OrganisationId>, BucketError> {
+    ) -> Result<Bucket<'_, store::WikiId, store::OrganisationId>, BucketError> {
         Bucket::obtain(&self.store, "organisation.wiki_id => organisation.id")
     }
 
     pub fn get_www_domain_to_organisation_id_bucket(
         &self,
-    ) -> Result<Bucket<store::Domain, store::OrganisationId>, BucketError> {
+    ) -> Result<Bucket<'_, store::Domain, store::OrganisationId>, BucketError> {
         Bucket::obtain(&self.store, "organisation.www_domain => organisation.id")
     }
 
-    pub fn get_categories_bucket(&self) -> Result<Bucket<String, store::Category>, BucketError> {
+    pub fn get_categories_bucket(
+        &self,
+    ) -> Result<Bucket<'_, String, store::Category>, BucketError> {
         Bucket::obtain(&self.store, "product.category => [product.id]")
     }
 
     pub fn get_product_bucket(
         &self,
-    ) -> Result<Bucket<store::ProductId, store::Product>, BucketError> {
+    ) -> Result<Bucket<'_, store::ProductId, store::Product>, BucketError> {
         Bucket::obtain(&self.store, "product.id => product")
     }
 
     pub fn get_keyword_to_product_ids_bucket(
         &self,
-    ) -> Result<Bucket<String, Vec<store::ProductId>>, BucketError> {
+    ) -> Result<Bucket<'_, String, Vec<store::ProductId>>, BucketError> {
         Bucket::obtain(&self.store, "keyword => [product.id]")
     }
 
     pub fn get_ean_to_product_id_bucket(
         &self,
-    ) -> Result<Bucket<store::Ean, store::ProductId>, BucketError> {
+    ) -> Result<Bucket<'_, store::Ean, store::ProductId>, BucketError> {
         Bucket::obtain(&self.store, "product.ean => product.id")
     }
 
     pub fn get_gtin_to_product_id_bucket(
         &self,
-    ) -> Result<Bucket<store::Gtin, store::ProductId>, BucketError> {
+    ) -> Result<Bucket<'_, store::Gtin, store::ProductId>, BucketError> {
         Bucket::obtain(&self.store, "product.gtin => product.id")
     }
 
     pub fn get_wiki_id_to_product_id_bucket(
         &self,
-    ) -> Result<Bucket<store::WikiId, store::ProductId>, BucketError> {
+    ) -> Result<Bucket<'_, store::WikiId, store::ProductId>, BucketError> {
         Bucket::obtain(&self.store, "product.wiki_id => product.id")
     }
 }
@@ -327,13 +329,13 @@ impl AppStore {
 
     pub fn get_library_bucket(
         &self,
-    ) -> Result<Bucket<store::LibraryTopic, store::LibraryItem>, BucketError> {
+    ) -> Result<Bucket<'_, store::LibraryTopic, store::LibraryItem>, BucketError> {
         Bucket::obtain(&self.store, "library.topic => library.item")
     }
 
     pub fn get_presentation_bucket(
         &self,
-    ) -> Result<Bucket<store::LibraryTopic, store::Presentation>, BucketError> {
+    ) -> Result<Bucket<'_, store::LibraryTopic, store::Presentation>, BucketError> {
         Bucket::obtain(&self.store, "library.topic => library.presentation")
     }
 }

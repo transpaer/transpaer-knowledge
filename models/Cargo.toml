@@ -1,5 +1,5 @@
 [package]
-name = "sustainity-models"
+name = "transpaer-models"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,9 +14,9 @@ serde = { workspace = true, features = ["derive"] }
 snafu = { workspace = true }
 thiserror = { workspace = true }
 
-sustainity-api = { workspace = true, optional = true }
-sustainity-schema = { workspace = true, optional = true }
-sustainity-wikidata = { workspace = true }
+transpaer-api = { workspace = true, optional = true }
+transpaer-schema = { workspace = true, optional = true }
+transpaer-wikidata = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
@@ -27,5 +27,5 @@ tempfile = { workspace = true }
 
 [features]
 # TODO: move to the backend for better error handling
-into-api = ["dep:sustainity-api", "dep:log"]
-from-substrate = ["dep:sustainity-schema"]
+into-api = ["dep:transpaer-api", "dep:log"]
+from-substrate = ["dep:transpaer-schema"]

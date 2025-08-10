@@ -41,9 +41,9 @@ impl ParseIdError {
     }
 }
 
-impl From<sustainity_wikidata::errors::ParseIdError> for ParseIdError {
-    fn from(err: sustainity_wikidata::errors::ParseIdError) -> Self {
-        use sustainity_wikidata::errors::ParseIdError as E;
+impl From<transpaer_wikidata::errors::ParseIdError> for ParseIdError {
+    fn from(err: transpaer_wikidata::errors::ParseIdError) -> Self {
+        use transpaer_wikidata::errors::ParseIdError as E;
         match err {
             E::Num(string, err) => Self::Num { string, source: err },
             E::Length(string) => Self::Length { string },
@@ -77,8 +77,8 @@ impl WikiId {
     }
 }
 
-impl From<sustainity_wikidata::data::Id> for WikiId {
-    fn from(other: sustainity_wikidata::data::Id) -> Self {
+impl From<transpaer_wikidata::data::Id> for WikiId {
+    fn from(other: transpaer_wikidata::data::Id) -> Self {
         Self(other.get_value())
     }
 }

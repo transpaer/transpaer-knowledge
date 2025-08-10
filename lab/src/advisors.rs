@@ -2,11 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sustainity_collecting::{
-    bcorp, categories::Category, eu_ecolabel, fashion_transparency_index, sustainity, tco,
+use transpaer_collecting::{
+    bcorp, categories::Category, eu_ecolabel, fashion_transparency_index, tco, transpaer,
 };
-use sustainity_models::{gather as models, ids, utils::extract_domain_from_url};
-use sustainity_schema as schema;
+use transpaer_models::{gather as models, ids, utils::extract_domain_from_url};
+use transpaer_schema as schema;
 
 use crate::{
     cache, convert, errors,
@@ -36,7 +36,7 @@ impl BCorpAdvisor {
 
     pub fn assemble(
         records: Option<Vec<bcorp::data::Record>>,
-        country_data: Option<sustainity::data::Countries>,
+        country_data: Option<transpaer::data::Countries>,
     ) -> Result<Self, errors::ProcessingError> {
         let domain_to_name = if let Some(records) = records {
             records
@@ -73,7 +73,7 @@ impl BCorpAdvisor {
     {
         let path = original_path.as_ref();
         let original_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity_collecting::bcorp::reader::parse(path)?)
+            Some(transpaer_collecting::bcorp::reader::parse(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. BCorp original data won't be loaded!",
@@ -84,7 +84,7 @@ impl BCorpAdvisor {
 
         let path = regions_path.as_ref();
         let regions_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity::reader::parse_countries(path)?)
+            Some(transpaer::reader::parse_countries(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. BCorp support data won't be loaded!",
@@ -116,7 +116,7 @@ impl BCorpAdvisor {
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
     /// Map from companies Vat ID to their Wikidata IDs.
-    vat_to_wiki: HashMap<models::VatId, sustainity::data::Match>,
+    vat_to_wiki: HashMap<models::VatId, transpaer::data::Match>,
 }
 
 impl EuEcolabelAdvisor {
@@ -127,16 +127,16 @@ impl EuEcolabelAdvisor {
     /// Returns `Err` the records contain invalid data, e.g. VAT number.
     pub fn new(
         records: &[eu_ecolabel::data::Record],
-        map: &[sustainity::data::NameMatching],
+        map: &[transpaer::data::NameMatching],
     ) -> Result<Self, models::ParseIdError> {
-        let mut name_to_wiki = HashMap::<String, sustainity::data::Match>::new();
+        let mut name_to_wiki = HashMap::<String, transpaer::data::Match>::new();
         for entry in map {
             if let Some(wiki_match) = entry.matched() {
                 name_to_wiki.insert(entry.name.clone(), wiki_match);
             }
         }
 
-        let mut vat_to_wiki = HashMap::<models::VatId, sustainity::data::Match>::new();
+        let mut vat_to_wiki = HashMap::<models::VatId, transpaer::data::Match>::new();
         for r in records {
             // We assume each company has only one VAT number.
             if let Some(vat_number) = &r.prepare_vat_number() {
@@ -163,11 +163,11 @@ impl EuEcolabelAdvisor {
         if utils::file_exists(original_path).is_ok() {
             let data = eu_ecolabel::reader::parse(original_path)?;
             if utils::file_exists(match_path).is_ok() {
-                let map = sustainity::reader::parse_id_map(match_path)?;
+                let map = transpaer::reader::parse_id_map(match_path)?;
                 Ok(Self::new(&data, &map)?)
             } else {
                 log::warn!(
-                    "Could not access `{}`. Sustainity match data won't be loaded!",
+                    "Could not access `{}`. Transpaer match data won't be loaded!",
                     match_path.display(),
                 );
                 Ok(Self::new(&[], &[])?)
@@ -183,17 +183,17 @@ impl EuEcolabelAdvisor {
 
     /// Returns Companies Wikidata ID given it VAT ID if availabel.
     #[must_use]
-    pub fn vat_to_wiki(&self, vat_id: &models::VatId) -> Option<&sustainity::data::Match> {
+    pub fn vat_to_wiki(&self, vat_id: &models::VatId) -> Option<&transpaer::data::Match> {
         self.vat_to_wiki.get(vat_id)
     }
 }
 
 /// Holds the information read from the Open Food Facts data.
 pub struct OpenFoodFactsAdvisor {
-    /// Map from Open Food facts countries to Sustainity regionss.
+    /// Map from Open Food facts countries to transpaer regionss.
     country_to_regions: HashMap<String, models::Regions>,
 
-    /// Map from Open Food facts category tags to Sustainity categories.
+    /// Map from Open Food facts category tags to transpaer categories.
     tags_to_categories: HashMap<String, HashSet<String>>,
 }
 
@@ -209,8 +209,8 @@ impl OpenFoodFactsAdvisor {
 
     /// Constructs a new `OpenFoodFactsAdvisor` with loaded data.
     pub fn assemble(
-        country_data: Option<sustainity::data::Countries>,
-        category_data: Option<sustainity::data::Categories>,
+        country_data: Option<transpaer::data::Countries>,
+        category_data: Option<transpaer::data::Categories>,
     ) -> Result<Self, errors::ProcessingError> {
         let country_to_regions = if let Some(data) = country_data {
             let mut country_to_regions = HashMap::new();
@@ -253,7 +253,7 @@ impl OpenFoodFactsAdvisor {
     {
         let path = country_path.as_ref();
         let country_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity::reader::parse_countries(path)?)
+            Some(transpaer::reader::parse_countries(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. Open Food Facts country data won't be loaded!",
@@ -264,7 +264,7 @@ impl OpenFoodFactsAdvisor {
 
         let path = category_path.as_ref();
         let category_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity::reader::parse_categories(path)?)
+            Some(transpaer::reader::parse_categories(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. Open Food Facts category data won't be loaded!",
@@ -402,7 +402,7 @@ impl FashionTransparencyIndexAdvisor {
             }
         }
         models::Presentation {
-            id: sustainity::data::LibraryTopic::CertFti.to_str().to_owned(),
+            id: transpaer::data::LibraryTopic::CertFti.to_str().to_owned(),
             data: models::PresentationData { entries },
         }
     }
@@ -414,10 +414,10 @@ pub struct WikidataAdvisor {
     /// Topic info.
     manufacturer_ids: HashSet<WikiId>,
 
-    /// Map from Wikidata countries to Sustainity regionss.
+    /// Map from Wikidata countries to transpaer regionss.
     country_to_regions: HashMap<WikiId, models::Regions>,
 
-    /// Map from Wikidata countries to Sustainity regionss.
+    /// Map from Wikidata countries to transpaer regionss.
     class_to_categories: HashMap<WikiId, HashSet<String>>,
 }
 
@@ -435,8 +435,8 @@ impl WikidataAdvisor {
     /// Constructs a new `WikidataAdvisor` with loaded data.
     pub fn assemble(
         cache: Option<cache::Wikidata>,
-        country_data: Option<sustainity::data::Countries>,
-        category_data: Option<sustainity::data::Categories>,
+        country_data: Option<transpaer::data::Countries>,
+        category_data: Option<transpaer::data::Categories>,
     ) -> Result<Self, errors::ProcessingError> {
         let country_to_regions = if let Some(data) = country_data {
             let mut country_to_regions = HashMap::new();
@@ -499,7 +499,7 @@ impl WikidataAdvisor {
 
         let path = region_path.as_ref();
         let region_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity::reader::parse_countries(path)?)
+            Some(transpaer::reader::parse_countries(path)?)
         } else {
             log::warn!("Could not access `{}`. Wikidata region won't be loaded!", path.display());
             None
@@ -507,7 +507,7 @@ impl WikidataAdvisor {
 
         let path = category_path.as_ref();
         let category_data = if utils::file_exists(path).is_ok() {
-            Some(sustainity::reader::parse_categories(path)?)
+            Some(transpaer::reader::parse_categories(path)?)
         } else {
             log::warn!(
                 "Could not access `{}`. Wikidata categories won't be loaded!",
@@ -540,12 +540,12 @@ impl WikidataAdvisor {
 
     #[allow(clippy::unused_self)]
     #[must_use]
-    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
+    pub fn is_product(&self, item: &transpaer_wikidata::data::Item) -> bool {
         item.has_manufacturer() || item.has_gtin()
     }
 
     #[must_use]
-    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+    pub fn is_organisation(&self, item: &transpaer_wikidata::data::Item) -> bool {
         if self.is_product(item) {
             return false;
         }
@@ -706,30 +706,30 @@ impl SubstrateAdvisor {
 }
 
 /// Holds the information read from our internal data set.
-pub struct SustainityLibraryAdvisor {
+pub struct TranspaerLibraryAdvisor {
     /// Topic info.
-    info: Vec<sustainity::data::LibraryInfo>,
+    info: Vec<transpaer::data::LibraryInfo>,
 }
 
-impl SustainityLibraryAdvisor {
-    /// Constructs a new `SustainityLibraryAdvisor`.
+impl TranspaerLibraryAdvisor {
+    /// Constructs a new `TranspaerLibraryAdvisor`.
     #[must_use]
-    pub fn new(info: Vec<sustainity::data::LibraryInfo>) -> Self {
+    pub fn new(info: Vec<transpaer::data::LibraryInfo>) -> Self {
         Self { info }
     }
 
-    /// Loads a new `SustainityLibraryAdvisor` from a file.
+    /// Loads a new `TranspaerLibraryAdvisor` from a file.
     ///
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::file_exists(path).is_ok() {
-            let data = sustainity::reader::parse_library(path)?;
+            let data = transpaer::reader::parse_library(path)?;
             Ok(Self::new(data))
         } else {
             log::warn!(
-                "Could not access `{}`. Sustainity library data won't be loaded!",
+                "Could not access `{}`. Transpaer library data won't be loaded!",
                 path.display()
             );
             Ok(Self::new(Vec::new()))
@@ -738,19 +738,19 @@ impl SustainityLibraryAdvisor {
 
     /// Returns all info.
     #[must_use]
-    pub fn get_info(&self) -> &[sustainity::data::LibraryInfo] {
+    pub fn get_info(&self) -> &[transpaer::data::LibraryInfo] {
         &self.info
     }
 }
 
 /// Holds the informatiion about mapping from (company, brand, etc.) name to their Wikidata ID.
-pub struct SustainityMatchesAdvisor {
+pub struct TranspaerMatchesAdvisor {
     name_to_wiki: HashMap<String, WikiId>,
 }
 
-impl SustainityMatchesAdvisor {
-    /// Constructs a new `SustainityMatchesAdvisor`.
-    pub fn new(map: &[sustainity::data::NameMatching]) -> Self {
+impl TranspaerMatchesAdvisor {
+    /// Constructs a new `TranspaerMatchesAdvisor`.
+    pub fn new(map: &[transpaer::data::NameMatching]) -> Self {
         let mut name_to_wiki = HashMap::<String, WikiId>::new();
         for entry in map {
             if let Some(wiki_id) = entry.matched() {
@@ -761,18 +761,18 @@ impl SustainityMatchesAdvisor {
         Self { name_to_wiki }
     }
 
-    /// Loads a new `SustainityMatchesAdvisor` from a file.
+    /// Loads a new `TranspaerMatchesAdvisor` from a file.
     ///
     /// # Errors
     ///
     /// Returns `Err` if fails to read from `path` or parse the contents.
     pub fn load(match_path: &std::path::Path) -> Result<Self, errors::ProcessingError> {
         if utils::file_exists(match_path).is_ok() {
-            let map = sustainity::reader::parse_id_map(match_path)?;
+            let map = transpaer::reader::parse_id_map(match_path)?;
             Ok(Self::new(&map))
         } else {
             log::warn!(
-                "Could not access `{}`. Sustainity match data won't be loaded!",
+                "Could not access `{}`. Transpaer match data won't be loaded!",
                 match_path.display()
             );
             Ok(Self::new(&[]))

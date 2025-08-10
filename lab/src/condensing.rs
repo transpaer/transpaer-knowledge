@@ -5,14 +5,14 @@ use std::{
 
 use async_trait::async_trait;
 
-use sustainity_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
-use sustainity_models::{
+use transpaer_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
+use transpaer_models::{
     gather as models,
     ids::WikiId,
     utils::{extract_domain_from_url, extract_domains_from_urls},
 };
-use sustainity_schema as schema;
-use sustainity_wikidata::{
+use transpaer_schema as schema;
+use transpaer_wikidata::{
     data::{Entity, Item},
     errors::ParseIdError,
 };
@@ -27,7 +27,7 @@ pub struct CondensationSources {
     pub wikidata: advisors::WikidataAdvisor,
 
     /// Names (company, brand, etc...) matched to Wikidata items representing them.
-    pub matches: advisors::SustainityMatchesAdvisor,
+    pub matches: advisors::TranspaerMatchesAdvisor,
 
     /// B-Corp data.
     pub bcorp: advisors::BCorpAdvisor,
@@ -48,12 +48,12 @@ pub struct CondensationSources {
 impl CondensationSources {
     #[allow(clippy::unused_self)]
     #[must_use]
-    pub fn is_product(&self, item: &sustainity_wikidata::data::Item) -> bool {
+    pub fn is_product(&self, item: &transpaer_wikidata::data::Item) -> bool {
         item.has_manufacturer() || item.has_gtin()
     }
 
     #[must_use]
-    pub fn is_organisation(&self, item: &sustainity_wikidata::data::Item) -> bool {
+    pub fn is_organisation(&self, item: &transpaer_wikidata::data::Item) -> bool {
         if self.is_product(item) {
             return false;
         }
@@ -89,7 +89,7 @@ impl CondensationSources {
             &config.meta.wikidata_regions_path,
             &config.meta.wikidata_categories_path,
         )?;
-        let matches = advisors::SustainityMatchesAdvisor::load(&config.meta.match_path)?;
+        let matches = advisors::TranspaerMatchesAdvisor::load(&config.meta.match_path)?;
         let bcorp = advisors::BCorpAdvisor::load(
             &config.origin.bcorp_path,
             &config.meta.bcorp_regions_path,
@@ -115,9 +115,9 @@ fn prepare_meta(variant: schema::ProviderVariant) -> schema::Meta {
     schema::Meta {
         version: "0.0.0".to_owned(),
         variant,
-        authors: vec!["Sustainity Development Team".to_owned()],
+        authors: vec!["Transpaer Development Team".to_owned()],
         title: String::new(),
-        description: Some("Data prepared by the Sustainity Development Team".to_owned()),
+        description: Some("Data prepared by the Transpaer Development Team".to_owned()),
         creation_timestamp: Some(schema::chrono::Utc::now()),
         valid_from: None,
         valid_to: None,
@@ -269,7 +269,7 @@ impl About for AboutBCorp {
         schema::AboutReviewer {
             id: "bcorp".to_owned(),
             name: "BCorp".to_owned(),
-            description: "Data from the BCorp prepared by the Sustainity Team".to_owned(),
+            description: "Data from the BCorp prepared by the Transpaer Team".to_owned(),
             website: "https://www.bcorporation.net".to_owned(),
             reviews: Some(schema::AboutReview::Certification(schema::AboutCertification(
                 serde_json::Map::new(),
@@ -296,7 +296,7 @@ impl About for AboutEu {
         schema::AboutReviewer {
             id: "eu_ecolabel".to_owned(),
             name: "EU EcoLabel".to_owned(),
-            description: "Data from the EU EcoLabel prepared by the Sustainity Team".to_owned(),
+            description: "Data from the EU EcoLabel prepared by the Transpaer Team".to_owned(),
             website: "https://environment.ec.europa.eu".to_owned(),
             reviews: Some(schema::AboutReview::Certification(schema::AboutCertification(
                 serde_json::Map::new(),
@@ -323,7 +323,7 @@ impl About for AboutFti {
         schema::AboutReviewer {
             id: "fti".to_owned(),
             name: "Fashion Transparency Index".to_owned(),
-            description: "Data from the Fashion Transparency Index prepared by the Sustainity Team"
+            description: "Data from the Fashion Transparency Index prepared by the Transpaer Team"
                 .to_owned(),
             website: "https://www.fashionrevolution.org".to_owned(),
             reviews: Some(schema::AboutReview::ScoreReview(schema::AboutScoreReview {
@@ -354,7 +354,7 @@ impl About for AboutOff {
             id: "open_food_facts".to_owned(),
             name: "Open Food Facts".to_owned(),
             description: Some(
-                "Data from the Open Food Facts prepared by the Sustainity Team".to_owned(),
+                "Data from the Open Food Facts prepared by the Transpaer Team".to_owned(),
             ),
             variant: schema::CatalogVariant::Database,
             website: "https://world.openfoodfacts.org".to_owned(),
@@ -380,7 +380,7 @@ impl About for AboutTco {
         schema::AboutReviewer {
             id: "tco".to_owned(),
             name: "TCO".to_owned(),
-            description: "Data from the TCO prepared by the Sustainity Team".to_owned(),
+            description: "Data from the TCO prepared by the Transpaer Team".to_owned(),
             website: "https://tcocertified.com".to_owned(),
             reviews: Some(schema::AboutReview::Certification(schema::AboutCertification(
                 serde_json::Map::new(),
@@ -407,7 +407,7 @@ impl About for AboutWiki {
         schema::AboutCataloger {
             id: "wikidata".to_owned(),
             name: "Wikidata".to_owned(),
-            description: Some("Data from the Wikidata prepared by the Sustainity Team".to_owned()),
+            description: Some("Data from the Wikidata prepared by the Transpaer Team".to_owned()),
             variant: schema::CatalogVariant::Database,
             website: "https://www.wikidata.org/".to_owned(),
         }
@@ -516,7 +516,7 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                                 .get_manufacturer_ids()?
                                 .unwrap_or_default()
                                 .iter()
-                                .map(sustainity_collecting::data::WikiId::to_id)
+                                .map(transpaer_collecting::data::WikiId::to_id)
                                 .collect(),
                             regions,
                         }),
@@ -526,14 +526,14 @@ impl runners::WikidataWorker for CondensingWikidataWorker {
                                 item.get_follows()?
                                     .unwrap_or_default()
                                     .iter()
-                                    .map(sustainity_collecting::data::WikiId::to_id)
+                                    .map(transpaer_collecting::data::WikiId::to_id)
                                     .collect(),
                             ),
                             followed_by: Some(
                                 item.get_followed_by()?
                                     .unwrap_or_default()
                                     .iter()
-                                    .map(sustainity_collecting::data::WikiId::to_id)
+                                    .map(transpaer_collecting::data::WikiId::to_id)
                                     .collect(),
                             ),
                         }),

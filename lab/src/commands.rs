@@ -52,10 +52,10 @@ pub struct FilteringArgs {
                   which we prepare manually. With new versions of the original data those manually created \
                   data may become insufficient or obsolete. This command updates the data and points to \
                   any further manual updates required.\n\nCurrently this command updates mapping \
-                  from Open Food Facts countries to Sustainity regions, \
-                  from Open Food Facts categories to Sustainity categories, \
-                  from Wikidata countries to Sustainity regions and \
-                  from Wikidata classes to Sustainity categories, \
+                  from Open Food Facts countries to Transpaer regions, \
+                  from Open Food Facts categories to Transpaer categories, \
+                  from Wikidata countries to Transpaer regions and \
+                  from Wikidata classes to Transpaer categories, \
                   "
 )]
 pub struct UpdatingArgs {
@@ -88,7 +88,7 @@ pub enum CondensationGroup {
 #[derive(Parser, Debug)]
 #[command(
     about = "Process big input data sources into substrate files.",
-    long_about = "Sustainity projest aims to make as much data as possible available to the consumers. \
+    long_about = "Transpaer projest aims to make as much data as possible available to the consumers. \
                   To make processing of those data easier, we ask producers and certifing organisations \
                   to provide us their data in a unified format, which we call \"substrate files\". \
                   Additionally, we import some chosen, reputable data sources into that format. \
@@ -140,11 +140,11 @@ pub struct CoagulationArgs {
 /// Arguments of the `crystalize` command.
 #[derive(Parser, Debug)]
 #[command(
-    about = "Processes all available substrate files to create a new version of Sustainity database",
-    long_about = "Substrate files adhere to the schema defined by the Sustainity projest and are provided \
-                  by affiliated companies, organisations, reviewers, etc, or are prepared by the Sustainity \
+    about = "Processes all available substrate files to create a new version of Transpaer database",
+    long_about = "Substrate files adhere to the schema defined by the Transpaer projest and are provided \
+                  by affiliated companies, organisations, reviewers, etc, or are prepared by the Transpaer \
                   from reputable data sources. This command merges all the available substrate files to \
-                  create a database used by the Sustainity web service."
+                  create a database used by the Transpaer web service."
 )]
 pub struct CrystalizationArgs {
     /// Substrate data directory.

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use rand::Rng;
 use snafu::prelude::*;
 
-use sustainity_api::models as api;
-use sustainity_models::{
+use transpaer_api::models as api;
+use transpaer_models::{
     buckets::{AppStore, DbStore},
     ids, store, utils,
 };

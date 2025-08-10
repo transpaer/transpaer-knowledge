@@ -2,12 +2,12 @@ use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 
 use merge::Merge;
 
-use sustainity_collecting::categories::{self, Category};
-use sustainity_models::{
+use transpaer_collecting::categories::{self, Category};
+use transpaer_models::{
     buckets::{Bucket, BucketError, DbStore},
     gather, store, utils,
 };
-use sustainity_schema as schema;
+use transpaer_schema as schema;
 
 use crate::{
     coagulate::{Coagulate, ExternalId, InnerId},
@@ -193,13 +193,13 @@ impl CrystalizationCollector {
 
     fn get_organisation_bucket(
         &self,
-    ) -> Result<Bucket<gather::OrganisationId, gather::Organisation>, BucketError> {
+    ) -> Result<Bucket<'_, gather::OrganisationId, gather::Organisation>, BucketError> {
         Bucket::obtain(&self.store, "organisation.id => organisation")
     }
 
     fn get_product_bucket(
         &self,
-    ) -> Result<Bucket<gather::ProductId, gather::Product>, BucketError> {
+    ) -> Result<Bucket<'_, gather::ProductId, gather::Product>, BucketError> {
         Bucket::obtain(&self.store, "product.id => product")
     }
 }
@@ -375,7 +375,7 @@ impl Processor {
                 media: BTreeSet::new(),
                 follows,
                 followed_by,
-                sustainity_score: gather::SustainityScore::default(), //< Calculated later
+                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
             },
         )?;
@@ -434,7 +434,7 @@ impl Processor {
                 media: BTreeSet::new(),
                 follows,
                 followed_by,
-                sustainity_score: gather::SustainityScore::default(), //< Calculated later
+                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
             },
         )?;
@@ -549,7 +549,7 @@ impl Processor {
                 media: Self::extract_media_mentions(product.reports.as_ref(), &substrate.source),
                 follows,
                 followed_by,
-                sustainity_score: gather::SustainityScore::default(), //< Calculated later
+                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(), //< Assigned later from producers
             },
         )?;
@@ -890,20 +890,20 @@ impl Saver {
             }
         }
 
-        // Calculate product Sustainity score
-        log::info!(" -> calculating Sustainity scores");
+        // Calculate product Transpaer score
+        log::info!(" -> calculating Transpaer scores");
         for product in products.clone().iter_autosave() {
             let mut product = product?;
-            product.value.sustainity_score = crate::score::calculate(&product.value);
+            product.value.transpaer_score = crate::score::calculate(&product.value);
         }
 
         Ok(())
     }
 
     fn convert_category_status(
-        status: sustainity_collecting::categories::Status,
+        status: transpaer_collecting::categories::Status,
     ) -> store::CategoryStatus {
-        use sustainity_collecting::categories::Status;
+        use transpaer_collecting::categories::Status;
         match status {
             Status::Exploratory => store::CategoryStatus::Exploratory,
             Status::Incomplete => store::CategoryStatus::Incomplete,

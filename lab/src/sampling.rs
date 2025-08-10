@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
-use sustainity_api as api;
-use sustainity_models::{
+use transpaer_api as api;
+use transpaer_models::{
     buckets::{BucketError, DbStore},
     ids, store as models,
 };
@@ -15,7 +15,7 @@ use crate::{config, errors};
 #[derive(Clone, Default)]
 struct Context {}
 
-swagger::new_context_type!(SustainityContext, EmptyContext, XSpanIdString);
+swagger::new_context_type!(TranspaerContext, EmptyContext, XSpanIdString);
 
 const TONYS_GTIN: ids::Gtin = ids::Gtin::new(8_717_677_339_556);
 const MISSING_GTIN: ids::Gtin = ids::Gtin::new(12_890_567_456_123);
@@ -50,10 +50,10 @@ enum Finding {
     Api(#[from] swagger::ApiError),
 
     #[error(" => API conversion: {0}")]
-    ApiConversion(#[from] sustainity_api::models::error::ConversionError),
+    ApiConversion(#[from] transpaer_api::models::error::ConversionError),
 
     #[error(" => API Client: {0}")]
-    ApiClient(#[from] sustainity_api::client::ClientInitError),
+    ApiClient(#[from] transpaer_api::client::ClientInitError),
 }
 
 #[derive(Default)]
@@ -233,7 +233,7 @@ impl SamplingRunner {
 
     async fn check_backend_library(config: &config::SamplingBackendConfig) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let library = client.get_library(&context).await?;
         match library {
@@ -266,7 +266,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
         let gtin = TONYS_GTIN.to_string();
 
         let product = client
@@ -290,10 +290,10 @@ impl SamplingRunner {
                 ensure_eq!(product.medallions.len(), 1, "wrong number of certifications");
                 ensure_eq!(
                     product.medallions[0].variant,
-                    api::models::MedallionVariant::Sustainity,
+                    api::models::MedallionVariant::Transpaer,
                     "wrong certification"
                 );
-                ensure!(product.medallions[0].sustainity.is_some(), "wrong certification");
+                ensure!(product.medallions[0].transpaer.is_some(), "wrong certification");
                 // TODO: Ensure the manufacturer is known and has correct ID.
                 ensure_eq!(product.manufacturers.len(), 0, "wrong number of manufacturers");
             }
@@ -312,7 +312,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
         let gtin = MISSING_GTIN.to_string();
 
         let product = client
@@ -333,7 +333,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let product = client
             .get_product(
@@ -369,7 +369,7 @@ impl SamplingRunner {
                         }),
                         eu_ecolabel: None,
                         fti: None,
-                        sustainity: None,
+                        transpaer: None,
                         tco: None,
                     },
                     "wrong certification"
@@ -381,7 +381,7 @@ impl SamplingRunner {
                         bcorp: None,
                         eu_ecolabel: None,
                         fti: None,
-                        sustainity: None,
+                        transpaer: None,
                         tco: Some(api::models::TcoMedallion {
                             brand_name: api::models::ShortString::from_str("FAIRPHONE")?,
                         }),
@@ -390,10 +390,10 @@ impl SamplingRunner {
                 );
                 ensure_eq!(
                     product.medallions[2].variant,
-                    api::models::MedallionVariant::Sustainity,
+                    api::models::MedallionVariant::Transpaer,
                     "wrong certification"
                 );
-                ensure!(product.medallions[2].sustainity.is_some(), "wrong certification");
+                ensure!(product.medallions[2].transpaer.is_some(), "wrong certification");
                 ensure_eq!(product.alternatives.len(), 1, "wrong number of category alternatives");
                 ensure_eq!(
                     product.alternatives[0].category_label,
@@ -427,7 +427,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let org = client
             .get_organisation(
@@ -452,7 +452,7 @@ impl SamplingRunner {
                         },
                         api::models::ShortText {
                             text: api::models::ShortString::from_str("Fairphone")?,
-                            source: api::models::DataSource::Sustainity
+                            source: api::models::DataSource::Transpaer
                         },
                         api::models::ShortText {
                             text: api::models::ShortString::from_str("Fairphone")?,
@@ -476,7 +476,7 @@ impl SamplingRunner {
                             }),
                             eu_ecolabel: None,
                             fti: None,
-                            sustainity: None,
+                            transpaer: None,
                             tco: None,
                         },
                         api::models::Medallion {
@@ -484,7 +484,7 @@ impl SamplingRunner {
                             bcorp: None,
                             eu_ecolabel: None,
                             fti: None,
-                            sustainity: None,
+                            transpaer: None,
                             tco: Some(api::models::TcoMedallion {
                                 brand_name: api::models::ShortString::from_str("FAIRPHONE")?,
                             }),
@@ -510,7 +510,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let org = client
             .get_organisation(
@@ -634,7 +634,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let cat = client.get_category(SMARTPHONE_CATEGORY_ID.to_string(), &context).await?;
         match cat {
@@ -691,7 +691,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let cat = client.get_category(String::new(), &context).await?;
         match cat {
@@ -714,7 +714,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let result = client.search_by_text("fairphone".to_string(), &context).await?;
         match result {
@@ -766,7 +766,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let result = client.search_by_text("8717677339556".to_string(), &context).await?;
         match result {
@@ -789,7 +789,7 @@ impl SamplingRunner {
         config: &config::SamplingBackendConfig,
     ) -> Result<(), Finding> {
         let client = api::Client::try_new_http(&config.url)?;
-        let context = SustainityContext::<_, Context>::default();
+        let context = TranspaerContext::<_, Context>::default();
 
         let result = client.search_by_text("shein.com".to_string(), &context).await?;
         match result {

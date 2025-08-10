@@ -1,34 +1,32 @@
-use sustainity_api::models as api;
-use sustainity_models::ids;
+use transpaer_api::models as api;
+use transpaer_models::ids;
 
-/// This test makes sure that Sustainity scores in the database and in the API can be mapped "1 to 1".
+/// This test makes sure that transpaer scores in the database and in the API can be mapped "1 to 1".
 ///
 /// In the code there is already mapping from the database to the API.
 #[test]
 fn score_category_to_api() {
-    use sustainity_models::models::SustainityScoreCategory;
+    use transpaer_models::models::TranspaerScoreCategory;
 
     #[allow(dead_code)]
-    fn convert(cat: api::SustainityScoreCategory) -> SustainityScoreCategory {
+    fn convert(cat: api::TranspaerScoreCategory) -> TranspaerScoreCategory {
         match cat {
-            api::SustainityScoreCategory::DataAvailability => {
-                SustainityScoreCategory::DataAvailability
+            api::TranspaerScoreCategory::DataAvailability => {
+                TranspaerScoreCategory::DataAvailability
             }
-            api::SustainityScoreCategory::ProducerKnown => SustainityScoreCategory::ProducerKnown,
-            api::SustainityScoreCategory::ProductionPlaceKnown => {
-                SustainityScoreCategory::ProductionPlaceKnown
+            api::TranspaerScoreCategory::ProducerKnown => TranspaerScoreCategory::ProducerKnown,
+            api::TranspaerScoreCategory::ProductionPlaceKnown => {
+                TranspaerScoreCategory::ProductionPlaceKnown
             }
-            api::SustainityScoreCategory::IdKnown => SustainityScoreCategory::IdKnown,
-            api::SustainityScoreCategory::CategoryAssigned => {
-                SustainityScoreCategory::CategoryAssigned
+            api::TranspaerScoreCategory::IdKnown => TranspaerScoreCategory::IdKnown,
+            api::TranspaerScoreCategory::CategoryAssigned => {
+                TranspaerScoreCategory::CategoryAssigned
             }
-            api::SustainityScoreCategory::Category => SustainityScoreCategory::Category,
-            api::SustainityScoreCategory::WarrantyLength => SustainityScoreCategory::WarrantyLength,
-            api::SustainityScoreCategory::NumCerts => SustainityScoreCategory::NumCerts,
-            api::SustainityScoreCategory::AtLeastOneCert => SustainityScoreCategory::AtLeastOneCert,
-            api::SustainityScoreCategory::AtLeastTwoCerts => {
-                SustainityScoreCategory::AtLeastTwoCerts
-            }
+            api::TranspaerScoreCategory::Category => TranspaerScoreCategory::Category,
+            api::TranspaerScoreCategory::WarrantyLength => TranspaerScoreCategory::WarrantyLength,
+            api::TranspaerScoreCategory::NumCerts => TranspaerScoreCategory::NumCerts,
+            api::TranspaerScoreCategory::AtLeastOneCert => TranspaerScoreCategory::AtLeastOneCert,
+            api::TranspaerScoreCategory::AtLeastTwoCerts => TranspaerScoreCategory::AtLeastTwoCerts,
         }
     }
 }
@@ -37,7 +35,7 @@ fn score_category_to_api() {
 fn regions_merge() {
     use isocountry::CountryCode::{DEU, ESP, FRA, ITA, POL, SWE};
     use merge::Merge;
-    use sustainity_models::models::Regions;
+    use transpaer_models::models::Regions;
 
     fn merge(r1: &Regions, r2: &Regions) -> Regions {
         let mut r = r1.clone();
@@ -63,7 +61,7 @@ fn regions_merge() {
 
 #[test]
 fn serde_product_defaults() {
-    use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
+    use transpaer_models::store::{Certifications, Product, ProductIds, Regions, TranspaerScore};
 
     let original_product = Product {
         ids: ProductIds { eans: vec![], gtins: vec![], wiki: vec![] },
@@ -79,7 +77,7 @@ fn serde_product_defaults() {
         media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
-        sustainity_score: SustainityScore::default(),
+        transpaer_score: TranspaerScore::default(),
     };
 
     let expected_string = indoc::indoc!(
@@ -106,7 +104,7 @@ fn serde_product_defaults() {
           "media": [],
           "follows": [],
           "followed_by": [],
-          "sustainity_score": {
+          "transpaer_score": {
             "tree": [],
             "total": 0.0
           }
@@ -120,7 +118,7 @@ fn serde_product_defaults() {
 
 #[test]
 fn serde_product_filled() {
-    use sustainity_models::store::{Certifications, Product, ProductIds, Regions, SustainityScore};
+    use transpaer_models::store::{Certifications, Product, ProductIds, Regions, TranspaerScore};
 
     let original_product = Product {
         ids: ProductIds {
@@ -140,7 +138,7 @@ fn serde_product_filled() {
         media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
-        sustainity_score: SustainityScore::default(),
+        transpaer_score: TranspaerScore::default(),
     };
 
     let expected_string = indoc::indoc!(
@@ -178,7 +176,7 @@ fn serde_product_filled() {
           "media": [],
           "follows": [],
           "followed_by": [],
-          "sustainity_score": {
+          "transpaer_score": {
             "tree": [],
             "total": 0.0
           }

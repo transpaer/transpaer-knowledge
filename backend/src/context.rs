@@ -7,7 +7,7 @@ use futures::future::BoxFuture;
 use hyper::{service::Service, Request};
 use swagger::{Push, XSpanIdString};
 
-swagger::new_context_type!(SustainityContext, EmptyContext, swagger::XSpanIdString);
+swagger::new_context_type!(TranspaerContext, EmptyContext, swagger::XSpanIdString);
 
 pub struct MakeAddContext<T, A> {
     inner: T,

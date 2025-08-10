@@ -13,53 +13,53 @@ fn format_elapsed_time(duration: std::time::Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
-async fn run() -> Result<(), sustainity_lab::ProcessingError> {
-    use sustainity_lab::Config;
+async fn run() -> Result<(), transpaer_lab::ProcessingError> {
+    use transpaer_lab::Config;
     match Config::new_from_args() {
         Config::Extracting(config) => {
             config.check()?;
             log::info!("Start extracting");
-            sustainity_lab::ExtractingRunner::run(&config)?;
+            transpaer_lab::ExtractingRunner::run(&config)?;
         }
         Config::Filtering(config) => {
             config.check()?;
             log::info!("Start filtering");
-            sustainity_lab::FilteringRunner::run(&config)?;
+            transpaer_lab::FilteringRunner::run(&config)?;
         }
         Config::Updating(config) => {
             config.check()?;
             log::info!("Start updating!");
-            sustainity_lab::UpdateRunner::run(&config)?;
+            transpaer_lab::UpdateRunner::run(&config)?;
         }
         Config::Condensation(config) => {
             config.check()?;
             log::info!("Start condensation!");
-            sustainity_lab::CondensingRunner::run(&config)?;
+            transpaer_lab::CondensingRunner::run(&config)?;
         }
         Config::Coagulation(config) => {
             config.check()?;
             log::info!("Start coagulation!");
-            sustainity_lab::Coagulator::run(&config)?;
+            transpaer_lab::Coagulator::run(&config)?;
         }
         Config::Crystalization(config) => {
             config.check()?;
             log::info!("Start crystalization!");
-            sustainity_lab::Crystalizer::run(&config)?;
+            transpaer_lab::Crystalizer::run(&config)?;
         }
         Config::Oxidation(config) => {
             config.check()?;
             log::info!("Start oxidizing!");
-            sustainity_lab::Oxidizer::run(&config)?;
+            transpaer_lab::Oxidizer::run(&config)?;
         }
         Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
-            sustainity_lab::ConnectionRunner::run(&config)?;
+            transpaer_lab::ConnectionRunner::run(&config)?;
         }
         Config::Sample(config) => {
             config.check()?;
             log::info!("Start sampling!");
-            sustainity_lab::SamplingRunner::run(&config).await?;
+            transpaer_lab::SamplingRunner::run(&config).await?;
         }
     }
     Ok(())

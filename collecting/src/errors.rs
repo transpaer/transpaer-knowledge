@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-pub use sustainity_wikidata::errors::ParseIdError;
+pub use transpaer_wikidata::errors::ParseIdError;
 
 /// Error returned when a problem with IO or file parsing occured.
 #[derive(Error, Debug)]

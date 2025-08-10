@@ -38,14 +38,14 @@ async fn main() {
         return;
     }
 
-    log::info!("Starting Sustainity backend!");
+    log::info!("Starting Transpaer backend!");
 
     let args = Args::parse();
     let retriever = retrieve::Retriever::new(&args.db_path).expect("DB error");
 
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 8080));
     let server = server::Server::new(retriever);
-    let service = sustainity_api::server::MakeService::new(server);
+    let service = transpaer_api::server::MakeService::new(server);
     let service = context::MakeAddContext::<_, context::EmptyContext>::new(service);
     hyper::server::Server::bind(&addr).serve(service).await.expect("Service failed")
 }

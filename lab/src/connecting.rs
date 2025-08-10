@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use merge::Merge;
 use serde::Serialize;
 
-use sustainity_collecting::{errors::MapSerde, eu_ecolabel, open_food_facts, sustainity};
-use sustainity_wikidata::data::{Entity, Item};
+use transpaer_collecting::{errors::MapSerde, eu_ecolabel, open_food_facts, transpaer};
+use transpaer_wikidata::data::{Entity, Item};
 
 use crate::{config, errors, parallel, runners, utils, wikidata::ItemExt};
 
@@ -68,7 +68,7 @@ struct Entry {
     matcher: Matcher,
 
     /// IDs with the highest similarity score.
-    ids: HashSet<sustainity_wikidata::data::Id>,
+    ids: HashSet<transpaer_wikidata::data::Id>,
 
     /// The value of the similarity score.
     similarity: f64,
@@ -97,7 +97,7 @@ impl Entry {
     }
 }
 
-impl From<&Entry> for sustainity::data::NameMatching {
+impl From<&Entry> for transpaer::data::NameMatching {
     fn from(entry: &Entry) -> Self {
         Self {
             name: entry.matcher.name.clone(),
@@ -267,7 +267,7 @@ impl runners::Stash for ConnectionStash {
     fn finish(self) -> Result<(), errors::ProcessingError> {
         log::info!("Saving name matches");
 
-        let data: Vec<sustainity::data::NameMatching> =
+        let data: Vec<transpaer::data::NameMatching> =
             self.collector.data.values().map(Into::into).collect();
         let matched = data.iter().fold(0, |acc, e| acc + usize::from(e.matched().is_some()));
         log::info!(" - matched {} / {} names", matched, self.collector.data.len());

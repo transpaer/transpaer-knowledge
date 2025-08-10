@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use sustainity_api::models as api;
-use sustainity_models::{
+use transpaer_api::models as api;
+use transpaer_models::{
     ids,
     store::{Organisation, Product},
 };
@@ -38,11 +38,11 @@ pub struct OrganisationSearchResult {
 
     /// IDs of the organisation.
     #[serde(rename = "ids")]
-    pub ids: sustainity_models::store::OrganisationIds,
+    pub ids: transpaer_models::store::OrganisationIds,
 
     /// Product name.
     #[serde(rename = "name")]
-    pub name: Option<sustainity_models::store::Text>,
+    pub name: Option<transpaer_models::store::Text>,
 }
 
 impl OrganisationSearchResult {
@@ -93,11 +93,11 @@ pub struct ProductSearchResult {
 
     /// IDs of the product.
     #[serde(rename = "ids")]
-    pub ids: sustainity_models::store::ProductIds,
+    pub ids: transpaer_models::store::ProductIds,
 
     /// Product name.
     #[serde(rename = "name")]
-    pub name: Option<sustainity_models::store::Text>,
+    pub name: Option<transpaer_models::store::Text>,
 }
 
 impl ProductSearchResult {

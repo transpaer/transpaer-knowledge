@@ -1,10 +1,10 @@
-use sustainity_models::gather as models;
+use transpaer_models::gather as models;
 
 /// Converts Open Food Facts to model regions.
 pub fn to_model_regions(
-    regions: &sustainity_collecting::sustainity::data::Regions,
+    regions: &transpaer_collecting::transpaer::data::Regions,
 ) -> Result<models::Regions, isocountry::CountryCodeParseErr> {
-    use sustainity_collecting::sustainity::data::Regions;
+    use transpaer_collecting::transpaer::data::Regions;
     Ok(match regions {
         Regions::World => models::Regions::World,
         Regions::Unknown => models::Regions::Unknown,

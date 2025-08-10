@@ -1,5 +1,5 @@
 [package]
-name = "sustainity-lab"
+name = "transpaer-lab"
 version = "0.1.0"
 edition = "2021"
 
@@ -30,11 +30,11 @@ clap = { workspace = true, features = ["derive"] }
 humantime = { workspace = true }
 fern = { workspace = true }
 
-sustainity-api = { workspace = true, features = ["client"] }
-sustainity-schema = { workspace = true }
-sustainity-wikidata = { workspace = true }
-sustainity-collecting = { workspace = true }
-sustainity-models = { workspace = true, features = ["from-substrate"] }
+transpaer-api = { workspace = true, features = ["client"] }
+transpaer-schema = { workspace = true }
+transpaer-wikidata = { workspace = true }
+transpaer-collecting = { workspace = true }
+transpaer-models = { workspace = true, features = ["from-substrate"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

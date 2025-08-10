@@ -12,9 +12,9 @@ pub mod data {
         /// Wikidata ID of the company.
         #[serde(
             rename = "wiki",
-            deserialize_with = "sustainity_wikidata::data::Id::deserialize_from_string"
+            deserialize_with = "transpaer_wikidata::data::Id::deserialize_from_string"
         )]
-        pub wikidata_id: sustainity_wikidata::data::Id,
+        pub wikidata_id: transpaer_wikidata::data::Id,
     }
 }
 
