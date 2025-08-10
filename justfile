@@ -14,11 +14,11 @@ coagulate := "../data/coagulate-" + E + "-" + S + "-" + C
 target := "../data/target-" + E + "-" + S + "-" + C + "-" + T
 
 kickstart:
-    cargo run --release --bin sustainity-lab -- extract \
+    cargo run --release --bin transpaer-lab -- extract \
         --origin {{origin}} \
         --cache {{cache}}
 
-    cargo run --release --bin sustainity-lab -- condense \
+    cargo run --release --bin transpaer-lab -- condense \
         --group immediate \
         --origin {{origin}} \
         --meta {{meta}} \
@@ -28,13 +28,13 @@ kickstart:
 
     cp -a {{substrate0}}/* {{substrate}}
 
-    cargo run --release --bin sustainity-lab -- filter \
+    cargo run --release --bin transpaer-lab -- filter \
         --origin {{origin}} \
         --meta {{meta}} \
         --cache {{cache}} \
         --substrate {{substrate}}
 
-    cargo run --release --bin sustainity-lab -- condense \
+    cargo run --release --bin transpaer-lab -- condense \
         --group filtered \
         --origin {{origin}} \
         --meta {{meta}} \
@@ -42,21 +42,21 @@ kickstart:
         --cache {{cache}} \
         --substrate {{substrate}}
 
-    cargo run --release --bin sustainity-lab -- coagulate \
+    cargo run --release --bin transpaer-lab -- coagulate \
        --substrate {{substrate}} \
        --coagulate {{coagulate}}
 
-    cargo run --release --bin sustainity-lab -- crystalize \
+    cargo run --release --bin transpaer-lab -- crystalize \
         --substrate {{substrate}} \
         --coagulate {{coagulate}} \
         --target {{target}}
 
-    cargo run --release --bin sustainity-lab -- oxidize \
+    cargo run --release --bin transpaer-lab -- oxidize \
         --support {{support}} \
         --library {{library}} \
         --target {{target}}
 
-    cargo run --release --bin sustainity-lab -- update \
+    cargo run --release --bin transpaer-lab -- update \
         --origin {{origin}} \
         --cache {{cache}} \
         --substrate {{substrate}} \

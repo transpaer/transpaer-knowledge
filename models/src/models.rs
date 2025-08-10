@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
 #[cfg(feature = "into-api")]
-use sustainity_api::models as api;
+use transpaer_api::models as api;
 
 #[cfg(feature = "from-substrate")]
-use sustainity_schema as schema;
+use transpaer_schema as schema;
 
 use crate::ids;
 
@@ -70,8 +70,8 @@ impl IntoApiError {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Source {
-    /// Sustainity.
-    Sustainity,
+    /// Transpaer.
+    Transpaer,
 
     /// Wikidata.
     Wikidata,
@@ -100,7 +100,7 @@ pub enum Source {
 impl Source {
     pub fn from_stem(string: &str) -> Self {
         match string {
-            "sustainity" => Source::Sustainity,
+            "transpaer" => Source::Transpaer,
             "wikidata" => Source::Wikidata,
             "open_food_facts" => Source::OpenFoodFacts,
             "eu_ecolabel" => Source::EuEcolabel,
@@ -140,7 +140,7 @@ impl Source {
             Self::EuEcolabel => api::DataSource::Eu,
             Self::Fti => api::DataSource::Fti,
             Self::OpenFoodFacts => api::DataSource::Off,
-            Self::Sustainity => api::DataSource::Sustainity,
+            Self::Transpaer => api::DataSource::Transpaer,
             Self::Tco => api::DataSource::Tco,
             Self::Wikidata => api::DataSource::Wiki,
             Self::SimpleEnvironmentalist => api::DataSource::Other,
@@ -284,7 +284,7 @@ impl BCorpCert {
             bcorp,
             eu_ecolabel: None,
             fti: None,
-            sustainity: None,
+            transpaer: None,
             tco: None,
         }
     }
@@ -302,7 +302,7 @@ impl EuEcolabelCert {
             bcorp: None,
             eu_ecolabel: Some(api::EuEcolabelMedallion { match_accuracy: None }),
             fti: None,
-            sustainity: None,
+            transpaer: None,
             tco: None,
         }
     }
@@ -323,7 +323,7 @@ impl FtiCert {
             bcorp: None,
             eu_ecolabel: None,
             fti: Some(api::FtiMedallion { score: self.score }),
-            sustainity: None,
+            transpaer: None,
             tco: None,
         }
     }
@@ -352,7 +352,7 @@ impl TcoCert {
             bcorp: None,
             eu_ecolabel: None,
             fti: None,
-            sustainity: None,
+            transpaer: None,
             tco,
         }
     }
@@ -453,7 +453,7 @@ pub enum MentionSource {
 impl From<&Source> for MentionSource {
     fn from(source: &Source) -> Self {
         match source {
-            Source::Sustainity
+            Source::Transpaer
             | Source::Wikidata
             | Source::OpenFoodFacts
             | Source::EuEcolabel
@@ -569,7 +569,7 @@ impl ShoppingEntry {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[repr(u8)]
-pub enum SustainityScoreCategory {
+pub enum TranspaerScoreCategory {
     Root,
     DataAvailability,
     ProducerKnown,
@@ -584,31 +584,31 @@ pub enum SustainityScoreCategory {
 }
 
 #[cfg(feature = "into-api")]
-impl SustainityScoreCategory {
-    pub fn into_api(self) -> api::SustainityScoreCategory {
+impl TranspaerScoreCategory {
+    pub fn into_api(self) -> api::TranspaerScoreCategory {
         match self {
             Self::Root => unimplemented!(), //< This category is never passed to the API
-            Self::DataAvailability => api::SustainityScoreCategory::DataAvailability,
-            Self::ProducerKnown => api::SustainityScoreCategory::ProducerKnown,
-            Self::ProductionPlaceKnown => api::SustainityScoreCategory::ProductionPlaceKnown,
-            Self::IdKnown => api::SustainityScoreCategory::IdKnown,
-            Self::CategoryAssigned => api::SustainityScoreCategory::CategoryAssigned,
-            Self::Category => api::SustainityScoreCategory::Category,
-            Self::WarrantyLength => api::SustainityScoreCategory::WarrantyLength,
-            Self::NumCerts => api::SustainityScoreCategory::NumCerts,
-            Self::AtLeastOneCert => api::SustainityScoreCategory::AtLeastOneCert,
-            Self::AtLeastTwoCerts => api::SustainityScoreCategory::AtLeastTwoCerts,
+            Self::DataAvailability => api::TranspaerScoreCategory::DataAvailability,
+            Self::ProducerKnown => api::TranspaerScoreCategory::ProducerKnown,
+            Self::ProductionPlaceKnown => api::TranspaerScoreCategory::ProductionPlaceKnown,
+            Self::IdKnown => api::TranspaerScoreCategory::IdKnown,
+            Self::CategoryAssigned => api::TranspaerScoreCategory::CategoryAssigned,
+            Self::Category => api::TranspaerScoreCategory::Category,
+            Self::WarrantyLength => api::TranspaerScoreCategory::WarrantyLength,
+            Self::NumCerts => api::TranspaerScoreCategory::NumCerts,
+            Self::AtLeastOneCert => api::TranspaerScoreCategory::AtLeastOneCert,
+            Self::AtLeastTwoCerts => api::TranspaerScoreCategory::AtLeastTwoCerts,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SustainityScoreBranch {
+pub struct TranspaerScoreBranch {
     /// Subbranches of the tree.
-    pub branches: Vec<SustainityScoreBranch>,
+    pub branches: Vec<TranspaerScoreBranch>,
 
     /// Category representing this branch.
-    pub category: SustainityScoreCategory,
+    pub category: TranspaerScoreCategory,
 
     /// Weight of this branch.
     pub weight: i32,
@@ -618,9 +618,9 @@ pub struct SustainityScoreBranch {
 }
 
 #[cfg(feature = "into-api")]
-impl SustainityScoreBranch {
-    pub fn into_api(self) -> api::SustainityScoreBranch {
-        api::SustainityScoreBranch {
+impl TranspaerScoreBranch {
+    pub fn into_api(self) -> api::TranspaerScoreBranch {
+        api::TranspaerScoreBranch {
             branches: self.branches.into_iter().map(|b| b.into_api()).collect(),
             category: self.category.into_api(),
             weight: self.weight as i64,
@@ -630,18 +630,18 @@ impl SustainityScoreBranch {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SustainityScore {
+pub struct TranspaerScore {
     /// Score tree.
-    pub tree: Vec<SustainityScoreBranch>,
+    pub tree: Vec<TranspaerScoreBranch>,
 
     /// Total calculated score.
     pub total: f64,
 }
 
 #[cfg(feature = "into-api")]
-impl SustainityScore {
-    pub fn into_api_score(self) -> api::SustainityScore {
-        api::SustainityScore {
+impl TranspaerScore {
+    pub fn into_api_score(self) -> api::TranspaerScore {
+        api::TranspaerScore {
             tree: self.tree.into_iter().map(|t| t.into_api()).collect(),
             total: self.total,
         }
@@ -649,8 +649,8 @@ impl SustainityScore {
 
     fn into_api_medallion(self) -> api::Medallion {
         api::Medallion {
-            variant: api::MedallionVariant::Sustainity,
-            sustainity: Some(api::SustainityMedallion { score: self.into_api_score() }),
+            variant: api::MedallionVariant::Transpaer,
+            transpaer: Some(api::TranspaerMedallion { score: self.into_api_score() }),
             bcorp: None,
             eu_ecolabel: None,
             fti: None,
@@ -659,7 +659,7 @@ impl SustainityScore {
     }
 }
 
-impl Default for SustainityScore {
+impl Default for TranspaerScore {
     fn default() -> Self {
         Self { tree: Vec::default(), total: 0.0 }
     }
@@ -1064,8 +1064,8 @@ pub struct GatherProduct {
     /// Wikidata IDs older version products.
     pub followed_by: BTreeSet<ids::ProductId>,
 
-    /// The Sustainity score.
-    pub sustainity_score: SustainityScore,
+    /// The Transpaer score.
+    pub transpaer_score: TranspaerScore,
 }
 
 impl GatherProduct {
@@ -1083,7 +1083,7 @@ impl GatherProduct {
         let mut media: Vec<_> = self.media.into_iter().collect();
         let mut follows: Vec<_> = self.follows.into_iter().collect();
         let mut followed_by: Vec<_> = self.followed_by.into_iter().collect();
-        let sustainity_score = self.sustainity_score;
+        let transpaer_score = self.transpaer_score;
 
         names.sort();
         images.sort();
@@ -1108,7 +1108,7 @@ impl GatherProduct {
             media,
             follows,
             followed_by,
-            sustainity_score,
+            transpaer_score,
         }
     }
 
@@ -1189,8 +1189,8 @@ pub struct StoreProduct {
     /// Wikidata IDs older version products.
     pub followed_by: Vec<ids::ProductId>,
 
-    /// The Sustainity score.
-    pub sustainity_score: SustainityScore,
+    /// The Transpaer score.
+    pub transpaer_score: TranspaerScore,
 }
 
 #[cfg(feature = "into-api")]
@@ -1211,7 +1211,7 @@ impl StoreProduct {
         alternatives: Vec<api::CategoryAlternatives>,
     ) -> api::ProductFull {
         let mut medallions = self.certifications.into_api_medallions();
-        medallions.push(self.sustainity_score.into_api_medallion());
+        medallions.push(self.transpaer_score.into_api_medallion());
 
         api::ProductFull {
             product_ids: self.ids.to_api(),

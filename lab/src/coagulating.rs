@@ -3,11 +3,11 @@ use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use sustainity_models::{
+use transpaer_models::{
     buckets::{Bucket, BucketError},
     gather, ids,
 };
-use sustainity_schema as schema;
+use transpaer_schema as schema;
 
 use crate::{
     coagulate::{Coagulate, ExternalId, InnerId, UniqueId},
@@ -211,25 +211,25 @@ impl GroupingStore {
 
     pub fn get_producer_external_to_individuals_bucket(
         &self,
-    ) -> Result<Bucket<ExternalId, Vec<IndividualProducerId>>, BucketError> {
+    ) -> Result<Bucket<'_, ExternalId, Vec<IndividualProducerId>>, BucketError> {
         Bucket::obtain(&self.store, "producers_external_to_individuals")
     }
 
     pub fn get_producer_individual_to_externals_bucket(
         &self,
-    ) -> Result<Bucket<IndividualProducerId, Vec<ExternalId>>, BucketError> {
+    ) -> Result<Bucket<'_, IndividualProducerId, Vec<ExternalId>>, BucketError> {
         Bucket::obtain(&self.store, "producers_individual_to_externals")
     }
 
     pub fn get_product_external_to_individuals_bucket(
         &self,
-    ) -> Result<Bucket<ExternalId, Vec<IndividualProductId>>, BucketError> {
+    ) -> Result<Bucket<'_, ExternalId, Vec<IndividualProductId>>, BucketError> {
         Bucket::obtain(&self.store, "products_external_to_individuals")
     }
 
     pub fn get_product_individual_to_externals_bucket(
         &self,
-    ) -> Result<Bucket<IndividualProductId, Vec<ExternalId>>, BucketError> {
+    ) -> Result<Bucket<'_, IndividualProductId, Vec<ExternalId>>, BucketError> {
         Bucket::obtain(&self.store, "products_individual_to_externals")
     }
 }

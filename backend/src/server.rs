@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use swagger::ApiError;
 
-use sustainity_api::{
+use transpaer_api::{
     models::{
         LibraryContents, LibraryTopic, OrganisationIdVariant, ProductIdVariant, TextSearchResults,
     },

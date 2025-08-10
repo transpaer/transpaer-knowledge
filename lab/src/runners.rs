@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use sustainity_collecting::{eu_ecolabel, open_food_facts};
+use transpaer_collecting::{eu_ecolabel, open_food_facts};
 
 use crate::{
     config, errors,
@@ -55,13 +55,13 @@ where
 #[must_use]
 #[derive(Debug)]
 pub struct WikidataProducer {
-    wiki: sustainity_wikidata::dump::Loader,
+    wiki: transpaer_wikidata::dump::Loader,
 }
 
 impl WikidataProducer {
     /// Constructs a new `WikidataProducer`
     pub fn new(config: &config::WikidataProducerConfig) -> Result<Self, errors::ProcessingError> {
-        Ok(Self { wiki: sustainity_wikidata::dump::Loader::load(&config.wikidata_path)? })
+        Ok(Self { wiki: transpaer_wikidata::dump::Loader::load(&config.wikidata_path)? })
     }
 }
 
@@ -98,7 +98,7 @@ pub trait WikidataWorker: Clone + Send {
     async fn process(
         &mut self,
         msg: &str,
-        entity: sustainity_wikidata::data::Entity,
+        entity: transpaer_wikidata::data::Entity,
         tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError>;
 
@@ -139,7 +139,7 @@ where
         input: Self::Input,
         tx: Sender<Self::Output>,
     ) -> Result<(), Self::Error> {
-        let result: Result<sustainity_wikidata::data::Entity, serde_json::Error> =
+        let result: Result<transpaer_wikidata::data::Entity, serde_json::Error> =
             serde_json::from_str(&input);
         match result {
             Ok(entity) => {

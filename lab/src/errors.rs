@@ -1,8 +1,8 @@
 use thiserror::Error;
 
-pub use sustainity_collecting::errors::IoOrSerdeError;
-pub use sustainity_models::buckets::BucketError;
-pub use sustainity_wikidata::dump::LoaderError;
+pub use transpaer_collecting::errors::IoOrSerdeError;
+pub use transpaer_models::buckets::BucketError;
+pub use transpaer_wikidata::dump::LoaderError;
 
 use crate::{coagulate::ExternalId, substrate::DataSetId, wikidata::WikiId};
 
@@ -46,14 +46,14 @@ pub enum CondensationError {
     Io(std::io::Error, std::path::PathBuf),
 
     #[error("Saving Substrate error: {0}")]
-    WriteSubstrate(#[from] sustainity_schema::errors::SaveError),
+    WriteSubstrate(#[from] transpaer_schema::errors::SaveError),
 }
 
 /// Errors specific to the crystalisation command.
 #[derive(Error, Debug)]
 pub enum CoagulationError {
     #[error("Reading substrate: {0}")]
-    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+    ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
 
     #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
     UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: std::path::PathBuf, when: String },
@@ -81,7 +81,7 @@ pub enum CoagulationError {
 #[derive(Error, Debug)]
 pub enum CrystalizationError {
     #[error("Crystalization: {0:?}")]
-    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+    ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
 
     #[error("ISO country code while (when {when}): {source}")]
     IsoCountry { source: isocountry::CountryCodeParseErr, when: &'static str },
@@ -117,7 +117,7 @@ pub enum ProcessingError {
     ReadYaml(serde_yaml::Error, std::path::PathBuf),
 
     #[error("Reading Substrate error: {0}")]
-    ReadSubstrate(#[from] sustainity_schema::errors::ReadError),
+    ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
 
     #[error("CSV serialization error: {0}")]
     WriteCsv(csv::Error),
@@ -129,7 +129,7 @@ pub enum ProcessingError {
     WriteYaml(serde_yaml::Error),
 
     #[error("Saving Substrate error: {0}")]
-    WriteSubstrate(#[from] sustainity_schema::errors::SaveError),
+    WriteSubstrate(#[from] transpaer_schema::errors::SaveError),
 
     #[error("Bucket: {0}")]
     Bucket(#[from] BucketError),
@@ -162,10 +162,10 @@ pub enum ProcessingError {
     Coagulation(#[from] CoagulationError),
 
     #[error("ID parsing: {0}")]
-    IdParsing(#[from] sustainity_models::ids::ParseIdError),
+    IdParsing(#[from] transpaer_models::ids::ParseIdError),
 
     #[error("Wikidata ID parsing: {0}")]
-    WikiIdParsing(#[from] sustainity_wikidata::errors::ParseIdError),
+    WikiIdParsing(#[from] transpaer_wikidata::errors::ParseIdError),
 
     #[error("Mutex lock")]
     MutexLock,

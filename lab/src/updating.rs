@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 
-use sustainity_collecting::{bcorp, open_food_facts, sustainity};
+use transpaer_collecting::{bcorp, open_food_facts, transpaer};
 
 use crate::{advisors, config, errors, parallel, runners, traits, utils, wikidata::ItemExt};
 
@@ -18,12 +18,12 @@ fn compare_items(c1: &(String, usize), c2: &(String, usize)) -> Ordering {
 fn summarize_countries(
     mut gathered_countries: HashMap<String, usize>,
     country_descriptions: HashMap<String, String>,
-    old_regions: &sustainity::reader::RegionMap,
-) -> (sustainity::data::Countries, usize) {
+    old_regions: &transpaer::reader::RegionMap,
+) -> (transpaer::data::Countries, usize) {
     let mut gathered_countries: Vec<(String, usize)> = gathered_countries.drain().collect();
     gathered_countries.sort_by(compare_items);
 
-    let mut new_countries = sustainity::data::Countries::default();
+    let mut new_countries = transpaer::data::Countries::default();
     let mut assigned_refs: usize = 0;
     let mut all_refs: usize = 0;
     for (tag, count) in gathered_countries {
@@ -33,7 +33,7 @@ fn summarize_countries(
             assigned_refs += count;
         }
         all_refs += count;
-        new_countries.countries.push(sustainity::data::CountryEntry {
+        new_countries.countries.push(transpaer::data::CountryEntry {
             tag,
             description,
             regions: regions.cloned(),
@@ -48,12 +48,12 @@ fn summarize_countries(
 fn summarize_classes(
     mut gathered_classes: HashMap<String, usize>,
     class_descriptions: HashMap<String, String>,
-    old_categories: &sustainity::reader::CategoryMap,
-) -> (sustainity::data::Categories, usize, usize) {
+    old_categories: &transpaer::reader::CategoryMap,
+) -> (transpaer::data::Categories, usize, usize) {
     let mut gathered_classes: Vec<(String, usize)> = gathered_classes.drain().collect();
     gathered_classes.sort_by(compare_items);
 
-    let mut new_categories = sustainity::data::Categories::default();
+    let mut new_categories = transpaer::data::Categories::default();
     let mut assigned_refs: usize = 0;
     let mut deleted_refs: usize = 0;
     let mut all_refs: usize = 0;
@@ -74,7 +74,7 @@ fn summarize_classes(
                 deleted_refs += count;
             }
 
-            sustainity::data::CategoryEntry {
+            transpaer::data::CategoryEntry {
                 tag,
                 description,
                 categories: entry.categories.clone(),
@@ -82,7 +82,7 @@ fn summarize_classes(
                 count,
             }
         } else {
-            sustainity::data::CategoryEntry {
+            transpaer::data::CategoryEntry {
                 tag,
                 description,
                 categories: None,
@@ -197,11 +197,11 @@ pub struct OpenFoodFactsStash {
     /// Collected data.
     collector: Option<OpenFoodFactsCollector>,
 
-    /// Map from Open Food Facts country tags to the Sustainity regions.
-    regions: sustainity::reader::RegionMap,
+    /// Map from Open Food Facts country tags to the Transpaer regions.
+    regions: transpaer::reader::RegionMap,
 
-    /// Map from Open Food Facts category tags to the Sustainity categories.
-    categories: sustainity::reader::CategoryMap,
+    /// Map from Open Food Facts category tags to the Transpaer categories.
+    categories: transpaer::reader::CategoryMap,
 
     /// Configuration.
     config: config::UpdatingConfig,
@@ -209,11 +209,11 @@ pub struct OpenFoodFactsStash {
 
 impl OpenFoodFactsStash {
     fn new(config: config::UpdatingConfig) -> Result<Self, errors::ProcessingError> {
-        let regions = sustainity::reader::RegionMap::from_countries(
-            sustainity::reader::parse_countries(&config.meta.open_food_facts_regions_path)?,
+        let regions = transpaer::reader::RegionMap::from_countries(
+            transpaer::reader::parse_countries(&config.meta.open_food_facts_regions_path)?,
         );
-        let categories = sustainity::reader::CategoryMap::from_categories(
-            sustainity::reader::parse_categories(&config.meta.open_food_facts_categories_path)?,
+        let categories = transpaer::reader::CategoryMap::from_categories(
+            transpaer::reader::parse_categories(&config.meta.open_food_facts_categories_path)?,
         );
         Ok(Self { collector: None, regions, categories, config })
     }
@@ -251,11 +251,11 @@ impl runners::Stash for OpenFoodFactsStash {
         log::info!(" - found {} categories", categories.categories.len());
         log::info!("   - {category_assigned_percentage}% of category use-cases assigned ({category_unwanted_percentage}% unwanted)");
 
-        sustainity::writer::save_countries(
+        transpaer::writer::save_countries(
             &countries,
             &self.config.meta.open_food_facts_regions_path,
         )?;
-        sustainity::writer::save_categories(
+        transpaer::writer::save_categories(
             &categories,
             &self.config.meta.open_food_facts_categories_path,
         )?;
@@ -337,18 +337,18 @@ pub struct WikidataWorker {
     /// Datafrom all substrates
     substrates: Arc<advisors::SubstrateAdvisor>,
 
-    /// Map from Open Food Facts country tags to the Sustainity regions.
-    regions: Arc<sustainity::reader::RegionMap>,
+    /// Map from Open Food Facts country tags to the Transpaer regions.
+    regions: Arc<transpaer::reader::RegionMap>,
 
-    /// Map from Open Food Facts category tags to the Sustainity categories.
-    categories: Arc<sustainity::reader::CategoryMap>,
+    /// Map from Open Food Facts category tags to the Transpaer categories.
+    categories: Arc<transpaer::reader::CategoryMap>,
 }
 
 impl WikidataWorker {
     fn new(
         substrates: Arc<advisors::SubstrateAdvisor>,
-        regions: Arc<sustainity::reader::RegionMap>,
-        categories: Arc<sustainity::reader::CategoryMap>,
+        regions: Arc<transpaer::reader::RegionMap>,
+        categories: Arc<transpaer::reader::CategoryMap>,
     ) -> Self {
         Self { collector: WikidataCollector::new(), substrates, regions, categories }
     }
@@ -363,7 +363,7 @@ impl WikidataWorker {
 
     fn process_countries(
         &mut self,
-        item: &sustainity_wikidata::data::Item,
+        item: &transpaer_wikidata::data::Item,
     ) -> Result<(), errors::ProcessingError> {
         if let Some(countries) = item.get_countries()? {
             for country in countries {
@@ -376,7 +376,7 @@ impl WikidataWorker {
 
     fn process_categories(
         &mut self,
-        item: &sustainity_wikidata::data::Item,
+        item: &transpaer_wikidata::data::Item,
     ) -> Result<(), errors::ProcessingError> {
         if let Some(classes) = item.get_classes()? {
             for class in classes {
@@ -393,14 +393,14 @@ impl WikidataWorker {
         Ok(())
     }
 
-    fn process_country(&mut self, tag: &str, item: &sustainity_wikidata::data::Item) {
-        if let Some(label) = item.get_label(sustainity_wikidata::data::Language::En) {
+    fn process_country(&mut self, tag: &str, item: &transpaer_wikidata::data::Item) {
+        if let Some(label) = item.get_label(transpaer_wikidata::data::Language::En) {
             self.collector.country_descriptions.insert(tag.to_string(), label.to_string());
         }
     }
 
-    fn process_class(&mut self, tag: &str, item: &sustainity_wikidata::data::Item) {
-        if let Some(label) = item.get_label(sustainity_wikidata::data::Language::En) {
+    fn process_class(&mut self, tag: &str, item: &transpaer_wikidata::data::Item) {
+        if let Some(label) = item.get_label(transpaer_wikidata::data::Language::En) {
             self.collector.class_descriptions.insert(tag.to_string(), label.to_string());
         }
     }
@@ -413,13 +413,13 @@ impl runners::WikidataWorker for WikidataWorker {
     async fn process(
         &mut self,
         _msg: &str,
-        entity: sustainity_wikidata::data::Entity,
+        entity: transpaer_wikidata::data::Entity,
         _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
         self.collector.entries += 1;
 
         match entity {
-            sustainity_wikidata::data::Entity::Item(item) => {
+            transpaer_wikidata::data::Entity::Item(item) => {
                 let tag = item.id.to_str_id().into_string();
                 let id = item.id.into();
                 if self.substrates.has_producer_wiki_id(&id) {
@@ -437,7 +437,7 @@ impl runners::WikidataWorker for WikidataWorker {
                     self.process_class(&tag, &item);
                 }
             }
-            sustainity_wikidata::data::Entity::Property(_) => {}
+            transpaer_wikidata::data::Entity::Property(_) => {}
         }
 
         Ok(())
@@ -456,11 +456,11 @@ pub struct WikidataStash {
     /// Collected data.
     collector: Option<WikidataCollector>,
 
-    /// Map from Open Food Facts country tags to the Sustainity regions.
-    regions: Arc<sustainity::reader::RegionMap>,
+    /// Map from Open Food Facts country tags to the Transpaer regions.
+    regions: Arc<transpaer::reader::RegionMap>,
 
-    /// Map from Open Food Facts category tags to the Sustainity categories.
-    categories: Arc<sustainity::reader::CategoryMap>,
+    /// Map from Open Food Facts category tags to the Transpaer categories.
+    categories: Arc<transpaer::reader::CategoryMap>,
 
     /// Configuration.
     config: config::UpdatingConfig,
@@ -469,8 +469,8 @@ pub struct WikidataStash {
 impl WikidataStash {
     fn new(
         config: config::UpdatingConfig,
-        regions: Arc<sustainity::reader::RegionMap>,
-        categories: Arc<sustainity::reader::CategoryMap>,
+        regions: Arc<transpaer::reader::RegionMap>,
+        categories: Arc<transpaer::reader::CategoryMap>,
     ) -> Self {
         Self { collector: None, regions, categories, config }
     }
@@ -505,8 +505,8 @@ impl runners::Stash for WikidataStash {
         log::info!(" - found {} classes", categories.categories.len());
         log::info!("   - {class_assigned_percentage}% of class use-cases assigned ({class_unwanted_percentage}% unwanted)");
 
-        sustainity::writer::save_countries(&countries, &self.config.meta.wikidata_regions_path)?;
-        sustainity::writer::save_categories(
+        transpaer::writer::save_countries(&countries, &self.config.meta.wikidata_regions_path)?;
+        transpaer::writer::save_categories(
             &categories,
             &self.config.meta.wikidata_categories_path,
         )?;
@@ -526,8 +526,8 @@ impl parallel::Isolate for BCorpsWorker {
     type Error = errors::ProcessingError;
 
     async fn process(self) -> Result<(), errors::ProcessingError> {
-        let regions = sustainity::reader::RegionMap::from_countries(
-            sustainity::reader::parse_countries(&self.config.meta.bcorp_regions_path)?,
+        let regions = transpaer::reader::RegionMap::from_countries(
+            transpaer::reader::parse_countries(&self.config.meta.bcorp_regions_path)?,
         );
 
         let data = bcorp::reader::parse(&self.config.bcorp_original_path)?;
@@ -544,7 +544,7 @@ impl parallel::Isolate for BCorpsWorker {
         log::info!(" - found {} countries", countries.countries.len());
         log::info!("   - {}% of tag use-cases assigned", percentage);
 
-        sustainity::writer::save_countries(&countries, &self.config.meta.bcorp_regions_path)?;
+        transpaer::writer::save_countries(&countries, &self.config.meta.bcorp_regions_path)?;
         Ok(())
     }
 }
@@ -558,11 +558,11 @@ impl UpdateRunner {
     ) -> Result<parallel::Flow, errors::ProcessingError> {
         let substrate =
             Arc::new(advisors::SubstrateAdvisor::load_all(&config.substrate.substrate_path)?);
-        let wikidata_regions = Arc::new(sustainity::reader::RegionMap::from_countries(
-            sustainity::reader::parse_countries(&config.meta.wikidata_regions_path)?,
+        let wikidata_regions = Arc::new(transpaer::reader::RegionMap::from_countries(
+            transpaer::reader::parse_countries(&config.meta.wikidata_regions_path)?,
         ));
-        let wikidata_categories = Arc::new(sustainity::reader::CategoryMap::from_categories(
-            sustainity::reader::parse_categories(&config.meta.wikidata_categories_path)?,
+        let wikidata_categories = Arc::new(transpaer::reader::CategoryMap::from_categories(
+            transpaer::reader::parse_categories(&config.meta.wikidata_categories_path)?,
         ));
 
         let off_producer = runners::OpenFoodFactsProducer::new(config.into())?;

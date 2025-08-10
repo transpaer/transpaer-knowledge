@@ -2,14 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use sustainity_collecting::errors::{IoOrSerdeError, MapIo, MapSerde};
+use transpaer_collecting::errors::{IoOrSerdeError, MapIo, MapSerde};
 
 /// Cached data from search over Wikidata data.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Wikidata {
     /// Manufacturer IDs.
-    #[serde(deserialize_with = "sustainity_wikidata::data::deserialize_vec_id_from_vec_integer")]
-    pub manufacturer_ids: Vec<sustainity_wikidata::data::Id>,
+    #[serde(deserialize_with = "transpaer_wikidata::data::deserialize_vec_id_from_vec_integer")]
+    pub manufacturer_ids: Vec<transpaer_wikidata::data::Id>,
 }
 
 /// Reads in the cache data.

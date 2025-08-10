@@ -1,11 +1,11 @@
-//! Extensions for types from `sustainity_wikidata` crate.
+//! Extensions for types from `transpaer_wikidata` crate.
 
 use std::collections::HashSet;
 
-use sustainity_models::utils;
-use sustainity_wikidata::{data, errors, properties};
+use transpaer_models::utils;
+use transpaer_wikidata::{data, errors, properties};
 
-pub use sustainity_wikidata::data::Id as WikiId;
+pub use transpaer_wikidata::data::Id as WikiId;
 
 pub mod organisations {
     pub const BUSSINESS: u64 = 4_830_453;

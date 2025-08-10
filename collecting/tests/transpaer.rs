@@ -1,6 +1,6 @@
 #[test]
 fn country_entry_serde() {
-    use sustainity_collecting::sustainity::data::{CountryEntry, Regions};
+    use transpaer_collecting::transpaer::data::{CountryEntry, Regions};
 
     let original_string_none = "tag: tag\ncount: 1\n".to_string();
     let original_string_world = "tag: tag\nregions: all\ncount: 2\n".to_string();

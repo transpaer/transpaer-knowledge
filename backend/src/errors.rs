@@ -1,6 +1,6 @@
 use snafu::prelude::*;
 
-use sustainity_models::{buckets::BucketError, ids::ParseIdError};
+use transpaer_models::{buckets::BucketError, ids::ParseIdError};
 
 #[derive(Debug)]
 pub enum InputVariant {
@@ -26,7 +26,7 @@ pub enum BackendError {
     ParsingInput { source: ParseIdError, input: String, variant: InputVariant },
 
     #[snafu(context(false), display("Model conversion: {source}"))]
-    Convert { source: sustainity_models::models::IntoApiError },
+    Convert { source: transpaer_models::models::IntoApiError },
 }
 
 impl From<BackendError> for swagger::ApiError {

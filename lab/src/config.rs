@@ -204,19 +204,19 @@ impl SupportConfig {
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct MetaConfig {
-    /// Path to file mapping Wikidata countries to Sustainity regions.
+    /// Path to file mapping Wikidata countries to Transpaer regions.
     pub wikidata_regions_path: PathBuf,
 
-    /// Path to file mapping Wikidata classes to Sustainity categories.
+    /// Path to file mapping Wikidata classes to Transpaer categories.
     pub wikidata_categories_path: PathBuf,
 
-    /// Path to file mapping Open Food Facts sell countries to Sustainity regions.
+    /// Path to file mapping Open Food Facts sell countries to Transpaer regions.
     pub open_food_facts_regions_path: PathBuf,
 
-    /// Path to file mapping Open Food Facts categories to Sustainity categories.
+    /// Path to file mapping Open Food Facts categories to Transpaer categories.
     pub open_food_facts_categories_path: PathBuf,
 
-    /// Path to file mapping B-Corp countries to Sustainity regions.
+    /// Path to file mapping B-Corp countries to Transpaer regions.
     pub bcorp_regions_path: PathBuf,
 
     /// Path to mapping from names to Wikidata IDs.

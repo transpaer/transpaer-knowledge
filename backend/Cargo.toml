@@ -1,5 +1,5 @@
 [package]
-name = "sustainity-backend"
+name = "transpaer-backend"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,6 +19,6 @@ snafu = { workspace = true }
 swagger = { workspace = true, features = ["serdejson", "server"] }
 tokio = { workspace = true, features = ["full"] }
 
-sustainity-api = { workspace = true, features = ["server"] }
-sustainity-models = { workspace = true, features = ["into-api"] }
+transpaer-api = { workspace = true, features = ["server"] }
+transpaer-models = { workspace = true, features = ["into-api"] }
 

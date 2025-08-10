@@ -1,13 +1,13 @@
 #[test]
 fn gtin_to_string() {
-    use sustainity_models::ids::Gtin;
+    use transpaer_models::ids::Gtin;
 
     assert_eq!(Gtin::new(2345).to_string(), "00000000002345");
 }
 
 #[test]
 fn gtin_from_string() {
-    use sustainity_models::ids::{Gtin, ParseIdError};
+    use transpaer_models::ids::{Gtin, ParseIdError};
 
     assert_eq!(Gtin::try_from("012345678"), Ok(Gtin::new(12345678)));
     assert_eq!(Gtin::try_from("123456789"), Ok(Gtin::new(123456789)));
@@ -23,7 +23,7 @@ fn gtin_from_string() {
 
 #[test]
 fn vat_id_from_string() {
-    use sustainity_models::ids::{ParseIdError, VatId};
+    use transpaer_models::ids::{ParseIdError, VatId};
 
     assert_eq!(VatId::try_from("NL12345678"), Ok(VatId::new("NL12345678")));
     assert_eq!(VatId::try_from("NL123-45 67.8"), Ok(VatId::new("NL12345678")));
@@ -35,14 +35,14 @@ fn vat_id_from_string() {
 
 #[test]
 fn organisation_id_to_string() {
-    use sustainity_models::ids::OrganisationId;
+    use transpaer_models::ids::OrganisationId;
 
     assert_eq!(&OrganisationId::from_value(1234).to_string(), "1234");
 }
 
 #[test]
 fn product_id_to_string() {
-    use sustainity_models::ids::ProductId;
+    use transpaer_models::ids::ProductId;
 
     assert_eq!(&ProductId::from_value(1234).to_string(), "1234");
 }

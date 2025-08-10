@@ -2,7 +2,7 @@ use std::{io::Write, sync::Arc};
 
 use async_trait::async_trait;
 
-use sustainity_wikidata::data::{Entity, Item};
+use transpaer_wikidata::data::{Entity, Item};
 
 use crate::{advisors, config, errors, parallel, runners, wikidata::ItemExt};
 

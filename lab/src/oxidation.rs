@@ -1,4 +1,4 @@
-use sustainity_models::{buckets, store};
+use transpaer_models::{buckets, store};
 
 use crate::{advisors, config, errors};
 
@@ -22,8 +22,8 @@ impl Oxidizer {
         config: &config::OxidationConfig,
     ) -> Result<(), errors::ProcessingError> {
         let library = store.get_library_bucket()?;
-        let sustainity = advisors::SustainityLibraryAdvisor::load(&config.library_file_path)?;
-        for info in sustainity.get_info() {
+        let transpaer = advisors::TranspaerLibraryAdvisor::load(&config.library_file_path)?;
+        for info in transpaer.get_info() {
             let id: &str = serde_variant::to_variant_name(&info.id)?;
             let article_path = config.library_dir_path.join(id).with_extension("md");
             crate::utils::file_exists(&article_path)?;

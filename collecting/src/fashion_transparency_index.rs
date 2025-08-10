@@ -12,9 +12,9 @@ pub mod data {
         /// ID of the copmpany in Wikidata.
         #[serde(
             rename = "wiki",
-            deserialize_with = "sustainity_wikidata::data::deserialize_option_id_from_option_string"
+            deserialize_with = "transpaer_wikidata::data::deserialize_option_id_from_option_string"
         )]
-        pub wikidata_id: Option<sustainity_wikidata::data::Id>,
+        pub wikidata_id: Option<transpaer_wikidata::data::Id>,
 
         /// Score of the company in the Fashion Transparency Index.
         #[serde(rename = "score")]
