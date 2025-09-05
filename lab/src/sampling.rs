@@ -246,7 +246,7 @@ impl SamplingRunner {
             }
         }
 
-        let item = client.get_library_item(api::models::LibraryTopic::CertFti, &context).await?;
+        let item = client.get_library_item(api::models::LibraryTopic::Fti, &context).await?;
         match item {
             api::GetLibraryItemResponse::Ok { body: item, .. } => {
                 if item.presentation.is_none() {
@@ -258,7 +258,7 @@ impl SamplingRunner {
             api::GetLibraryItemResponse::NotFound { .. } => {
                 return Err(Finding::Other(format!(
                     "Library item {:?} not found",
-                    api::models::LibraryTopic::CertFti,
+                    api::models::LibraryTopic::Fti,
                 )));
             }
         }

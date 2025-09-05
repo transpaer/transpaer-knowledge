@@ -406,7 +406,7 @@ impl FashionTransparencyIndexAdvisor {
             }
         }
         models::Presentation {
-            id: transpaer::data::LibraryTopic::CertFti.to_str().to_owned(),
+            id: transpaer::data::LibraryTopic::Fti.to_str().to_owned(),
             data: models::PresentationData { entries },
         }
     }
