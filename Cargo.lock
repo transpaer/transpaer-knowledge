@@ -2218,8 +2218,8 @@ dependencies = [
 
 [[package]]
 name = "transpaer-api"
-version = "0.3.0"
-source = "git+https://github.com/transpaer/transpaer-api-rust.git?branch=main#7f55607caff5f7d3fc4ed7c195576a890dd067f9"
+version = "0.1.0"
+source = "git+https://github.com/transpaer/transpaer-api-rust.git?tag=v0.1.0#60115fda0b77ac8a5ee66c6d76bab432129944c0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2341,7 +2341,7 @@ dependencies = [
 [[package]]
 name = "transpaer-schema"
 version = "0.1.0"
-source = "git+https://github.com/transpaer/transpaer-schema-rust.git?branch=main#18e80e0c28a24f0f8e4f5e54cb8c8372b14efd82"
+source = "git+https://github.com/transpaer/transpaer-schema-rust.git?tag=v0.1.0#93b21b47eb6d9ec901610a82b8cb9c34473ab5cd"
 dependencies = [
  "chrono",
  "serde",

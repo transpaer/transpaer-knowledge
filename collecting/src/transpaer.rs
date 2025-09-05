@@ -9,38 +9,23 @@ pub mod data {
     /// Enumerates all library topics.
     #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
     pub enum LibraryTopic {
-        #[serde(rename = "info:main")]
-        InfoMain,
+        #[serde(rename = "wiki")]
+        Wiki,
 
-        #[serde(rename = "info:for_producers")]
-        InfoForProducers,
+        #[serde(rename = "open_food_facts")]
+        OpenFoodFacts,
 
-        #[serde(rename = "info:faq")]
-        InfoFaq,
+        #[serde(rename = "bcorp")]
+        Bcorp,
 
-        #[serde(rename = "info:greenwashing")]
-        InfoGreenwashing,
+        #[serde(rename = "eu_ecolabel")]
+        EuEcolabel,
 
-        #[serde(rename = "data:wiki")]
-        DataWiki,
+        #[serde(rename = "tco")]
+        Tco,
 
-        #[serde(rename = "data:open_food_facts")]
-        DataOpenFoodFacts,
-
-        #[serde(rename = "cert:bcorp")]
-        CertBcorp,
-
-        #[serde(rename = "cert:eu_ecolabel")]
-        CertEuEcolabel,
-
-        #[serde(rename = "cert:tco")]
-        CertTco,
-
-        #[serde(rename = "cert:fti")]
-        CertFti,
-
-        #[serde(rename = "other:not_found")]
-        OtherNotFound,
+        #[serde(rename = "fti")]
+        Fti,
     }
 
     impl LibraryTopic {
