@@ -101,6 +101,19 @@ pub enum CrystalizationError {
     Coagulation(#[from] CoagulationError),
 }
 
+/// Errors specific to the sampling command.
+#[derive(Error, Debug)]
+pub enum SamplingError {
+    #[error("Url schema must be either http:// or https://")]
+    WrongSchema,
+
+    #[error("Failed to parse URI: {0}")]
+    ParsingUri(#[from] http::uri::InvalidUri),
+
+    #[error("Failed initialize the API client: {0}")]
+    APiClientInit(#[from] transpaer_api::client::ClientInitError),
+}
+
 // TODO: Ideally this type could be removed.
 /// Error returned when a problem with processing.
 #[derive(Error, Debug)]
@@ -164,6 +177,9 @@ pub enum ProcessingError {
 
     #[error("Coagulation error: {0}")]
     Coagulation(#[from] CoagulationError),
+
+    #[error("Sampling error: {0}")]
+    Sampling(#[from] SamplingError),
 
     #[error("ID parsing: {0}")]
     IdParsing(#[from] transpaer_models::ids::ParseIdError),
