@@ -1188,7 +1188,7 @@ impl parallel::Consumer for SubstrateSaver {
             .substrate_path
             .join(&input.name)
             .with_extension(input.variant.as_str());
-        log::info!("Saving {:?}", path);
+        log::info!("Saving '{}'", path.display());
         input.substrate.sort();
         input.substrate.save(&path)?;
         log::info!("Saved");

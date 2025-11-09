@@ -145,6 +145,9 @@ pub struct OriginConfig {
 
     /// Path to original EU Ecolabel data.
     pub eu_ecolabel_path: PathBuf,
+
+    /// Path to the originam Open Food Repo data.
+    pub open_food_repo_path: PathBuf,
 }
 
 impl OriginConfig {
@@ -154,6 +157,7 @@ impl OriginConfig {
         Self {
             bcorp_path: origin.join("bcorp.csv"),
             eu_ecolabel_path: origin.join("eu_ecolabel_products.csv"),
+            open_food_repo_path: origin.join("open_food_repo.jsonl"),
         }
     }
 
@@ -208,6 +212,9 @@ impl SupportConfig {
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct MetaConfig {
+    /// Path to the absobents file, which contains info about fetched orinal data sets.
+    pub absorbents: PathBuf,
+
     /// Path to file mapping Wikidata countries to Transpaer regions.
     pub wikidata_regions_path: PathBuf,
 
@@ -232,6 +239,7 @@ impl MetaConfig {
     pub fn new(meta: &str) -> Self {
         let meta = PathBuf::from(meta);
         Self {
+            absorbents: meta.join("absorbents.yaml"),
             wikidata_regions_path: meta.join("wikidata_regions.yaml"),
             wikidata_categories_path: meta.join("wikidata_categories.yaml"),
             open_food_facts_regions_path: meta.join("open_food_facts_regions.yaml"),
@@ -328,7 +336,80 @@ impl SubstrateConfig {
     }
 }
 
-/// Configuration for the `filter1` command.
+/// Configuration for the `open-food-repo` subcommand of the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingOpenFoodRepoConfig {
+    /// Open Food Repo API key..
+    pub api_key: String,
+}
+
+impl AbsorbingOpenFoodRepoConfig {
+    /// Constructs a new `AbsorbingingConfig`.
+    pub fn new(args: &commands::AbsorbingOpenFoodRepoArgs) -> AbsorbingOpenFoodRepoConfig {
+        Self { api_key: args.api_key.clone() }
+    }
+
+    /// Checks validity of the configuration.
+    #[allow(clippy::unnecessary_wraps, clippy::unused_self)]
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        Ok(())
+    }
+}
+
+#[must_use]
+#[derive(Debug, Clone)]
+pub enum AbsorbingSubconfig {
+    OpenFoodRepo(AbsorbingOpenFoodRepoConfig),
+}
+
+impl AbsorbingSubconfig {
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        match self {
+            Self::OpenFoodRepo(config) => config.check(),
+        }
+    }
+}
+
+/// Configuration for the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingConfig {
+    /// Paths to origin files.
+    pub origin: OriginConfig,
+
+    /// Paths to meta files.
+    pub meta: MetaConfig,
+
+    /// CCC
+    pub sub: AbsorbingSubconfig,
+}
+
+impl AbsorbingConfig {
+    /// Constructs a new `AbsorbingingConfig`.
+    pub fn new(args: &commands::AbsorbingArgs) -> AbsorbingConfig {
+        let sub = match &args.command {
+            commands::AbsorbingCommands::OpenFoodRepo(subargs) => {
+                AbsorbingSubconfig::OpenFoodRepo(AbsorbingOpenFoodRepoConfig::new(subargs))
+            }
+        };
+
+        Self { origin: OriginConfig::new(&args.origin), meta: MetaConfig::new(&args.meta), sub }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        self.origin.check()?;
+        self.sub.check()?;
+        Ok(())
+    }
+}
+
+/// Configuration for the `extract` command.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct ExtractingConfig {
@@ -360,7 +441,7 @@ impl ExtractingConfig {
     }
 }
 
-/// Configuration for the `filter2` command.
+/// Configuration for the `filter` command.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct FilteringConfig {
@@ -817,6 +898,7 @@ impl From<&CrystalizationConfig> for SubstrateConfig {
 #[must_use]
 #[derive(Debug, Clone)]
 pub enum Config {
+    Absorbing(AbsorbingConfig),
     Extracting(ExtractingConfig),
     Filtering(FilteringConfig),
     Updating(UpdatingConfig),
@@ -835,6 +917,7 @@ impl Config {
 
         let args = Args::parse();
         match args.command {
+            Commands::Absorb(args) => Config::Absorbing(AbsorbingConfig::new(&args)),
             Commands::Extract(args) => Config::Extracting(ExtractingConfig::new(&args)),
             Commands::Filter(args) => Config::Filtering(FilteringConfig::new(&args)),
             Commands::Update(args) => Config::Updating(UpdatingConfig::new(&args)),

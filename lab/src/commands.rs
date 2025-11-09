@@ -4,7 +4,46 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-/// Arguments of the `filter1` command.
+/// Arguments of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(
+    about = "Fetch data",
+    long_about = "In some cases we create substrate files from existing data sets.
+                  This command allows to easily fetch data from a picked source."
+)]
+pub struct AbsorbingArgs {
+    /// Origin data directory.
+    #[arg(long)]
+    pub origin: String,
+
+    /// Meta data directory.
+    #[arg(long)]
+    pub meta: String,
+
+    /// Subommands.
+    #[command(subcommand)]
+    pub command: AbsorbingCommands,
+}
+
+/// Arguments of the `open-food-repo` subcommand of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(
+    about = "Fetch data from the Open Food Repo",
+    long_about = "Fetch data from the Open Food Repo"
+)]
+pub struct AbsorbingOpenFoodRepoArgs {
+    /// Open Food Repo API key.
+    #[arg(long)]
+    pub api_key: String,
+}
+
+/// Subcommands of the `absorb` command.
+#[derive(Subcommand, Debug)]
+pub enum AbsorbingCommands {
+    OpenFoodRepo(AbsorbingOpenFoodRepoArgs),
+}
+
+/// Arguments of the `extract` command.
 #[derive(Parser, Debug)]
 #[command(
     about = "First step of filtering",
@@ -22,7 +61,7 @@ pub struct ExtractingArgs {
     pub cache: String,
 }
 
-/// Arguments of the `filter2` command.
+/// Arguments of the `filter` command.
 #[derive(Parser, Debug)]
 #[command(
     about = "Second step of filtering",
@@ -222,6 +261,7 @@ pub struct SampleArgs {
 /// All arguments of the program.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    Absorb(AbsorbingArgs),
     Extract(ExtractingArgs),
     Condense(CondensationArgs),
     Filter(FilteringArgs),

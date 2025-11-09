@@ -34,6 +34,7 @@ num_cpus = { version = "1.0" }
 postcard = { version = "1.1", features = ["use-std"] }
 pretty_assertions = { version = "1.4.0" }
 rand = { version = "0.9" }
+reqwest = { version = "0.12" }
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
 serde-jsonlines = { version = "0.4" }

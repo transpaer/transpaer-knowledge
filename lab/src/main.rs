@@ -20,6 +20,11 @@ fn format_elapsed_time(duration: std::time::Duration) -> String {
 async fn run() -> Result<(), transpaer_lab::ProcessingError> {
     use transpaer_lab::Config;
     match Config::new_from_args() {
+        Config::Absorbing(config) => {
+            config.check()?;
+            log::info!("Start absorbing");
+            transpaer_lab::Absorber::run(&config).await?;
+        }
         Config::Extracting(config) => {
             config.check()?;
             log::info!("Start extracting");

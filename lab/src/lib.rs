@@ -8,6 +8,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 // TODO: add more structure to the files
+mod absorbing;
 mod advisors;
 mod cache;
 mod coagulate;
@@ -33,7 +34,7 @@ mod utils;
 mod wikidata;
 
 pub use crate::{
-    coagulating::Coagulator, condensing::CondensingRunner, config::Config,
+    absorbing::Absorber, coagulating::Coagulator, condensing::CondensingRunner, config::Config,
     connecting::ConnectionRunner, crystalizing::Crystalizer, errors::ProcessingError,
     extracting::ExtractingRunner, filtering::FilteringRunner, oxidation::Oxidizer,
     sampling::SamplingRunner, updating::UpdateRunner,
