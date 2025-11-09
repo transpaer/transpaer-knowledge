@@ -43,6 +43,16 @@ pub enum SourcesCheckError {
     RepeatedIds(std::collections::HashSet<WikiId>),
 }
 
+/// Errors specific to the `absorb` command.
+#[derive(Error, Debug)]
+pub enum AbsorbingError {
+    #[error("HTTP query: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("IO or serde error: {0}")]
+    IoOrSerde(#[from] IoOrSerdeError),
+}
+
 /// Errors specific to the `condense` command.
 #[derive(Error, Debug)]
 pub enum CondensationError {
@@ -168,6 +178,9 @@ pub enum ProcessingError {
 
     #[error("Sources check: {0}")]
     SourcesCheck(#[from] SourcesCheckError),
+
+    #[error("Absorbing error: {0}")]
+    Absorbing(#[from] AbsorbingError),
 
     #[error("Crystalization error: {0}")]
     Condensation(#[from] CondensationError),

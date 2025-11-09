@@ -13,6 +13,7 @@ pub mod data {
 pub mod errors;
 
 pub mod categories;
+pub mod fetch_info;
 
 pub mod bcorp;
 pub mod eu_ecolabel;

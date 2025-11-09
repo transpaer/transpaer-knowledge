@@ -546,7 +546,7 @@ impl parallel::Isolate for BCorpsWorker {
 
         log::info!("BCorps report:");
         log::info!(" - found {} countries", countries.countries.len());
-        log::info!("   - {}% of tag use-cases assigned", percentage);
+        log::info!("   - {percentage}% of tag use-cases assigned");
 
         transpaer::writer::save_countries(&countries, &self.config.meta.bcorp_regions_path)?;
         Ok(())
