@@ -10,6 +10,8 @@ async-trait = { workspace = true }
 csv = { workspace = true }
 derive-new = { workspace = true }
 futures = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
 isocountry = { workspace = true }
 kv = { workspace = true, features = ["json-value"] }
 log = { workspace = true }

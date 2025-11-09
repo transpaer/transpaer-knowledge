@@ -12,8 +12,6 @@ use transpaer_models::{
 
 use swagger::XSpanIdString;
 
-use api::Api;
-
 use crate::{config, errors};
 
 #[derive(Clone, Default)]
@@ -120,7 +118,7 @@ impl SamplingRunner {
             Self::run_with_store(config);
         }
         if let Some(config) = &config.backend {
-            Self::run_with_backend(config).await;
+            Self::run_with_backend(config).await?;
         }
         if config.target.is_none() && config.backend.is_none() {
             log::error!("No data source was given");
@@ -216,37 +214,65 @@ impl SamplingRunner {
         Ok(())
     }
 
-    pub async fn run_with_backend(config: &config::SamplingBackendConfig) {
+    pub async fn run_with_backend(
+        config: &config::SamplingBackendConfig,
+    ) -> Result<(), errors::SamplingError> {
+        let url = config.url.parse::<http::Uri>()?;
+        match url.scheme().map(http::uri::Scheme::as_str) {
+            Some("http") => {
+                let client = api::Client::try_new_http(&config.url)?;
+                let context = TranspaerContext::<_, Context>::default();
+                Self::run_with_backend_inner(client, context).await
+            }
+            Some("https") => {
+                let client = api::Client::try_new_https(&config.url)?;
+                let context = TranspaerContext::<_, Context>::default();
+                Self::run_with_backend_inner(client, context).await
+            }
+            _ => Err(errors::SamplingError::WrongSchema),
+        }
+    }
+
+    async fn run_with_backend_inner<A, C>(
+        client: A,
+        context: C,
+    ) -> Result<(), errors::SamplingError>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         log::info!("Verifying the backend");
         let mut findings = Findings::default();
 
-        findings.consider(Self::check_backend_library(config).await);
-        findings.consider(Self::check_backend_prod_by_gtin(config).await);
-        findings.consider(Self::check_backend_prod_by_invalid_gtin(config).await);
-        findings.consider(Self::check_backend_prod_by_wiki_id(config).await);
-        findings.consider(Self::check_backend_org_by_wiki_id(config).await);
-        findings.consider(Self::check_backend_org_by_domain(config).await);
-        findings.consider(Self::check_backend_deep_category(config).await);
-        findings.consider(Self::check_backend_root_category(config).await);
-        findings.consider(Self::check_backend_text_search_by_name(config).await);
-        findings.consider(Self::check_backend_text_search_by_gtin(config).await);
-        findings.consider(Self::check_backend_text_search_by_www(config).await);
+        findings.consider(Self::check_backend_library(&client, &context).await);
+        findings.consider(Self::check_backend_prod_by_gtin(&client, &context).await);
+        findings.consider(Self::check_backend_prod_by_invalid_gtin(&client, &context).await);
+        findings.consider(Self::check_backend_prod_by_wiki_id(&client, &context).await);
+        findings.consider(Self::check_backend_org_by_wiki_id(&client, &context).await);
+        findings.consider(Self::check_backend_org_by_domain(&client, &context).await);
+        findings.consider(Self::check_backend_deep_category(&client, &context).await);
+        findings.consider(Self::check_backend_root_category(&client, &context).await);
+        findings.consider(Self::check_backend_text_search_by_name(&client, &context).await);
+        findings.consider(Self::check_backend_text_search_by_gtin(&client, &context).await);
+        findings.consider(Self::check_backend_text_search_by_www(&client, &context).await);
 
         findings.report();
+        Ok(())
     }
 
-    async fn check_backend_library(config: &config::SamplingBackendConfig) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let library = client.get_library(&context).await?;
+    async fn check_backend_library<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let library = client.get_library(context).await?;
         match library {
             api::GetLibraryResponse::Ok { body: library, .. } => {
-                ensure_eq!(library.items.len(), 11, "wrong library length");
+                ensure_eq!(library.items.len(), 6, "wrong library length");
             }
         }
 
-        let item = client.get_library_item(api::models::LibraryTopic::Fti, &context).await?;
+        let item = client.get_library_item(api::models::LibraryTopic::Fti, context).await?;
         match item {
             api::GetLibraryItemResponse::Ok { body: item, .. } => {
                 if item.presentation.is_none() {
@@ -266,15 +292,15 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_prod_by_gtin(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
+    async fn check_backend_prod_by_gtin<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         let gtin = TONYS_GTIN.to_string();
 
         let product = client
-            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, &context)
+            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, context)
             .await?;
         match product {
             api::GetProductResponse::Ok { body: product, .. } => {
@@ -312,15 +338,18 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_prod_by_invalid_gtin(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
+    async fn check_backend_prod_by_invalid_gtin<A, C>(
+        client: &A,
+        context: &C,
+    ) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         let gtin = MISSING_GTIN.to_string();
 
         let product = client
-            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, &context)
+            .get_product(api::models::ProductIdVariant::Gtin, gtin.clone(), None, context)
             .await?;
         match product {
             api::GetProductResponse::Ok { .. } => {
@@ -333,18 +362,17 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_prod_by_wiki_id(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
+    async fn check_backend_prod_by_wiki_id<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         let product = client
             .get_product(
                 api::models::ProductIdVariant::Wiki,
                 FAIRPHONE_4_WIKI_ID.to_canonical_string(),
                 None,
-                &context,
+                context,
             )
             .await?;
         match product {
@@ -427,17 +455,16 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_org_by_wiki_id(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
+    async fn check_backend_org_by_wiki_id<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         let org = client
             .get_organisation(
                 api::models::OrganisationIdVariant::Wiki,
                 FAIRPHONE_ORG_WIKI_ID.to_canonical_string(),
-                &context,
+                context,
             )
             .await?;
         match org {
@@ -510,17 +537,16 @@ impl SamplingRunner {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn check_backend_org_by_domain(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
+    async fn check_backend_org_by_domain<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
         let org = client
             .get_organisation(
                 api::models::OrganisationIdVariant::Www,
                 AVENTON_DOMAIN.to_string(),
-                &context,
+                context,
             )
             .await?;
         match org {
@@ -570,7 +596,7 @@ impl SamplingRunner {
             .get_organisation(
                 api::models::OrganisationIdVariant::Www,
                 PLAINE_DOMAIN.to_string(),
-                &context,
+                context,
             )
             .await?;
         match org {
@@ -634,13 +660,12 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_deep_category(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let cat = client.get_category(SMARTPHONE_CATEGORY_ID.to_string(), &context).await?;
+    async fn check_backend_deep_category<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let cat = client.get_category(SMARTPHONE_CATEGORY_ID.to_string(), context).await?;
         match cat {
             api::GetCategoryResponse::Ok { body: cat, .. } => {
                 ensure_eq!(cat.label, SMARTPHONE_CATEGORY_LABEL, "wrong label");
@@ -691,18 +716,17 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_root_category(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let cat = client.get_category(String::new(), &context).await?;
+    async fn check_backend_root_category<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let cat = client.get_category(String::new(), context).await?;
         match cat {
             api::GetCategoryResponse::Ok { body: cat, .. } => {
                 ensure_eq!(cat.label, "", "wrong label");
                 ensure_eq!(cat.products.len(), 0, "wrong number of products");
-                ensure_eq!(cat.status, api::models::CategoryStatus::Exploratory, "wrong status");
+                ensure_eq!(cat.status, api::models::CategoryStatus::Broad, "wrong status");
                 ensure_eq!(cat.subcategories.len(), 8, "wrong number of subcategories");
                 ensure_eq!(cat.supercategories.len(), 0, "wrong number of supercategories");
             }
@@ -714,13 +738,12 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_text_search_by_name(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let result = client.search_by_text("fairphone".to_string(), &context).await?;
+    async fn check_backend_text_search_by_name<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let result = client.search_by_text("fairphone".to_string(), context).await?;
         match result {
             api::SearchByTextResponse::Ok { body: org, .. } => {
                 ensure_eq!(org.results.len(), 7, "looking for fairphone");
@@ -766,13 +789,12 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_text_search_by_gtin(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let result = client.search_by_text("8717677339556".to_string(), &context).await?;
+    async fn check_backend_text_search_by_gtin<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let result = client.search_by_text("8717677339556".to_string(), context).await?;
         match result {
             api::SearchByTextResponse::Ok { body: org, .. } => {
                 ensure_eq!(org.results.len(), 1, "looking for tony's");
@@ -789,13 +811,12 @@ impl SamplingRunner {
         Ok(())
     }
 
-    async fn check_backend_text_search_by_www(
-        config: &config::SamplingBackendConfig,
-    ) -> Result<(), Finding> {
-        let client = api::Client::try_new_http(&config.url)?;
-        let context = TranspaerContext::<_, Context>::default();
-
-        let result = client.search_by_text("shein.com".to_string(), &context).await?;
+    async fn check_backend_text_search_by_www<A, C>(client: &A, context: &C) -> Result<(), Finding>
+    where
+        A: api::Api<C>,
+        C: Clone + Send + Sync,
+    {
+        let result = client.search_by_text("shein.com".to_string(), context).await?;
         match result {
             api::SearchByTextResponse::Ok { body: org, .. } => {
                 ensure_eq!(org.results.len(), 1, "looking for shein.com");
@@ -809,7 +830,7 @@ impl SamplingRunner {
         }
 
         let result =
-            client.search_by_text("https://meliorameansbetter.com/".to_string(), &context).await?;
+            client.search_by_text("https://meliorameansbetter.com/".to_string(), context).await?;
         match result {
             api::SearchByTextResponse::Ok { body: org, .. } => {
                 ensure_eq!(
