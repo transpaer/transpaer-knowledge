@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use transpaer_collecting::{eu_ecolabel, open_food_facts};
+use transpaer_collecting::{eu_ecolabel, open_food_facts, open_food_repo};
 
 use crate::{
     config, errors,
@@ -350,6 +350,150 @@ where
 
         let producer = OpenFoodFactsProducer::new(config.into())?;
         let processor = OpenFoodFactsProcessor::new(worker);
+        let consumer = RunnerConsumer::new(stash);
+
+        let flow = flow
+            .name("off")
+            .spawn_producer(producer, tx1)?
+            .spawn_processors(processor, rx1, tx2)?
+            .spawn_consumer(consumer, rx2)?;
+
+        Ok(flow)
+    }
+}
+
+/// Message send throught `OpenFoodRepoRunner` channel.
+#[derive(Clone, Debug)]
+pub struct OpenFoodRepoRunnerMessage {
+    entry: open_food_repo::data::Entry,
+}
+
+/// Implementation of `Producer` trait for Open Food Repo data.
+#[must_use]
+#[derive(Debug)]
+pub struct OpenFoodRepoProducer {
+    config: config::OpenFoodRepoProducerConfig,
+}
+
+impl OpenFoodRepoProducer {
+    /// Constructs a new `OpenFoodRepoProducer`
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn new(
+        config: config::OpenFoodRepoProducerConfig,
+    ) -> Result<Self, errors::ProcessingError> {
+        Ok(Self { config })
+    }
+}
+
+#[async_trait]
+impl Producer for OpenFoodRepoProducer {
+    type Output = OpenFoodRepoRunnerMessage;
+    type Error = errors::ProcessingError;
+
+    async fn produce(self, tx: Sender<Self::Output>) -> Result<(), errors::ProcessingError> {
+        let num = open_food_repo::reader::load(&self.config.open_food_repo_path, move |entry| {
+            let tx2 = tx.clone();
+            async move {
+                tx2.send(OpenFoodRepoRunnerMessage { entry }).await;
+            }
+        })
+        .await?;
+
+        log::info!("Read {num} Open Food Repo entries");
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait OpenFoodRepoWorker: Clone + Send {
+    type Output: Clone + Send;
+
+    /// Handles one Open Food Repo entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if processing of the entry fails in any way.
+    async fn process(
+        &mut self,
+        entry: open_food_repo::data::Entry,
+        tx: parallel::Sender<Self::Output>,
+    ) -> Result<(), errors::ProcessingError>;
+
+    async fn finish(
+        self,
+        tx: parallel::Sender<Self::Output>,
+    ) -> Result<(), errors::ProcessingError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenFoodRepoProcessor<W>
+where
+    W: OpenFoodRepoWorker,
+{
+    worker: W,
+}
+
+impl<W> OpenFoodRepoProcessor<W>
+where
+    W: OpenFoodRepoWorker,
+{
+    pub fn new(worker: W) -> Self {
+        Self { worker }
+    }
+}
+
+#[async_trait]
+impl<W> Processor for OpenFoodRepoProcessor<W>
+where
+    W: OpenFoodRepoWorker + Sync,
+{
+    type Input = OpenFoodRepoRunnerMessage;
+    type Output = W::Output;
+    type Error = errors::ProcessingError;
+
+    async fn process(
+        &mut self,
+        input: Self::Input,
+        tx: Sender<Self::Output>,
+    ) -> Result<(), Self::Error> {
+        self.worker.process(input.entry, tx).await?;
+        Ok(())
+    }
+
+    async fn finish(self, tx: Sender<Self::Output>) -> Result<(), Self::Error> {
+        self.worker.finish(tx).await
+    }
+}
+
+#[allow(dead_code)]
+pub struct OpenFoodRepoRunner<W, S, C>
+where
+    W: OpenFoodRepoWorker,
+    S: Stash,
+    C: Clone + Send,
+{
+    phantom: std::marker::PhantomData<(W, S, C)>,
+}
+
+#[allow(dead_code)]
+impl<W, S, C> OpenFoodRepoRunner<W, S, C>
+where
+    W: OpenFoodRepoWorker + Sync + 'static,
+    S: Stash<Input = W::Output> + 'static,
+    C: Clone + Send,
+    for<'c> &'c C: Into<config::OpenFoodRepoProducerConfig>,
+{
+    pub fn flow(
+        flow: Flow,
+        config: &C,
+        worker: W,
+        stash: S,
+    ) -> Result<Flow, errors::ProcessingError> {
+        let (tx1, rx1) = parallel::bounded::<OpenFoodRepoRunnerMessage>();
+        let (tx2, rx2) = parallel::bounded::<W::Output>();
+
+        let producer = OpenFoodRepoProducer::new(config.into())?;
+        let processor = OpenFoodRepoProcessor::new(worker);
         let consumer = RunnerConsumer::new(stash);
 
         let flow = flow

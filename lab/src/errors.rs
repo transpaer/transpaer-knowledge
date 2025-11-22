@@ -140,6 +140,9 @@ pub enum ProcessingError {
     #[error("In file `{1}`.\nJSON parsing error: {0}")]
     ReadJson(serde_json::Error, std::path::PathBuf),
 
+    #[error("In file `{1}`, line {2}.\n Error: {0}")]
+    ReadJsonLines(std::io::Error, std::path::PathBuf, usize),
+
     #[error("In file `{1}`.\nYAML parsing error: {0}")]
     ReadYaml(serde_yaml::Error, std::path::PathBuf),
 
@@ -219,6 +222,9 @@ impl From<IoOrSerdeError> for ProcessingError {
             IoOrSerdeError::Io(error, path) => Self::Io(error, path),
             IoOrSerdeError::ReadCsv(error, path) => Self::ReadCsv(error, path),
             IoOrSerdeError::ReadJson(error, path) => Self::ReadJson(error, path),
+            IoOrSerdeError::ReadJsonLines(error, path, line) => {
+                Self::ReadJsonLines(error, path, line)
+            }
             IoOrSerdeError::ReadYaml(error, path) => Self::ReadYaml(error, path),
             IoOrSerdeError::WriteCsv(error) => Self::WriteCsv(error),
             IoOrSerdeError::WriteJson(error) => Self::WriteJson(error),
@@ -231,7 +237,7 @@ impl From<LoaderError> for ProcessingError {
     fn from(error: LoaderError) -> Self {
         match error {
             LoaderError::Io(source, path) => Self::Io(source, path),
-            LoaderError::CompressionMethod => Self::CompressionMethod,
+            LoaderError::CompressionMethod(_) => Self::CompressionMethod,
         }
     }
 }

@@ -18,6 +18,9 @@ pub enum IoOrSerdeError {
     #[error("In file `{1}`.\n JSON parsing error: {0}")]
     ReadJson(serde_json::Error, std::path::PathBuf),
 
+    #[error("In file `{1}`, line {2}.\n Error: {0}")]
+    ReadJsonLines(std::io::Error, std::path::PathBuf, usize),
+
     #[error("In file `{1}`.\nYAML parsing error: {0}")]
     ReadYaml(serde_yaml::Error, std::path::PathBuf),
 

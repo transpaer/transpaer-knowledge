@@ -28,9 +28,6 @@ pub enum BackendError {
 
     #[snafu(display("Parsing request input `{input}` as {variant}: {source}"))]
     ParsingInput { source: ParseIdError, input: String, variant: InputVariant },
-
-    #[snafu(context(false), display("Model conversion: {source}"))]
-    Convert { source: transpaer_models::models::IntoApiError },
 }
 
 impl From<BackendError> for swagger::ApiError {

@@ -117,23 +117,19 @@ impl Retriever {
 
     pub fn library_contents(&self) -> Result<Vec<api::LibraryItemShort>, BackendError> {
         let library = self.app.get_library_bucket()?;
-        Ok(library
-            .gather()?
-            .into_iter()
-            .filter_map(|(_topic, item)| item.try_into_api_short().ok())
-            .collect())
+
+        Ok(library.gather()?.into_iter().map(|(_topic, item)| item.into_api_short()).collect())
     }
 
     pub fn library_item(
         &self,
-        topic: api::LibraryTopic,
+        topic: &String,
     ) -> Result<Option<api::LibraryItemFull>, BackendError> {
-        let topic_name = topic.to_string();
         let library = self.app.get_library_bucket()?;
-        if let Some(item) = library.get(&topic_name)? {
+        if let Some(item) = library.get(topic)? {
             let presentations = self.app.get_presentation_bucket()?;
-            let presentation = presentations.get(&topic_name)?.map(|p| p.into_api());
-            let item = item.try_into_api_full(presentation)?;
+            let presentation = presentations.get(topic)?.map(|p| p.into_api());
+            let item = item.into_api_full(presentation);
             Ok(Some(item))
         } else {
             Ok(None)

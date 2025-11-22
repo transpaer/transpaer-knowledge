@@ -11,7 +11,6 @@ use std::{collections::BTreeSet, str::FromStr};
 //       build a complitely new struct as this will guaranty all fields are used.
 use merge::Merge;
 use serde::{Deserialize, Serialize};
-use snafu::prelude::*;
 
 #[cfg(feature = "into-api")]
 use transpaer_api::models as api;
@@ -50,21 +49,6 @@ fn ean_to_id(id: &ids::Ean) -> api::Id {
 #[cfg(feature = "into-api")]
 fn gtin_to_id(id: &ids::Gtin) -> api::Id {
     api::Id::from_str(&id.to_canonical_string()).expect("Converting GTIN")
-}
-
-#[cfg(feature = "into-api")]
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub))]
-pub enum IntoApiError {
-    #[snafu(display("Failed conversion to LibraryTopic: {err}"))]
-    ToLibraryTopic { err: api::error::ConversionError },
-}
-
-#[cfg(feature = "into-api")]
-impl IntoApiError {
-    pub fn to_library_topic(err: api::error::ConversionError) -> Self {
-        Self::ToLibraryTopic { err }
-    }
 }
 
 /// Points to a source of some data.
@@ -1367,26 +1351,23 @@ pub struct LibraryItem {
 
 #[cfg(feature = "into-api")]
 impl LibraryItem {
-    pub fn try_into_api_short(self) -> Result<api::LibraryItemShort, IntoApiError> {
-        Ok(api::LibraryItemShort {
-            id: api::LibraryTopic::from_str(&self.id).map_err(IntoApiError::to_library_topic)?,
+    pub fn into_api_short(self) -> api::LibraryItemShort {
+        api::LibraryItemShort {
+            id: api::LibraryTopic::from(self.id),
             title: str_to_short_string(self.title),
             summary: str_to_short_string(self.summary),
-        })
+        }
     }
 
-    pub fn try_into_api_full(
-        self,
-        presentation: Option<api::Presentation>,
-    ) -> Result<api::LibraryItemFull, IntoApiError> {
-        Ok(api::LibraryItemFull {
-            id: api::LibraryTopic::from_str(&self.id).map_err(IntoApiError::to_library_topic)?,
+    pub fn into_api_full(self, presentation: Option<api::Presentation>) -> api::LibraryItemFull {
+        api::LibraryItemFull {
+            id: api::LibraryTopic::from(self.id),
             title: str_to_short_string(self.title),
             summary: str_to_short_string(self.summary),
             article: str_to_long_string(self.article),
             links: self.links.into_iter().map(|link| link.into_api()).collect(),
             presentation,
-        })
+        }
     }
 }
 

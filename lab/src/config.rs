@@ -48,7 +48,7 @@ impl WikidataProducerConfig {
     }
 }
 
-/// Configuration for `WikidataGatherer`.
+/// Configuration for `OpenFoodFactsGatherer`.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct OpenFoodFactsProducerConfig {
@@ -69,6 +69,31 @@ impl OpenFoodFactsProducerConfig {
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         utils::file_exists(&self.open_food_facts_path)?;
+        Ok(())
+    }
+}
+
+/// Configuration for `OpenFoodRepoGatherer`.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct OpenFoodRepoProducerConfig {
+    /// Path to Open Food Repo data.
+    pub open_food_repo_path: PathBuf,
+}
+
+impl OpenFoodRepoProducerConfig {
+    pub fn new(origin: &str) -> Self {
+        let origin = PathBuf::from(origin);
+        Self { open_food_repo_path: origin.join("open_food_repo.jsonl") }
+    }
+
+    /// Checks validity of the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::file_exists(&self.open_food_repo_path)?;
         Ok(())
     }
 }
@@ -555,6 +580,9 @@ pub struct CondensationConfig {
     /// Open Food Facts gatherer config.
     pub off: OpenFoodFactsProducerConfig,
 
+    /// Open Food Repo gatherer config.
+    pub ofr: OpenFoodRepoProducerConfig,
+
     /// EU Ecolabel gatherer config.
     pub eu_ecolabel: EuEcolabelProducerConfig,
 
@@ -573,6 +601,7 @@ impl CondensationConfig {
             cache: CacheConfig::new(&args.cache),
             wiki: WikidataProducerConfig::new_filtered(&args.cache),
             off: OpenFoodFactsProducerConfig::new(&args.origin),
+            ofr: OpenFoodRepoProducerConfig::new(&args.origin),
             eu_ecolabel: EuEcolabelProducerConfig::new(&args.origin),
             substrate: SubstrateConfig::new(&args.substrate),
         }
@@ -849,6 +878,12 @@ impl From<&CondensationConfig> for WikidataProducerConfig {
 impl From<&CondensationConfig> for OpenFoodFactsProducerConfig {
     fn from(config: &CondensationConfig) -> OpenFoodFactsProducerConfig {
         config.off.clone()
+    }
+}
+
+impl From<&CondensationConfig> for OpenFoodRepoProducerConfig {
+    fn from(config: &CondensationConfig) -> OpenFoodRepoProducerConfig {
+        config.ofr.clone()
     }
 }
 

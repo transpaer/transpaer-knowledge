@@ -9,6 +9,7 @@ chrono = { workspace = true }
 csv = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde-jsonlines = { workspace = true }
 serde_yaml = { workspace = true }
 serde_variant = { workspace = true }
 thiserror = { workspace = true }
