@@ -9,7 +9,9 @@ use std::{
 
 use async_trait::async_trait;
 
-use transpaer_collecting::{bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, tco};
+use transpaer_collecting::{
+    bcorp, eu_ecolabel, fashion_transparency_index, open_food_facts, open_food_repo, tco,
+};
 use transpaer_models::{
     gather as models,
     ids::WikiId,
@@ -366,6 +368,33 @@ impl About for AboutOff {
     }
 }
 
+#[derive(Clone, Default)]
+struct AboutOfr;
+
+impl About for AboutOfr {
+    type Collector = CatalogerCollector;
+
+    fn name() -> &'static str {
+        "open_food_repo"
+    }
+
+    fn variant() -> schema::SubstrateExtension {
+        schema::SubstrateExtension::JsonLines
+    }
+
+    fn build() -> schema::AboutCataloger {
+        schema::AboutCataloger {
+            id: "open_food_repo".to_owned(),
+            name: "Open Food Repo".to_owned(),
+            description: Some(
+                "Data from the Open Food Repo prepared by the Transpaer Team".to_owned(),
+            ),
+            variant: schema::CatalogVariant::Database,
+            website: "https://www.foodrepo.org".to_owned(),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct AboutTco;
 
@@ -427,6 +456,7 @@ pub struct CondensingWikidataWorker {
 impl CondensingWikidataWorker {
     #[must_use]
     pub fn new(sources: Arc<CondensationSources>) -> Self {
+        log::info!("Using Wikidata");
         Self { collector: CatalogerCollector::default(), sources }
     }
 
@@ -603,6 +633,7 @@ pub struct CondensingOpenFoodFactsWorker {
 impl CondensingOpenFoodFactsWorker {
     #[must_use]
     pub fn new(sources: Arc<CondensationSources>) -> Self {
+        log::info!("Using Open Food Facts");
         Self { collector: CatalogerCollector::default(), sources }
     }
 
@@ -784,6 +815,83 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
 }
 
 #[derive(Clone)]
+pub struct CondensingOpenFoodRepoWorker {
+    collector: CatalogerCollector,
+}
+
+impl CondensingOpenFoodRepoWorker {
+    #[must_use]
+    pub fn new() -> Self {
+        log::info!("Using Open Food Repo");
+        Self { collector: CatalogerCollector::default() }
+    }
+
+    fn extract_names(entry: &open_food_repo::data::Entry) -> Vec<String> {
+        entry.display_name_translations.keys().cloned().collect()
+    }
+
+    fn extract_images(entry: &open_food_repo::data::Entry) -> Vec<String> {
+        entry.images.iter().map(|img| img.medium.clone()).collect()
+    }
+
+    fn extract_regions(entry: &open_food_repo::data::Entry) -> Vec<String> {
+        match isocountry::CountryCode::for_alpha2(&entry.country) {
+            Ok(country) => vec![country.alpha3().to_owned()],
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl runners::OpenFoodRepoWorker for CondensingOpenFoodRepoWorker {
+    type Output = CatalogerCollector;
+
+    async fn process(
+        &mut self,
+        entry: open_food_repo::data::Entry,
+        _tx: parallel::Sender<Self::Output>,
+    ) -> Result<(), errors::ProcessingError> {
+        if let Ok(gtin) = models::Gtin::try_from(&entry.barcode) {
+            let regions = schema::RegionList(Self::extract_regions(&entry));
+            let product = schema::CatalogProduct {
+                id: gtin.to_string(),
+                ids: schema::ProductIds {
+                    ean: None,
+                    gtin: Some(vec![gtin.to_string()]),
+                    wiki: None,
+                },
+                names: Self::extract_names(&entry),
+                description: None,
+                images: Self::extract_images(&entry),
+                categorisation: None,
+                origins: Some(schema::ProductOrigins {
+                    producer_ids: Vec::new(),
+                    regions: Some(regions.clone()),
+                }),
+                availability: Some(schema::ProductAvailability {
+                    regions: schema::Regions::List(regions),
+                }),
+                related: None,
+                shopping: None,
+            };
+
+            self.collector.add_product(product);
+        } else {
+            // TODO: gather infor about failures
+        }
+        Ok(())
+    }
+
+    async fn finish(
+        self,
+        tx: parallel::Sender<Self::Output>,
+    ) -> Result<(), errors::ProcessingError> {
+        tx.send(self.collector).await;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub struct CondensingEuEcolabelWorker {
     sources: Arc<CondensationSources>,
     collector: ReviewerCollector,
@@ -792,6 +900,7 @@ pub struct CondensingEuEcolabelWorker {
 impl CondensingEuEcolabelWorker {
     #[must_use]
     pub fn new(sources: Arc<CondensationSources>) -> Self {
+        log::info!("Using EU EcoLabel");
         Self { collector: ReviewerCollector::default(), sources }
     }
 
@@ -910,6 +1019,7 @@ struct BCorpCondenser {
 
 impl BCorpCondenser {
     pub fn new(config: config::CondensationConfig) -> Self {
+        log::info!("Using BCorp");
         Self { config }
     }
 
@@ -1020,6 +1130,7 @@ struct FtiCondenser {
 
 impl FtiCondenser {
     pub fn new(config: config::CondensationConfig) -> Self {
+        log::info!("Using FTI");
         Self { config }
     }
 }
@@ -1074,6 +1185,7 @@ struct TcoCondenser {
 
 impl TcoCondenser {
     pub fn new(config: config::CondensationConfig) -> Self {
+        log::info!("Using TCO");
         Self { config }
     }
 }
@@ -1212,7 +1324,7 @@ impl CondensingRunner {
         let saver = SubstrateSaver::new(config.clone());
         flow = flow.name("saver").spawn_consumer(saver, save_rx)?;
 
-        if config.group != config::CondensationGroup::Immediate {
+        if config.group.use_filtered() {
             let (wiki_process_tx, wiki_process_rx) = parallel::bounded::<String>();
             let (wiki_combine_tx, wiki_combine_rx) = parallel::bounded::<CatalogerCollector>();
             let wiki_producer = runners::WikidataProducer::new(&config.into())?;
@@ -1226,7 +1338,7 @@ impl CondensingRunner {
                 .spawn_processor(wiki_combiner, wiki_combine_rx, save_tx.clone())?;
         }
 
-        if config.group != config::CondensationGroup::Filtered {
+        if config.group.use_immediate() {
             let (off_process_tx, off_process_rx) =
                 parallel::bounded::<runners::OpenFoodFactsRunnerMessage>();
             let (off_combine_tx, off_combine_rx) = parallel::bounded::<CatalogerCollector>();
@@ -1239,6 +1351,19 @@ impl CondensingRunner {
                 .spawn_producer(off_producer, off_process_tx)?
                 .spawn_processors(off_worker, off_process_rx, off_combine_tx)?
                 .spawn_processor(off_combiner, off_combine_rx, save_tx.clone())?;
+
+            let (ofr_process_tx, ofr_process_rx) =
+                parallel::bounded::<runners::OpenFoodRepoRunnerMessage>();
+            let (ofr_combine_tx, ofr_combine_rx) = parallel::bounded::<CatalogerCollector>();
+            let ofr_producer = runners::OpenFoodRepoProducer::new(config.into())?;
+            let ofr_worker = CondensingOpenFoodRepoWorker::new();
+            let ofr_worker = runners::OpenFoodRepoProcessor::new(ofr_worker);
+            let ofr_combiner = Combiner::<AboutOfr>::default();
+            flow = flow
+                .name("ofr")
+                .spawn_producer(ofr_producer, ofr_process_tx)?
+                .spawn_processors(ofr_worker, ofr_process_rx, ofr_combine_tx)?
+                .spawn_processor(ofr_combiner, ofr_combine_rx, save_tx.clone())?;
 
             let (eu_process_tx, eu_process_rx) =
                 parallel::bounded::<runners::EuEcolabelRunnerMessage>();

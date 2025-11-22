@@ -6,11 +6,12 @@
 // #[deny(clippy::unwrap_used)]
 // #[deny(clippy::expect_used)]
 
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::SocketAddr;
 
 use clap::Parser;
+use hyper::service::Service;
+use tokio::net::TcpListener;
 
-mod context;
 mod errors;
 mod models;
 mod retrieve;
@@ -47,9 +48,29 @@ async fn main() {
     let args = Args::parse();
     let retriever = retrieve::Retriever::new(&args.db_path).expect("DB error");
 
-    let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 8080));
     let server = server::Server::new(retriever);
     let service = transpaer_api::server::MakeService::new(server);
-    let service = context::MakeAddContext::<_, context::EmptyContext>::new(service);
-    hyper::server::Server::bind(&addr).serve(service).await.expect("Service failed")
+    let service = swagger::auth::MakeAllowAllAuthenticator::new(service, "cosmo");
+    let service =
+        transpaer_api::server::context::MakeAddContext::<_, swagger::EmptyContext>::new(service);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let listener = TcpListener::bind(addr).await.expect("Bind TCP listener");
+    loop {
+        match listener.accept().await {
+            Ok((stream, _)) => {
+                let service = service.call(addr).await.expect("Failed to accept connection");
+                let io = hyper_util::rt::TokioIo::new(stream);
+                tokio::task::spawn(async move {
+                    if let Err(err) = hyper::server::conn::http1::Builder::new()
+                        .serve_connection(io, service)
+                        .await
+                    {
+                        eprintln!("Error serving connection: {:?}", err);
+                    }
+                });
+            }
+            Err(err) => eprintln!("Error accepting connection: {:?}", err),
+        };
+    }
 }

@@ -268,11 +268,12 @@ impl SamplingRunner {
         let library = client.get_library(context).await?;
         match library {
             api::GetLibraryResponse::Ok { body: library, .. } => {
-                ensure_eq!(library.items.len(), 6, "wrong library length");
+                ensure_eq!(library.items.len(), 7, "wrong library length");
             }
         }
 
-        let item = client.get_library_item(api::models::LibraryTopic::Fti, context).await?;
+        let topic = "fti".to_string();
+        let item = client.get_library_item(topic.clone(), context).await?;
         match item {
             api::GetLibraryItemResponse::Ok { body: item, .. } => {
                 if item.presentation.is_none() {
@@ -282,10 +283,7 @@ impl SamplingRunner {
                 }
             }
             api::GetLibraryItemResponse::NotFound { .. } => {
-                return Err(Finding::Other(format!(
-                    "Library item {:?} not found",
-                    api::models::LibraryTopic::Fti,
-                )));
+                return Err(Finding::Other(format!("Library item {:?} not found", topic)));
             }
         }
 

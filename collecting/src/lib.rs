@@ -19,5 +19,6 @@ pub mod bcorp;
 pub mod eu_ecolabel;
 pub mod fashion_transparency_index;
 pub mod open_food_facts;
+pub mod open_food_repo;
 pub mod tco;
 pub mod transpaer;

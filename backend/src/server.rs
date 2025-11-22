@@ -8,9 +8,7 @@ use async_trait::async_trait;
 use swagger::ApiError;
 
 use transpaer_api::{
-    models::{
-        LibraryContents, LibraryTopic, OrganisationIdVariant, ProductIdVariant, TextSearchResults,
-    },
+    models::{LibraryContents, OrganisationIdVariant, ProductIdVariant, TextSearchResults},
     Api, CheckHealthResponse, GetAlternativesResponse, GetCategoryResponse, GetLibraryItemResponse,
     GetLibraryResponse, GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
 };
@@ -58,10 +56,10 @@ where
 
     async fn get_library_item(
         &self,
-        topic: LibraryTopic,
+        topic: String,
         _context: &C,
     ) -> Result<GetLibraryItemResponse, ApiError> {
-        if let Some(item) = self.retriever.library_item(topic)? {
+        if let Some(item) = self.retriever.library_item(&topic)? {
             Ok(GetLibraryItemResponse::Ok {
                 body: item,
                 access_control_allow_origin: CORS_ORIGIN.to_string(),

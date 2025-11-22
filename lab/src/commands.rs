@@ -127,6 +127,22 @@ pub enum CondensationGroup {
     All,
 }
 
+impl CondensationGroup {
+    pub fn use_filtered(&self) -> bool {
+        match self {
+            Self::Filtered | Self::All => true,
+            Self::Immediate => false,
+        }
+    }
+
+    pub fn use_immediate(&self) -> bool {
+        match self {
+            Self::Immediate | Self::All => true,
+            Self::Filtered => false,
+        }
+    }
+}
+
 /// Arguments of the `condense` command.
 #[derive(Parser, Debug)]
 #[command(
@@ -158,7 +174,7 @@ pub struct CondensationArgs {
     #[arg(long)]
     pub substrate: String,
 
-    /// Skips the substrates that need the filtering step.
+    /// Uses only the origins from the given group.
     #[clap(long, action)]
     pub group: CondensationGroup,
 }

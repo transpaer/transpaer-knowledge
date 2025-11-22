@@ -10,6 +10,7 @@ fern = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 hyper = { workspace = true, features = ["server"] }
+hyper-util = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

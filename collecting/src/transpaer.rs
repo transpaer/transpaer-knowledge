@@ -15,6 +15,9 @@ pub mod data {
         #[serde(rename = "open_food_facts")]
         OpenFoodFacts,
 
+        #[serde(rename = "open_food_repo")]
+        OpenFoodRepo,
+
         #[serde(rename = "bcorp")]
         Bcorp,
 

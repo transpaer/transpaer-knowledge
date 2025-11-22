@@ -43,6 +43,7 @@ impl Oxidizer {
                 .map(|link| store::ReferenceLink { link: link.link, title: link.title })
                 .collect();
 
+            log::info!(" - `{topic}` from {article_path:?}");
             library.insert(
                 &topic,
                 &store::LibraryItem {
@@ -54,6 +55,7 @@ impl Oxidizer {
                 },
             )?;
         }
+        log::info!("Saving {} topics", library.len());
         library.flush()?;
         Ok(())
     }
