@@ -144,25 +144,27 @@ impl ConnectionSources {
         }
         log::info!("Found {} companies in the EU Ecolabel dataset", eu_data.len());
 
-        let mut off_data = HashMap::<String, Matcher>::new();
-        for record in open_food_facts::reader::parse(&config.open_food_facts_input_path)? {
-            let record = record?;
-            if record.brand_owner.is_empty() {
-                for label in record.extract_brand_labels() {
-                    let name = utils::disambiguate_name(&label);
-                    off_data.insert(name.clone(), Matcher::new(name, None));
-                }
-            } else {
-                let name = utils::disambiguate_name(&record.brand_owner);
-                off_data.insert(name.clone(), Matcher::new(name, None));
-            }
-        }
-        log::info!("Found {} companies and brands in Food Facts dataset", off_data.len());
+        // TODO: load data from Open Food Facts
+        //let mut off_data = HashMap::<String, Matcher>::new();
+        //for record in open_food_facts::reader::parse(&config.open_food_facts_input_path)? {
+        //    let record = record?;
+        //    if record.brand_owner.is_empty() {
+        //        for label in record.extract_brand_labels() {
+        //            let name = utils::disambiguate_name(&label);
+        //            off_data.insert(name.clone(), Matcher::new(name, None));
+        //        }
+        //    } else {
+        //        let name = utils::disambiguate_name(&record.brand_owner);
+        //        off_data.insert(name.clone(), Matcher::new(name, None));
+        //    }
+        //}
+        //log::info!("Found {} companies and brands in Food Facts dataset", off_data.len());
 
-        let eu_names: HashSet<String> = eu_data.keys().cloned().collect();
-        let off_names: HashSet<String> = off_data.keys().cloned().collect();
-        let num_common = eu_names.intersection(&off_names).count();
-        utils::merge_hashmaps(&mut eu_data, off_data);
+        // let eu_names: HashSet<String> = eu_data.keys().cloned().collect();
+        // let off_names: HashSet<String> = off_data.keys().cloned().collect();
+        // let num_common = eu_names.intersection(&off_names).count();
+        // utils::merge_hashmaps(&mut eu_data, off_data);
+        let num_common = 0;
 
         println!("Matching {} names ({} names in common)", eu_data.len(), num_common);
 

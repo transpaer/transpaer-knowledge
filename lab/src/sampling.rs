@@ -283,7 +283,7 @@ impl SamplingRunner {
                 }
             }
             api::GetLibraryItemResponse::NotFound { .. } => {
-                return Err(Finding::Other(format!("Library item {:?} not found", topic)));
+                return Err(Finding::Other(format!("Library item {topic:?} not found")));
             }
         }
 

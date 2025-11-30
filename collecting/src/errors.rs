@@ -32,6 +32,9 @@ pub enum IoOrSerdeError {
 
     #[error("YAML serialization error: {0}")]
     WriteYaml(serde_yaml::Error),
+
+    #[error("Unknown compression method: {0:?}")]
+    CompressionMethod(Option<String>),
 }
 
 /// Trait for mapping from IO errors to `IoOrSerdeError`.

@@ -1316,6 +1316,7 @@ impl parallel::Consumer for SubstrateSaver {
 pub struct CondensingRunner;
 
 impl CondensingRunner {
+    #[allow(clippy::similar_names)]
     pub fn run(config: &config::CondensationConfig) -> Result<(), errors::ProcessingError> {
         let sources = Arc::new(CondensationSources::load(&config.clone())?);
         let mut flow = parallel::Flow::new();

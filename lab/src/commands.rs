@@ -25,6 +25,28 @@ pub struct AbsorbingArgs {
     pub command: AbsorbingCommands,
 }
 
+/// Arguments of the `eu-ecolabel` subcommand of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(about = "Download the EU EcoLabel data", long_about = "Download the EU EcoLabel data")]
+pub struct AbsorbingEuEcolabelArgs {}
+
+/// Arguments of the `bcorp` subcommand of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(about = "Download the BCorp Impact Data", long_about = "Download the BCorp Impact Data")]
+pub struct AbsorbingBCorpArgs {
+    /// `data.world` authentication token..
+    #[arg(long)]
+    pub token: String,
+}
+
+/// Arguments of the `open-food-facts` subcommand of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(
+    about = "Download the Open Food Facts data",
+    long_about = "Download the OpenFoodFacts data"
+)]
+pub struct AbsorbingOpenFoodFactsArgs {}
+
 /// Arguments of the `open-food-repo` subcommand of the `absorb` command.
 #[derive(Parser, Debug)]
 #[command(
@@ -37,10 +59,20 @@ pub struct AbsorbingOpenFoodRepoArgs {
     pub api_key: String,
 }
 
+/// Arguments of the `wikidata` subcommand of the `absorb` command.
+#[derive(Parser, Debug)]
+#[command(about = "Download the Wikidata data", long_about = "Download the Wikidata data")]
+pub struct AbsorbingWikidataArgs {}
+
 /// Subcommands of the `absorb` command.
 #[derive(Subcommand, Debug)]
 pub enum AbsorbingCommands {
+    #[clap(name = "bcorp")]
+    BCorp(AbsorbingBCorpArgs),
+    EuEcolabel(AbsorbingEuEcolabelArgs),
+    OpenFoodFacts(AbsorbingOpenFoodFactsArgs),
     OpenFoodRepo(AbsorbingOpenFoodRepoArgs),
+    Wikidata(AbsorbingWikidataArgs),
 }
 
 /// Arguments of the `extract` command.
@@ -128,14 +160,14 @@ pub enum CondensationGroup {
 }
 
 impl CondensationGroup {
-    pub fn use_filtered(&self) -> bool {
+    pub fn use_filtered(self) -> bool {
         match self {
             Self::Filtered | Self::All => true,
             Self::Immediate => false,
         }
     }
 
-    pub fn use_immediate(&self) -> bool {
+    pub fn use_immediate(self) -> bool {
         match self {
             Self::Immediate | Self::All => true,
             Self::Filtered => false,

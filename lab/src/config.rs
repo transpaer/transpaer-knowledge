@@ -28,7 +28,7 @@ impl WikidataProducerConfig {
     /// Constructs a new `WikidataProducerConfig` with full Wikidata dump.
     pub fn new_full(origin: &str) -> WikidataProducerConfig {
         let origin = PathBuf::from(&origin);
-        Self { wikidata_path: origin.join("wikidata-20250519-all.json.gz") }
+        Self { wikidata_path: origin.join("wikidata.json.gz") }
     }
 
     /// Constructs a new `WikidataProducerConfig`.
@@ -59,7 +59,7 @@ pub struct OpenFoodFactsProducerConfig {
 impl OpenFoodFactsProducerConfig {
     pub fn new(origin: &str) -> Self {
         let origin = PathBuf::from(origin);
-        Self { open_food_facts_path: origin.join("en.openfoodfacts.org.products.csv") }
+        Self { open_food_facts_path: origin.join("open_food_facts_products.csv.gz") }
     }
 
     /// Checks validity of the configuration.
@@ -171,8 +171,14 @@ pub struct OriginConfig {
     /// Path to original EU Ecolabel data.
     pub eu_ecolabel_path: PathBuf,
 
-    /// Path to the originam Open Food Repo data.
+    /// Path to the original Open Food Facts data.
+    pub open_food_facts_path: PathBuf,
+
+    /// Path to the original Open Food Repo data.
     pub open_food_repo_path: PathBuf,
+
+    /// Path to the original Wikidata data.
+    pub wikidata_path: PathBuf,
 }
 
 impl OriginConfig {
@@ -182,18 +188,71 @@ impl OriginConfig {
         Self {
             bcorp_path: origin.join("bcorp.csv"),
             eu_ecolabel_path: origin.join("eu_ecolabel_products.csv"),
+            open_food_facts_path: origin.join("open_food_facts_products.csv.gz"),
             open_food_repo_path: origin.join("open_food_repo.jsonl"),
+            wikidata_path: origin.join("wikidata.json.gz"),
         }
     }
 
-    /// Checks validity of the configuration.
+    /// Checks validity of the configuration for writing the `BCorp` file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths is not creatable..
+    pub fn check_write_bcorp(&self) -> Result<(), ConfigCheckError> {
+        utils::path_creatable(&self.bcorp_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for writing the `EuEcolabel` file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths is not creatable..
+    pub fn check_write_eu_ecolabel(&self) -> Result<(), ConfigCheckError> {
+        utils::path_creatable(&self.eu_ecolabel_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for writing the Open Food Facts file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths is not creatable..
+    pub fn check_write_open_food_facts(&self) -> Result<(), ConfigCheckError> {
+        utils::path_creatable(&self.open_food_facts_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for writing the Open Food Repo file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths is not creatable..
+    pub fn check_write_open_food_repo(&self) -> Result<(), ConfigCheckError> {
+        utils::path_creatable(&self.open_food_repo_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for writing the Wikidata file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if paths is not creatable..
+    pub fn check_write_wikidata(&self) -> Result<(), ConfigCheckError> {
+        utils::path_creatable(&self.wikidata_path)?;
+        Ok(())
+    }
+
+    /// Checks validity of the configuration for reading.
     ///
     /// # Errors
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
-    pub fn check(&self) -> Result<(), ConfigCheckError> {
+    pub fn check_read(&self) -> Result<(), ConfigCheckError> {
         utils::file_exists(&self.bcorp_path)?;
         utils::file_exists(&self.eu_ecolabel_path)?;
+        utils::file_exists(&self.open_food_repo_path)?;
         Ok(())
     }
 }
@@ -280,6 +339,7 @@ impl MetaConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
+        utils::file_exists_or_creatable(&self.absorbents)?;
         utils::file_exists(&self.wikidata_regions_path)?;
         utils::file_exists(&self.open_food_facts_regions_path)?;
         utils::file_exists(&self.bcorp_regions_path)?;
@@ -361,6 +421,60 @@ impl SubstrateConfig {
     }
 }
 
+/// Configuration for the `bcorp` subcommand of the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingBCorpConfig {
+    /// `data.world` authentication token..
+    pub token: String,
+}
+
+impl AbsorbingBCorpConfig {
+    pub fn new(args: &commands::AbsorbingBCorpArgs) -> AbsorbingBCorpConfig {
+        Self { token: args.token.clone() }
+    }
+
+    /// Checks validity of the configuration.
+    #[allow(clippy::unnecessary_wraps, clippy::unused_self)]
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        Ok(())
+    }
+}
+
+/// Configuration for the `eu-ecolabel` subcommand of the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingEuEcolabelConfig {}
+
+impl AbsorbingEuEcolabelConfig {
+    pub fn new(_args: &commands::AbsorbingEuEcolabelArgs) -> AbsorbingEuEcolabelConfig {
+        Self {}
+    }
+
+    /// Checks validity of the configuration.
+    #[allow(clippy::unnecessary_wraps, clippy::unused_self)]
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        Ok(())
+    }
+}
+
+/// Configuration for the `open-food-facts` subcommand of the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingOpenFoodFactsConfig {}
+
+impl AbsorbingOpenFoodFactsConfig {
+    pub fn new(_args: &commands::AbsorbingOpenFoodFactsArgs) -> AbsorbingOpenFoodFactsConfig {
+        Self {}
+    }
+
+    /// Checks validity of the configuration.
+    #[allow(clippy::unnecessary_wraps, clippy::unused_self)]
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        Ok(())
+    }
+}
+
 /// Configuration for the `open-food-repo` subcommand of the `absorb` command.
 #[must_use]
 #[derive(Debug, Clone)]
@@ -382,16 +496,41 @@ impl AbsorbingOpenFoodRepoConfig {
     }
 }
 
+/// Configuration for the `wikidata` subcommand of the `absorb` command.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct AbsorbingWikidataConfig {}
+
+impl AbsorbingWikidataConfig {
+    pub fn new(_args: &commands::AbsorbingWikidataArgs) -> AbsorbingWikidataConfig {
+        Self {}
+    }
+
+    /// Checks validity of the configuration.
+    #[allow(clippy::unnecessary_wraps, clippy::unused_self)]
+    pub fn check(&self) -> Result<(), ConfigCheckError> {
+        Ok(())
+    }
+}
+
 #[must_use]
 #[derive(Debug, Clone)]
 pub enum AbsorbingSubconfig {
+    BCorp(AbsorbingBCorpConfig),
+    EuEcolabel(AbsorbingEuEcolabelConfig),
+    OpenFoodFacts(AbsorbingOpenFoodFactsConfig),
     OpenFoodRepo(AbsorbingOpenFoodRepoConfig),
+    Wikidata(AbsorbingWikidataConfig),
 }
 
 impl AbsorbingSubconfig {
     pub fn check(&self) -> Result<(), ConfigCheckError> {
         match self {
+            Self::BCorp(config) => config.check(),
+            Self::EuEcolabel(config) => config.check(),
+            Self::OpenFoodFacts(config) => config.check(),
             Self::OpenFoodRepo(config) => config.check(),
+            Self::Wikidata(config) => config.check(),
         }
     }
 }
@@ -414,8 +553,20 @@ impl AbsorbingConfig {
     /// Constructs a new `AbsorbingingConfig`.
     pub fn new(args: &commands::AbsorbingArgs) -> AbsorbingConfig {
         let sub = match &args.command {
+            commands::AbsorbingCommands::BCorp(subargs) => {
+                AbsorbingSubconfig::BCorp(AbsorbingBCorpConfig::new(subargs))
+            }
+            commands::AbsorbingCommands::EuEcolabel(subargs) => {
+                AbsorbingSubconfig::EuEcolabel(AbsorbingEuEcolabelConfig::new(subargs))
+            }
+            commands::AbsorbingCommands::OpenFoodFacts(subargs) => {
+                AbsorbingSubconfig::OpenFoodFacts(AbsorbingOpenFoodFactsConfig::new(subargs))
+            }
             commands::AbsorbingCommands::OpenFoodRepo(subargs) => {
                 AbsorbingSubconfig::OpenFoodRepo(AbsorbingOpenFoodRepoConfig::new(subargs))
+            }
+            commands::AbsorbingCommands::Wikidata(subargs) => {
+                AbsorbingSubconfig::Wikidata(AbsorbingWikidataConfig::new(subargs))
             }
         };
 
@@ -428,8 +579,15 @@ impl AbsorbingConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        self.origin.check()?;
         self.sub.check()?;
+        self.meta.check()?;
+        match &self.sub {
+            AbsorbingSubconfig::BCorp(..) => self.origin.check_write_bcorp()?,
+            AbsorbingSubconfig::EuEcolabel(..) => self.origin.check_write_eu_ecolabel()?,
+            AbsorbingSubconfig::OpenFoodFacts(..) => self.origin.check_write_open_food_facts()?,
+            AbsorbingSubconfig::OpenFoodRepo(..) => self.origin.check_write_open_food_repo()?,
+            AbsorbingSubconfig::Wikidata(..) => self.origin.check_write_wikidata()?,
+        }
         Ok(())
     }
 }
@@ -613,7 +771,7 @@ impl CondensationConfig {
     ///
     /// Returns `Err` if paths expected to exist do not exist or paths expected to not exist do exist.
     pub fn check(&self) -> Result<(), ConfigCheckError> {
-        self.origin.check()?;
+        self.origin.check_read()?;
         self.meta.check()?;
         self.support.check()?;
         self.cache.check_read()?;

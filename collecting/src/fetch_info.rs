@@ -18,6 +18,9 @@ impl FetchData {
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct FetchInfo {
+    bcorp: Option<FetchData>,
+    eu_ecolabel: Option<FetchData>,
+    open_food_facts: Option<FetchData>,
     open_food_repo: Option<FetchData>,
 }
 
@@ -46,6 +49,18 @@ impl FetchInfo {
         let contents = serde_yaml::to_string(self).map_serde()?;
         std::fs::write(path, contents).map_with_path(path)?;
         Ok(())
+    }
+
+    pub fn update_bcorp(&mut self) {
+        self.bcorp = Some(FetchData::now());
+    }
+
+    pub fn update_eu_ecolabel(&mut self) {
+        self.eu_ecolabel = Some(FetchData::now());
+    }
+
+    pub fn update_open_food_facts(&mut self) {
+        self.open_food_facts = Some(FetchData::now());
     }
 
     pub fn update_open_food_repo(&mut self) {

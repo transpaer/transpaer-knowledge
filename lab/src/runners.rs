@@ -230,16 +230,15 @@ impl Producer for OpenFoodFactsProducer {
     type Error = errors::ProcessingError;
 
     async fn produce(self, tx: Sender<Self::Output>) -> Result<(), errors::ProcessingError> {
-        let num = open_food_facts::reader::load(
-            self.config.open_food_facts_path,
-            move |headers: csv::StringRecord, record: csv::StringRecord| {
+        let loader = open_food_facts::loader::Loader::load(&self.config.open_food_facts_path)?;
+        let num = loader
+            .run(move |headers: csv::StringRecord, record: csv::StringRecord| {
                 let tx2 = tx.clone();
                 async move {
                     tx2.send(OpenFoodFactsRunnerMessage { record, headers }).await;
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
 
         log::info!("Read {num} Open Food Facts records");
         Ok(())
