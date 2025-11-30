@@ -43,7 +43,7 @@ impl Oxidizer {
                 .map(|link| store::ReferenceLink { link: link.link, title: link.title })
                 .collect();
 
-            log::info!(" - `{topic}` from {article_path:?}");
+            log::info!(" - `{topic}` from `{}`", article_path.display());
             library.insert(
                 &topic,
                 &store::LibraryItem {

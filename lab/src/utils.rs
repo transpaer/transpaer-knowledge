@@ -62,6 +62,32 @@ pub fn path_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckE
     Ok(())
 }
 
+/// Verifies that the path exists and is a file or its parent exists and is a directory.
+///
+/// # Errors
+///
+/// Returns an error if the path exists is not a file or the parent is not a directory.
+pub fn file_exists_or_creatable(path: &std::path::Path) -> Result<(), errors::ConfigCheckError> {
+    #[allow(clippy::collapsible_else_if)]
+    if path.exists() {
+        if !path.is_file() {
+            return Err(errors::ConfigCheckError::NotAFile(path.to_owned()));
+        }
+    } else {
+        if let Some(base) = path.parent() {
+            if !base.exists() {
+                return Err(errors::ConfigCheckError::DoesNotExist(base.to_owned()));
+            }
+            if !base.is_dir() {
+                return Err(errors::ConfigCheckError::NotADir(base.to_owned()));
+            }
+        } else {
+            return Err(errors::ConfigCheckError::NoParent(path.to_owned()));
+        }
+    }
+    Ok(())
+}
+
 /// Verifies that the path can be created or already exists and is a directory.
 ///
 /// # Errors

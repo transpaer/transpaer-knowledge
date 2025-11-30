@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 pub use transpaer_collecting::errors::IoOrSerdeError;
@@ -14,25 +16,25 @@ use crate::{coagulate::ExternalId, substrate::DataSetId, wikidata::WikiId};
 #[derive(Error, Debug)]
 pub enum ConfigCheckError {
     #[error("Path '{0}' does not exist")]
-    DoesNotExist(std::path::PathBuf),
+    DoesNotExist(PathBuf),
 
     #[error("Path '{0}' is not a file")]
-    NotAFile(std::path::PathBuf),
+    NotAFile(PathBuf),
 
     #[error("Path '{0}' is not a directory")]
-    NotADir(std::path::PathBuf),
+    NotADir(PathBuf),
 
     #[error("Path '{0}' is not a readable")]
-    NotReadable(std::path::PathBuf),
+    NotReadable(PathBuf),
 
     #[error("Path '{0}' is not an empty directory")]
-    NotAnEmptyDir(std::path::PathBuf),
+    NotAnEmptyDir(PathBuf),
 
     #[error("Path '{0}' already exists")]
-    AlreadyExists(std::path::PathBuf),
+    AlreadyExists(PathBuf),
 
     #[error("Path '{0}' has no parent")]
-    NoParent(std::path::PathBuf),
+    NoParent(PathBuf),
 }
 
 /// Error related to validating the input data.
@@ -51,13 +53,16 @@ pub enum AbsorbingError {
 
     #[error("IO or serde error: {0}")]
     IoOrSerde(#[from] IoOrSerdeError),
+
+    #[error("Creating file `{1}`: {0}")]
+    CreateFile(std::io::Error, PathBuf),
 }
 
 /// Errors specific to the `condense` command.
 #[derive(Error, Debug)]
 pub enum CondensationError {
     #[error("IO error: {0} ({1:?})")]
-    Io(std::io::Error, std::path::PathBuf),
+    Io(std::io::Error, PathBuf),
 
     #[error("Saving Substrate error: {0}")]
     WriteSubstrate(#[from] transpaer_schema::errors::SaveError),
@@ -70,7 +75,7 @@ pub enum CoagulationError {
     ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
 
     #[error("Unique ID not found for: {inner_id:?} while {when} in {data_set_path:?}")]
-    UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: std::path::PathBuf, when: String },
+    UniqueIdNotFoundForInnerId { inner_id: String, data_set_path: PathBuf, when: String },
 
     #[error("Unique ID {id:?} repeated")]
     ExternalIdRepeated { id: ExternalId },
@@ -82,7 +87,7 @@ pub enum CoagulationError {
     SubstrateIdNotFoundForName { name: String },
 
     #[error("IO error: {0} ({1:?})")]
-    Io(std::io::Error, std::path::PathBuf),
+    Io(std::io::Error, PathBuf),
 
     #[error("IO or serde error: {0}")]
     IoOrSerde(#[from] IoOrSerdeError),
@@ -129,22 +134,22 @@ pub enum SamplingError {
 #[derive(Error, Debug)]
 pub enum ProcessingError {
     #[error("In file `{1}`.\nIO error: {0}")]
-    Io(std::io::Error, std::path::PathBuf),
+    Io(std::io::Error, PathBuf),
 
     #[error("IO error while spawning a tread: {0}")]
     Thread(std::io::Error),
 
     #[error("In file `{1}`.\nCSV parsing error: {0}")]
-    ReadCsv(csv::Error, std::path::PathBuf),
+    ReadCsv(csv::Error, PathBuf),
 
     #[error("In file `{1}`.\nJSON parsing error: {0}")]
-    ReadJson(serde_json::Error, std::path::PathBuf),
+    ReadJson(serde_json::Error, PathBuf),
 
     #[error("In file `{1}`, line {2}.\n Error: {0}")]
-    ReadJsonLines(std::io::Error, std::path::PathBuf, usize),
+    ReadJsonLines(std::io::Error, PathBuf, usize),
 
     #[error("In file `{1}`.\nYAML parsing error: {0}")]
-    ReadYaml(serde_yaml::Error, std::path::PathBuf),
+    ReadYaml(serde_yaml::Error, PathBuf),
 
     #[error("Reading Substrate error: {0}")]
     ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
@@ -170,8 +175,8 @@ pub enum ProcessingError {
     #[error("Wrong country code: {0}")]
     CountryCode(#[from] isocountry::CountryCodeParseErr),
 
-    #[error("Unknown compression method")]
-    CompressionMethod,
+    #[error("Unknown compression method: {0:?}")]
+    CompressionMethod(Option<String>),
 
     #[error("Channel sending error: {0}")]
     Channel(#[from] async_channel::SendError<std::string::String>),
@@ -229,6 +234,7 @@ impl From<IoOrSerdeError> for ProcessingError {
             IoOrSerdeError::WriteCsv(error) => Self::WriteCsv(error),
             IoOrSerdeError::WriteJson(error) => Self::WriteJson(error),
             IoOrSerdeError::WriteYaml(error) => Self::WriteYaml(error),
+            IoOrSerdeError::CompressionMethod(method) => Self::CompressionMethod(method),
         }
     }
 }
@@ -237,7 +243,7 @@ impl From<LoaderError> for ProcessingError {
     fn from(error: LoaderError) -> Self {
         match error {
             LoaderError::Io(source, path) => Self::Io(source, path),
-            LoaderError::CompressionMethod(_) => Self::CompressionMethod,
+            LoaderError::CompressionMethod(method) => Self::CompressionMethod(method),
         }
     }
 }

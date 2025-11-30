@@ -16,8 +16,8 @@ pub enum LoaderError {
     #[error("In file `{1}`.\nIO error: {0}")]
     Io(std::io::Error, std::path::PathBuf),
 
-    #[error("Unknown compression method")]
-    CompressionMethod,
+    #[error("Unknown compression method: {0:?}")]
+    CompressionMethod(Option<String>),
 }
 
 /// Compression method used in the dump.
@@ -66,7 +66,11 @@ impl Loader {
             Some("json" | "jsonl") => CompressionMethod::None,
             Some("gz") => CompressionMethod::Gz,
             Some("bz2") => CompressionMethod::Bz2,
-            _ => return Err(LoaderError::CompressionMethod),
+            method => {
+                return Err(LoaderError::CompressionMethod(
+                    method.map(std::string::ToString::to_string),
+                ))
+            }
         };
 
         let path = path.to_owned();

@@ -2,10 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-E := "6"
-S := "1"
-C := "1"
-T := "1"
+E := "7"
+S := "0"
+C := "0"
+T := "0"
 
 origin := "../data/origin"
 meta := "../data/meta"
@@ -18,9 +18,9 @@ coagulate := "../data/coagulate-" + E + "-" + S + "-" + C
 target := "../data/target-" + E + "-" + S + "-" + C + "-" + T
 
 kickstart:
-    cargo run --release --bin transpaer-lab -- extract \
-        --origin {{origin}} \
-        --cache {{cache}}
+    #cargo run --release --bin transpaer-lab -- extract \
+    #    --origin {{origin}} \
+    #    --cache {{cache}}
 
     cargo run --release --bin transpaer-lab -- condense \
         --group immediate \
