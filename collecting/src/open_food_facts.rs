@@ -13,28 +13,84 @@ pub mod data {
     pub struct Record {
         pub code: String,
         pub url: String,
+        pub creator: String,
+        pub created_t: String,
+        pub created_datetime: String,
+        pub last_modified_t: String,
+        pub last_modified_datetime: String,
+        pub last_modified_by: String,
+        pub last_updated_t: String,
+        pub last_updated_datetime: String,
         pub product_name: String,
         pub abbreviated_product_name: String,
         pub generic_name: String,
+        pub quantity: String,
+        pub packaging: String,
+        pub packaging_tags: String,
+        pub packaging_en: String,
+        pub packaging_text: String,
         pub brands: String,
         pub brands_tags: String,
+        pub brands_en: String,
         pub categories: String,
         pub categories_tags: String,
         pub categories_en: String,
+        pub origins: String,
+        pub origins_tags: String,
+        pub origins_en: String,
         pub manufacturing_places: String,
         pub manufacturing_places_tags: String,
+        pub labels: String,
+        pub labels_tags: String,
+        pub labels_en: String,
+        pub emb_codes: String,
+        pub emb_codes_tags: String,
+        pub first_packaging_code_geo: String,
+        pub cities: String,
+        pub cities_tags: String,
+        pub purchase_places: String,
+        pub stores: String,
         pub countries: String,
         pub countries_tags: String,
         pub countries_en: String,
         pub ingredients_text: String,
         pub ingredients_tags: String,
         pub ingredients_analysis_tags: String,
+        pub allergens: String,
+        pub allergens_en: String,
+        pub traces: String,
+        pub traces_tags: String,
+        pub traces_en: String,
+        pub serving_size: String,
+        pub serving_quantity: String,
+        pub no_nutrition_data: String,
+        pub additives_n: String,
+        pub additives: String,
+        pub additives_tags: String,
+        pub additives_en: String,
+        pub nutriscore_score: String,
+        pub nutriscore_grade: String,
+        pub nova_group: String,
+        pub pnns_groups_1: String,
+        pub pnns_groups_2: String,
         pub food_groups: String,
         pub food_groups_tags: String,
         pub food_groups_en: String,
+        pub states: String,
+        pub states_tags: String,
+        pub states_en: String,
         pub brand_owner: String,
-        pub ecoscore_score: String,
-        pub ecoscore_grade: String,
+        pub environmental_score_score: String,
+        pub environmental_score_grade: String,
+        pub nutrient_levels_tags: String,
+        pub product_quantity: String,
+        pub owner: String,
+        pub data_quality_errors_tags: String,
+        pub unique_scans_n: String,
+        pub popularity_tags: String,
+        pub completeness: String,
+        pub last_image_t: String,
+        pub last_image_datetime: String,
         pub main_category: String,
         pub main_category_en: String,
         pub image_url: String,
@@ -97,23 +153,7 @@ pub mod data {
 pub mod loader {
     use std::future::Future;
 
-    use super::data::Record;
     use crate::errors::{IoOrSerdeError, MapIo, MapSerde};
-
-    /// Iterator over Open Food Facts CSV file records.
-    /// XXX rm?
-    pub struct Iter {
-        path: std::path::PathBuf,
-        reader: csv::DeserializeRecordsIntoIter<std::fs::File, Record>,
-    }
-
-    impl Iterator for Iter {
-        type Item = Result<Record, IoOrSerdeError>;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            self.reader.next().map(|e| e.map_with_path(&self.path))
-        }
-    }
 
     /// Compression method used in the source file..
     #[derive(Clone, Debug)]
@@ -178,6 +218,7 @@ pub mod loader {
             let mut result: usize = 0;
             let mut reader = csv::ReaderBuilder::new()
                 .delimiter(b'\t')
+                .quoting(false)
                 .from_path(&self.path)
                 .map_with_path(&self.path)?;
             let headers = reader.headers().map_with_path(&self.path)?.clone();
@@ -199,13 +240,22 @@ pub mod loader {
             let mut file_reader = std::io::BufReader::new(file);
             let decoder = flate2::bufread::GzDecoder::new(&mut file_reader);
             let decoder_reader = std::io::BufReader::new(decoder);
-            let mut csv_reader =
-                csv::ReaderBuilder::new().delimiter(b'\t').from_reader(decoder_reader);
+            let mut csv_reader = csv::ReaderBuilder::new()
+                .delimiter(b'\t')
+                .quoting(false)
+                .from_reader(decoder_reader);
 
             let headers = csv_reader.headers().map_with_path(&self.path)?.clone();
             for record in csv_reader.into_records() {
-                callback(headers.clone(), record.map_with_path(&self.path)?).await;
-                result += 1;
+                match record {
+                    Ok(record) => {
+                        callback(headers.clone(), record).await;
+                        result += 1;
+                    }
+                    Err(err) => {
+                        log::error!("Open Food Facts error: {err:?}");
+                    }
+                }
             }
 
             Ok(result)

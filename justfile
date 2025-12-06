@@ -18,9 +18,9 @@ coagulate := "../data/coagulate-" + E + "-" + S + "-" + C
 target := "../data/target-" + E + "-" + S + "-" + C + "-" + T
 
 kickstart:
-    #cargo run --release --bin transpaer-lab -- extract \
-    #    --origin {{origin}} \
-    #    --cache {{cache}}
+    cargo run --release --bin transpaer-lab -- extract \
+        --origin {{origin}} \
+        --cache {{cache}}
 
     cargo run --release --bin transpaer-lab -- condense \
         --group immediate \

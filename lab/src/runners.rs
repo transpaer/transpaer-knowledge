@@ -609,7 +609,7 @@ where
             }
             Err(err) => {
                 log::error!(
-                    "Failed to parse an Open Food Facts record: {}\nRecord:\n{:?}\nHeaders:\n{:?}\n\n",
+                    "Failed to parse an Eu Ecolabel record: {}\nRecord:\n{:?}\nHeaders:\n{:?}\n\n",
                     err,
                     input.record,
                     input.headers,

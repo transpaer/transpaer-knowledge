@@ -177,7 +177,7 @@ impl Coagulate {
     }
 
     pub fn read(path: &std::path::Path, substrates: &Substrates) -> Result<Self, CoagulationError> {
-        log::info!("Reading the coagulate");
+        log::info!("Reading the coagulate...");
         let contents = std::fs::read_to_string(path).map_with_path(path)?;
         let parsed: CoagulateData = serde_yaml::from_str(&contents).map_with_path(path)?;
 
@@ -226,6 +226,7 @@ impl Coagulate {
             }
         }
 
+        log::info!("Reading the coagulate... done");
         Ok(Coagulate { producer, product })
     }
 }

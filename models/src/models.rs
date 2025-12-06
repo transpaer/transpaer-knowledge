@@ -61,23 +61,26 @@ pub enum Source {
     /// Transpaer.
     Transpaer,
 
-    /// Wikidata.
-    Wikidata,
-
-    /// Open Food Facts.
-    OpenFoodFacts,
+    /// BCorp.
+    BCorp,
 
     /// EU Ecolabel.
     EuEcolabel,
 
-    /// BCorp.
-    BCorp,
-
     /// Fashion Transparency Index.
     Fti,
 
+    /// Open Food Facts.
+    OpenFoodFacts,
+
+    /// Open Food Repo.
+    OpenFoodRepo,
+
     /// TCO.
     Tco,
+
+    /// Wikidata.
+    Wikidata,
 
     /// The "Simple Environmentalist" youtube channel.
     SimpleEnvironmentalist,
@@ -89,12 +92,13 @@ impl Source {
     pub fn from_stem(string: &str) -> Self {
         match string {
             "transpaer" => Source::Transpaer,
-            "wikidata" => Source::Wikidata,
-            "open_food_facts" => Source::OpenFoodFacts,
-            "eu_ecolabel" => Source::EuEcolabel,
             "bcorp" => Source::BCorp,
+            "eu_ecolabel" => Source::EuEcolabel,
             "fti" => Source::Fti,
+            "open_food_facts" => Source::OpenFoodFacts,
+            "open_food_repo" => Source::OpenFoodRepo,
             "tco" => Source::Tco,
+            "wikidata" => Source::Wikidata,
             "simple_environmentalist" => Source::SimpleEnvironmentalist,
             _ => {
                 log::warn!("Source `{string}` is not covered");
@@ -124,11 +128,12 @@ impl Source {
 impl Source {
     pub fn into_api(self) -> api::DataSource {
         match self {
+            Self::Transpaer => api::DataSource::Transpaer,
             Self::BCorp => api::DataSource::BCorp,
             Self::EuEcolabel => api::DataSource::Eu,
             Self::Fti => api::DataSource::Fti,
             Self::OpenFoodFacts => api::DataSource::Off,
-            Self::Transpaer => api::DataSource::Transpaer,
+            Self::OpenFoodRepo => api::DataSource::Other,
             Self::Tco => api::DataSource::Tco,
             Self::Wikidata => api::DataSource::Wiki,
             Self::SimpleEnvironmentalist => api::DataSource::Other,
@@ -444,6 +449,7 @@ impl From<&Source> for MentionSource {
             Source::Transpaer
             | Source::Wikidata
             | Source::OpenFoodFacts
+            | Source::OpenFoodRepo
             | Source::EuEcolabel
             | Source::BCorp
             | Source::Fti

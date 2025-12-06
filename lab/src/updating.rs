@@ -6,7 +6,7 @@ use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 
-use transpaer_collecting::{bcorp, open_food_facts, transpaer};
+use transpaer_collecting::{bcorp, eu_ecolabel, open_food_facts, transpaer};
 
 use crate::{advisors, config, errors, parallel, runners, traits, utils, wikidata::ItemExt};
 
@@ -553,6 +553,40 @@ impl parallel::Isolate for BCorpsWorker {
     }
 }
 
+#[derive(derive_new::new)]
+struct EuEcolabelWorker {
+    /// Configuration.
+    config: config::UpdatingConfig,
+}
+
+#[async_trait]
+impl parallel::Isolate for EuEcolabelWorker {
+    type Error = errors::ProcessingError;
+
+    async fn process(self) -> Result<(), errors::ProcessingError> {
+        let regions = transpaer::reader::RegionMap::from_countries(
+            transpaer::reader::parse_countries(&self.config.meta.eu_ecolabel_regions_path)?,
+        );
+
+        let data = eu_ecolabel::reader::parse(&self.config.eu_ecolabel.eu_ecolabel_path)?;
+        let mut gathered_countries = HashMap::<String, usize>::new();
+        for record in data {
+            gathered_countries.entry(record.company_country).and_modify(|n| *n += 1).or_insert(1);
+        }
+
+        let country_descriptions = HashMap::new();
+        let (countries, percentage) =
+            summarize_countries(gathered_countries, country_descriptions, &regions);
+
+        log::info!("EU Ecolabel report:");
+        log::info!(" - found {} countries", countries.countries.len());
+        log::info!("   - {percentage}% of tag use-cases assigned");
+
+        transpaer::writer::save_countries(&countries, &self.config.meta.eu_ecolabel_regions_path)?;
+        Ok(())
+    }
+}
+
 pub struct UpdateRunner;
 
 impl UpdateRunner {
@@ -582,6 +616,7 @@ impl UpdateRunner {
         let wiki_stash = WikidataStash::new(config.clone(), wikidata_regions, wikidata_categories);
         let wiki_consumer = runners::RunnerConsumer::new(wiki_stash);
 
+        let eu_ecolabel_isolate = EuEcolabelWorker::new(config.clone());
         let bcorps_isolate = BCorpsWorker::new(config.clone());
 
         let (off_tx1, off_rx1) = parallel::bounded::<runners::OpenFoodFactsRunnerMessage>();
@@ -599,7 +634,9 @@ impl UpdateRunner {
             .spawn_processors(off_processor, off_rx1, off_tx2.clone())?
             .spawn_consumer(off_consumer, off_rx2)?
             .name("bcorp")
-            .spawn_isolate(bcorps_isolate)?;
+            .spawn_isolate(bcorps_isolate)?
+            .name("eu_ecolabel")
+            .spawn_isolate(eu_ecolabel_isolate)?;
 
         Ok(flow)
     }
