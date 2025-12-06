@@ -127,18 +127,19 @@ impl Source {
 #[cfg(feature = "into-api")]
 impl Source {
     pub fn into_api(self) -> api::DataSource {
-        match self {
-            Self::Transpaer => api::DataSource::Transpaer,
-            Self::BCorp => api::DataSource::BCorp,
-            Self::EuEcolabel => api::DataSource::Eu,
-            Self::Fti => api::DataSource::Fti,
-            Self::OpenFoodFacts => api::DataSource::Off,
-            Self::OpenFoodRepo => api::DataSource::Other,
-            Self::Tco => api::DataSource::Tco,
-            Self::Wikidata => api::DataSource::Wiki,
-            Self::SimpleEnvironmentalist => api::DataSource::Other,
-            Self::Other => api::DataSource::Other,
-        }
+        let string = match self {
+            Self::Transpaer => "transpaer",
+            Self::BCorp => "bcorp",
+            Self::EuEcolabel => "eu_ecolabel",
+            Self::Fti => "fti",
+            Self::OpenFoodFacts => "open_food_facts",
+            Self::OpenFoodRepo => "open_food_repo",
+            Self::Tco => "tco",
+            Self::Wikidata => "wikidata",
+            Self::SimpleEnvironmentalist => "simple_environmentalist",
+            Self::Other => "other",
+        };
+        api::DataSource(string.to_string())
     }
 }
 
@@ -198,12 +199,13 @@ impl Image {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub enum Regions {
     /// Available world-wide
     World,
 
     /// Region could not be identified
+    #[default]
     Unknown,
 
     /// List of regions
@@ -219,12 +221,6 @@ impl Regions {
                 .map(|region| codes.iter().any(|code| code.alpha3() == region))
                 .unwrap_or(false),
         }
-    }
-}
-
-impl Default for Regions {
-    fn default() -> Self {
-        Self::Unknown
     }
 }
 

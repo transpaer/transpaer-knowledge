@@ -2476,8 +2476,8 @@ dependencies = [
 
 [[package]]
 name = "transpaer-api"
-version = "0.2.0"
-source = "git+https://github.com/transpaer/transpaer-api-rust.git?tag=v0.2.0#bf4644748a9ba63dcd8ba593fc5d6f51ceffb871"
+version = "0.4.0"
+source = "git+https://github.com/transpaer/transpaer-api-rust.git?tag=v0.4.0#824ef03549f3fb538253f5f36c328881e8d7daef"
 dependencies = [
  "async-trait",
  "bytes",
