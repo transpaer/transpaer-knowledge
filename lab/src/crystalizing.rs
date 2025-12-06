@@ -121,7 +121,7 @@ impl Summary {
             }
             for category in &product.all_categories(categories::SEPARATOR) {
                 products_in_category
-                    .entry(category.to_string())
+                    .entry(category.clone())
                     .and_modify(|amount| *amount += 1)
                     .or_insert_with(|| 1);
             }
@@ -674,7 +674,7 @@ impl Processor {
                     if utils::extract_domain_from_url(url) == "youtube.com" {
                         mentions.push(gather::Mention {
                             title: report.title.as_ref().unwrap_or(url).clone(),
-                            link: url.to_string(),
+                            link: url.clone(),
                         });
                     }
                 }

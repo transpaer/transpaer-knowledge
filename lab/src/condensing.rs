@@ -928,9 +928,9 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
     ) -> Result<(), errors::ProcessingError> {
         if let Some(vat_number) = &record.vat_number {
             let producer = schema::ReviewProducer {
-                id: vat_number.to_string(),
+                id: vat_number.clone(),
                 ids: schema::ProducerIds {
-                    vat: Some(vec![vat_number.to_string()]),
+                    vat: Some(vec![vat_number.clone()]),
                     wiki: None,
                     domains: None,
                 },
@@ -977,7 +977,7 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                     images: Vec::new(),
                     categorisation: None,
                     origins: Some(schema::ProductOrigins {
-                        producer_ids: vec![vat_number.to_string()],
+                        producer_ids: vec![vat_number.clone()],
                         regions: self.extract_region(&record),
                     }),
                     availability: None,
