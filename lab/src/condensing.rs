@@ -100,10 +100,7 @@ impl CondensationSources {
             &config.origin.bcorp_path,
             &config.meta.bcorp_regions_path,
         )?;
-        let eu_ecolabel = advisors::EuEcolabelAdvisor::load(
-            &config.origin.eu_ecolabel_path,
-            &config.meta.match_path,
-        )?;
+        let eu_ecolabel = advisors::EuEcolabelAdvisor::load(&config.meta.eu_ecolabel_regions_path)?;
         let tco = advisors::TcoAdvisor::load(&config.support.tco_path)?;
         let fti = advisors::FashionTransparencyIndexAdvisor::load(
             &config.support.fashion_transparency_index_path,
@@ -904,17 +901,18 @@ impl CondensingEuEcolabelWorker {
         Self { collector: ReviewerCollector::default(), sources }
     }
 
-    fn extract_region(record: &eu_ecolabel::data::Record) -> Option<schema::RegionList> {
-        match isocountry::CountryCode::for_alpha2(&record.company_country) {
-            Ok(code) => Some(schema::RegionList(vec![code.alpha3().to_owned()])),
-            Err(err) => {
-                log::warn!(
-                    "EuEcoLabel country `{}` is not a valid alpha2 code: {}",
-                    record.company_country,
-                    err
-                );
-                None
-            }
+    fn extract_region(&self, record: &eu_ecolabel::data::Record) -> Option<schema::RegionList> {
+        let mut result = HashSet::<isocountry::CountryCode>::new();
+        match self.sources.eu_ecolabel.get_countries(&record.company_country) {
+            Some(models::Regions::List(list)) => result.extend(list.iter()),
+            Some(models::Regions::Unknown | models::Regions::World) | None => {}
+        }
+        if result.is_empty() {
+            None
+        } else {
+            Some(schema::RegionList(
+                result.into_iter().map(|code| code.alpha3().to_owned()).collect(),
+            ))
         }
     }
 }
@@ -929,24 +927,18 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
         _tx: parallel::Sender<Self::Output>,
     ) -> Result<(), errors::ProcessingError> {
         if let Some(vat_number) = &record.vat_number {
-            let wiki_ids = self
-                .sources
-                .eu_ecolabel
-                .vat_to_wiki(&models::VatId::try_from(vat_number)?)
-                .map(|matching| vec![matching.wiki_id.to_id()]);
-
             let producer = schema::ReviewProducer {
                 id: vat_number.to_string(),
                 ids: schema::ProducerIds {
                     vat: Some(vec![vat_number.to_string()]),
-                    wiki: wiki_ids,
+                    wiki: None,
                     domains: None,
                 },
                 names: vec![record.product_or_service_name.clone()],
                 description: None,
                 images: Vec::default(),
                 websites: Vec::default(),
-                origins: Some(schema::ProducerOrigins { regions: Self::extract_region(&record) }),
+                origins: Some(schema::ProducerOrigins { regions: self.extract_region(&record) }),
                 reports: None,
                 review: Some(schema::Review::Certification(schema::Certification {
                     is_certified: Some(true),
@@ -986,7 +978,7 @@ impl runners::EuEcolabelWorker for CondensingEuEcolabelWorker {
                     categorisation: None,
                     origins: Some(schema::ProductOrigins {
                         producer_ids: vec![vat_number.to_string()],
-                        regions: Self::extract_region(&record),
+                        regions: self.extract_region(&record),
                     }),
                     availability: None,
                     related: None,

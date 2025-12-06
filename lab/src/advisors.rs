@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use transpaer_collecting::{
-    bcorp, categories::Category, eu_ecolabel, fashion_transparency_index, tco, transpaer,
+    bcorp, categories::Category, fashion_transparency_index, tco, transpaer,
 };
 use transpaer_models::{gather as models, ids, utils::extract_domain_from_url};
 use transpaer_schema as schema;
@@ -119,39 +119,34 @@ impl BCorpAdvisor {
 
 /// Holds the information read from the `EU Ecolabel` data.
 pub struct EuEcolabelAdvisor {
-    /// Map from companies Vat ID to their Wikidata IDs.
-    vat_to_wiki: HashMap<models::VatId, transpaer::data::Match>,
+    /// Map from Eu Ecolabel countries to transpaer regions.
+    country_to_regions: HashMap<String, models::Regions>,
 }
 
 impl EuEcolabelAdvisor {
-    /// Constructs a new `EuEcolabelAdvisor`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` the records contain invalid data, e.g. VAT number.
-    pub fn new(
-        records: &[eu_ecolabel::data::Record],
-        map: &[transpaer::data::NameMatching],
-    ) -> Result<Self, models::ParseIdError> {
-        let mut name_to_wiki = HashMap::<String, transpaer::data::Match>::new();
-        for entry in map {
-            if let Some(wiki_match) = entry.matched() {
-                name_to_wiki.insert(entry.name.clone(), wiki_match);
-            }
-        }
+    /// Constructs a new `OpenFoodFactsAdvisor`.
+    #[must_use]
+    pub fn new(country_to_regions: HashMap<String, models::Regions>) -> Self {
+        Self { country_to_regions }
+    }
 
-        let mut vat_to_wiki = HashMap::<models::VatId, transpaer::data::Match>::new();
-        for r in records {
-            // We assume each company has only one VAT number.
-            if let Some(vat_number) = &r.prepare_vat_number() {
-                let vat_id: models::VatId = vat_number.try_into()?;
-                if let Some(wiki_match) = name_to_wiki.get(&r.product_or_service_name) {
-                    vat_to_wiki.insert(vat_id, wiki_match.clone());
+    /// Constructs a new `OpenFoodFactsAdvisor` with loaded data.
+    pub fn assemble(
+        country_data: Option<transpaer::data::Countries>,
+    ) -> Result<Self, errors::ProcessingError> {
+        let country_to_regions = if let Some(data) = country_data {
+            let mut country_to_regions = HashMap::new();
+            for entry in data.countries {
+                if let Some(regions) = entry.regions {
+                    country_to_regions.insert(entry.tag, convert::to_model_regions(&regions)?);
                 }
             }
-        }
+            country_to_regions
+        } else {
+            HashMap::new()
+        };
 
-        Ok(Self { vat_to_wiki })
+        Ok(Self::new(country_to_regions))
     }
 
     /// Loads a new `EuEcolabelAdvisor` from a file.
@@ -160,41 +155,32 @@ impl EuEcolabelAdvisor {
     ///
     /// Returns `Err` if fails to read from `path`, fails to parse the contents or the contents
     /// contain invalid data.
-    pub fn load(
-        original_path: &std::path::Path,
-        match_path: &std::path::Path,
-    ) -> Result<Self, errors::ProcessingError> {
-        if utils::file_exists(original_path).is_ok() {
-            let data = eu_ecolabel::reader::parse(original_path)?;
-            if utils::file_exists(match_path).is_ok() {
-                let map = transpaer::reader::parse_id_map(match_path)?;
-                Ok(Self::new(&data, &map)?)
-            } else {
-                log::warn!(
-                    "Could not access `{}`. Transpaer match data won't be loaded!",
-                    match_path.display(),
-                );
-                Ok(Self::new(&[], &[])?)
-            }
+    pub fn load<P>(country_path: P) -> Result<Self, errors::ProcessingError>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let path = country_path.as_ref();
+        let country_data = if utils::file_exists(path).is_ok() {
+            Some(transpaer::reader::parse_countries(path)?)
         } else {
             log::warn!(
-                "Could not access `{}`. EU Ecolabel data won't be loaded!",
-                original_path.display(),
+                "Could not access `{}`. EU Ecolabel country data won't be loaded!",
+                path.display(),
             );
-            Ok(Self::new(&[], &[])?)
-        }
+            None
+        };
+        Self::assemble(country_data)
     }
 
-    /// Returns Companies Wikidata ID given it VAT ID if availabel.
     #[must_use]
-    pub fn vat_to_wiki(&self, vat_id: &models::VatId) -> Option<&transpaer::data::Match> {
-        self.vat_to_wiki.get(vat_id)
+    pub fn get_countries(&self, country_tag: &str) -> Option<&models::Regions> {
+        self.country_to_regions.get(country_tag)
     }
 }
 
 /// Holds the information read from the Open Food Facts data.
 pub struct OpenFoodFactsAdvisor {
-    /// Map from Open Food facts countries to transpaer regionss.
+    /// Map from Open Food facts countries to transpaer regions.
     country_to_regions: HashMap<String, models::Regions>,
 
     /// Map from Open Food facts category tags to transpaer categories.

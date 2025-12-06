@@ -2536,6 +2536,7 @@ dependencies = [
  "chrono",
  "csv",
  "flate2",
+ "log",
  "serde",
  "serde-jsonlines 0.7.0",
  "serde_json",

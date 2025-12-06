@@ -299,6 +299,9 @@ pub struct MetaConfig {
     /// Path to the absobents file, which contains info about fetched orinal data sets.
     pub absorbents: PathBuf,
 
+    /// Path to file mapping EU Ecolabel countries to Transpaer regions.
+    pub eu_ecolabel_regions_path: PathBuf,
+
     /// Path to file mapping Wikidata countries to Transpaer regions.
     pub wikidata_regions_path: PathBuf,
 
@@ -324,6 +327,7 @@ impl MetaConfig {
         let meta = PathBuf::from(meta);
         Self {
             absorbents: meta.join("absorbents.yaml"),
+            eu_ecolabel_regions_path: meta.join("eu_ecolabel_regions.yaml"),
             wikidata_regions_path: meta.join("wikidata_regions.yaml"),
             wikidata_categories_path: meta.join("wikidata_categories.yaml"),
             open_food_facts_regions_path: meta.join("open_food_facts_regions.yaml"),
@@ -676,6 +680,7 @@ impl FilteringConfig {
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct UpdatingConfig {
+    pub eu_ecolabel: EuEcolabelProducerConfig,
     pub wikidata_gatherer: WikidataProducerConfig,
     pub off: OpenFoodFactsProducerConfig,
     pub bcorp_original_path: PathBuf,
@@ -689,6 +694,7 @@ impl UpdatingConfig {
         let origin = PathBuf::from(&args.origin);
 
         Self {
+            eu_ecolabel: EuEcolabelProducerConfig::new(&args.origin),
             wikidata_gatherer: WikidataProducerConfig::new_filtered(&args.cache),
             off: OpenFoodFactsProducerConfig::new(&args.origin),
             bcorp_original_path: origin.join("bcorp.csv"),

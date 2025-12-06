@@ -8,6 +8,7 @@ edition = "2021"
 chrono = { workspace = true }
 csv = { workspace = true }
 flate2 = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde-jsonlines = { workspace = true }
