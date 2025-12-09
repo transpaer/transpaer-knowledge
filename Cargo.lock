@@ -2595,7 +2595,6 @@ dependencies = [
  "log",
  "maplit",
  "md5",
- "merge",
  "postcard",
  "pretty_assertions",
  "serde",
