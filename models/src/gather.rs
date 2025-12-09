@@ -9,7 +9,7 @@ pub use crate::{
         GatherOrganisation as Organisation, GatherOrganisationIds as OrganisationIds,
         GatherProduct as Product, GatherProductIds as ProductIds, Image, LibraryItem, LibraryTopic,
         Medium, Mention, MentionSource, Presentation, PresentationData, Regions,
-        ScoredPresentationEntry, ShoppingEntry, Source, TcoCert, Text, TranspaerScore,
-        TranspaerScoreBranch, TranspaerScoreCategory,
+        ScoredPresentationEntry, ShoppingEntry, Source, TcoCert, Text, TranspaerOrganisationData,
+        TranspaerProductData, TranspaerScore, TranspaerScoreBranch, TranspaerScoreCategory,
     },
 };

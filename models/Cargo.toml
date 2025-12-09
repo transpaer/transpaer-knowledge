@@ -8,7 +8,6 @@ isocountry = { workspace = true }
 kv = { workspace = true, features = ["json-value"] }
 log = { workspace = true, optional = true }
 md5 = { workspace = true }
-merge = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 snafu = { workspace = true }

@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-pub trait Combine {
-    /// Combines two objects of the same type.
-    fn combine(o1: Self, o2: Self) -> Self;
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum ModelsError {
+    #[error("Significances from `{substrate_name}` substrate found more than once")]
+    CombineSignificances { substrate_name: String },
 }

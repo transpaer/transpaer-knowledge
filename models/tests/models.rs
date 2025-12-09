@@ -38,13 +38,10 @@ fn score_category_to_api() {
 #[test]
 fn regions_merge() {
     use isocountry::CountryCode::{DEU, ESP, FRA, ITA, POL, SWE};
-    use merge::Merge;
-    use transpaer_models::models::Regions;
+    use transpaer_models::{combine::Combine, models::Regions};
 
-    fn merge(r1: &Regions, r2: &Regions) -> Regions {
-        let mut r = r1.clone();
-        r.merge(r2.clone());
-        r
+    fn combine(r1: &Regions, r2: &Regions) -> Regions {
+        Combine::combine(r1.clone(), r2.clone())
     }
 
     let world = Regions::World;
@@ -53,19 +50,21 @@ fn regions_merge() {
     let list_2 = Regions::List(vec![DEU, POL, SWE, ITA]);
     let list_3 = Regions::List(vec![FRA, DEU, ITA, POL, ESP, SWE]);
 
-    assert!(merge(&world, &unknown) == world);
-    assert!(merge(&unknown, &world) == world);
-    assert!(merge(&world, &list_1) == world);
-    assert!(merge(&list_2, &world) == world);
-    assert!(merge(&unknown, &list_1) == list_1);
-    assert!(merge(&list_2, &unknown) == list_2);
-    assert!(merge(&list_1, &list_2) == list_3);
-    assert!(merge(&list_2, &list_1) == list_3);
+    assert!(combine(&world, &unknown) == world);
+    assert!(combine(&unknown, &world) == world);
+    assert!(combine(&world, &list_1) == world);
+    assert!(combine(&list_2, &world) == world);
+    assert!(combine(&unknown, &list_1) == list_1);
+    assert!(combine(&list_2, &unknown) == list_2);
+    assert!(combine(&list_1, &list_2) == list_3);
+    assert!(combine(&list_2, &list_1) == list_3);
 }
 
 #[test]
 fn serde_product_defaults() {
-    use transpaer_models::store::{Certifications, Product, ProductIds, Regions, TranspaerScore};
+    use transpaer_models::store::{
+        Certifications, Product, ProductIds, Regions, TranspaerProductData,
+    };
 
     let original_product = Product {
         ids: ProductIds { eans: vec![], gtins: vec![], wiki: vec![] },
@@ -81,7 +80,7 @@ fn serde_product_defaults() {
         media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
-        transpaer_score: TranspaerScore::default(),
+        transpaer: TranspaerProductData::default(),
     };
 
     let expected_string = indoc::indoc!(
@@ -108,9 +107,12 @@ fn serde_product_defaults() {
           "media": [],
           "follows": [],
           "followed_by": [],
-          "transpaer_score": {
-            "tree": [],
-            "total": 0.0
+          "transpaer": {
+            "score": {
+              "tree": [],
+              "total": 0.0
+            },
+            "significance": {}
           }
         }"#
     );
@@ -122,7 +124,9 @@ fn serde_product_defaults() {
 
 #[test]
 fn serde_product_filled() {
-    use transpaer_models::store::{Certifications, Product, ProductIds, Regions, TranspaerScore};
+    use transpaer_models::store::{
+        Certifications, Product, ProductIds, Regions, TranspaerProductData,
+    };
 
     let original_product = Product {
         ids: ProductIds {
@@ -142,7 +146,7 @@ fn serde_product_filled() {
         media: Vec::default(),
         follows: Vec::default(),
         followed_by: Vec::default(),
-        transpaer_score: TranspaerScore::default(),
+        transpaer: TranspaerProductData::default(),
     };
 
     let expected_string = indoc::indoc!(
@@ -180,9 +184,12 @@ fn serde_product_filled() {
           "media": [],
           "follows": [],
           "followed_by": [],
-          "transpaer_score": {
-            "tree": [],
-            "total": 0.0
+          "transpaer": {
+            "score": {
+              "tree": [],
+              "total": 0.0
+            },
+            "significance": {}
           }
         }"#
     );

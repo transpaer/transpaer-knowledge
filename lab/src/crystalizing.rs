@@ -4,12 +4,11 @@
 
 use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 
-use merge::Merge;
-
 use transpaer_collecting::categories::{self, Category};
 use transpaer_models::{
     buckets::{Bucket, BucketError, DbStore},
-    gather, store, utils,
+    combine::TryCombine,
+    gather, store, transpaer, utils,
 };
 use transpaer_schema as schema;
 
@@ -164,14 +163,16 @@ impl CrystalizationCollector {
     pub fn update_organisation(
         &mut self,
         id: &gather::OrganisationId,
-        organisation: gather::Organisation,
-    ) -> Result<(), BucketError> {
+        substrate_name: String,
+        mut organisation: gather::Organisation,
+    ) -> Result<(), errors::CrystalizationError> {
+        organisation.transpaer.assign_significance(
+            substrate_name,
+            transpaer::calculate_organisation_significance(&organisation),
+        );
         let orgs = self.get_organisation_bucket()?;
         let org = match orgs.get(id)? {
-            Some(mut org) => {
-                org.merge(organisation);
-                org
-            }
+            Some(org) => TryCombine::try_combine(org, organisation)?,
             None => organisation,
         };
         orgs.insert(id, &org)?;
@@ -181,14 +182,16 @@ impl CrystalizationCollector {
     pub fn update_product(
         &mut self,
         id: &gather::ProductId,
-        product: gather::Product,
-    ) -> Result<(), BucketError> {
+        substrate_name: String,
+        mut product: gather::Product,
+    ) -> Result<(), errors::CrystalizationError> {
+        product.transpaer.assign_significance(
+            substrate_name,
+            transpaer::calculate_product_significance(&product),
+        );
         let prods = self.get_product_bucket()?;
         let prod = match prods.get(id)? {
-            Some(mut prod) => {
-                prod.merge(product);
-                prod
-            }
+            Some(prod) => TryCombine::try_combine(prod, product)?,
             None => product,
         };
         prods.insert(id, &prod)?;
@@ -289,6 +292,7 @@ impl Processor {
 
         self.collector.update_organisation(
             &unique_id,
+            substrate.name.clone(),
             gather::Organisation {
                 ids,
                 names: producer
@@ -316,6 +320,7 @@ impl Processor {
                 certifications: gather::Certifications::default(),
                 media: BTreeSet::new(),
                 products: BTreeSet::new(), //< filled later
+                transpaer: gather::TranspaerOrganisationData::default(),
             },
         )?;
 
@@ -340,6 +345,7 @@ impl Processor {
 
         self.collector.update_product(
             &unique_id,
+            substrate.name.clone(),
             gather::Product {
                 ids,
                 names: product
@@ -379,8 +385,8 @@ impl Processor {
                 media: BTreeSet::new(),
                 follows,
                 followed_by,
-                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
+                transpaer: gather::TranspaerProductData::default(), //< Calculated later
             },
         )?;
 
@@ -405,6 +411,7 @@ impl Processor {
 
         self.collector.update_product(
             &unique_id,
+            substrate.name.clone(),
             gather::Product {
                 ids,
                 names: product
@@ -438,8 +445,8 @@ impl Processor {
                 media: BTreeSet::new(),
                 follows,
                 followed_by,
-                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(),
+                transpaer: gather::TranspaerProductData::default(), //< Calculated later
             },
         )?;
 
@@ -467,6 +474,7 @@ impl Processor {
 
         self.collector.update_organisation(
             &unique_id,
+            substrate.name.clone(),
             gather::Organisation {
                 ids,
                 names: producer
@@ -494,6 +502,7 @@ impl Processor {
                 media: Self::extract_media_mentions(producer.reports.as_ref(), &substrate.source),
                 certifications,
                 products: BTreeSet::new(), //< filled later
+                transpaer: gather::TranspaerOrganisationData::default(),
             },
         )?;
 
@@ -518,6 +527,7 @@ impl Processor {
 
         self.collector.update_product(
             &unique_id,
+            substrate.name.clone(),
             gather::Product {
                 ids,
                 names: product
@@ -553,8 +563,8 @@ impl Processor {
                 media: Self::extract_media_mentions(product.reports.as_ref(), &substrate.source),
                 follows,
                 followed_by,
-                transpaer_score: gather::TranspaerScore::default(), //< Calculated later
                 certifications: gather::Certifications::default(), //< Assigned later from producers
+                transpaer: gather::TranspaerProductData::default(), //< Calculated later
             },
         )?;
 
@@ -898,7 +908,7 @@ impl Saver {
         log::info!(" -> calculating Transpaer scores");
         for product in products.clone().iter_autosave() {
             let mut product = product?;
-            product.value.transpaer_score = crate::score::calculate(&product.value);
+            product.value.transpaer.score = crate::score::calculate(&product.value);
         }
 
         Ok(())

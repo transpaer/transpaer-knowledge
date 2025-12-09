@@ -4,13 +4,17 @@
 
 //! This modules contains definitions of data stored in the internal database.
 
-use std::{collections::BTreeSet, str::FromStr};
+use std::{
+    collections::{BTreeSet, HashMap},
+    str::FromStr,
+};
 
-// TODO: When impleneting `Merge` manually it's easy fo forget some fields.
-//       Either always derive `Merge` or introduce another trait that will
-//       build a complitely new struct as this will guaranty all fields are used.
-use merge::Merge;
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    combine::{self, Combine, TryCombine},
+    errors::ModelsError,
+};
 
 #[cfg(feature = "into-api")]
 use transpaer_api::models as api;
@@ -222,24 +226,28 @@ impl Regions {
                 .unwrap_or(false),
         }
     }
+
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            Self::Unknown => true,
+            Self::World | Self::List(_) => false,
+        }
+    }
 }
 
-impl merge::Merge for Regions {
-    fn merge(&mut self, other: Self) {
-        match other {
-            Self::World => {
-                *self = Self::World;
-            }
-            Self::Unknown => {}
-            Self::List(other_list) => match self {
-                Self::World => {}
-                Self::Unknown => {
-                    *self = Self::List(other_list);
-                }
-                Self::List(self_list) => {
-                    self_list.extend(&other_list);
-                    self_list.sort_unstable();
-                    self_list.dedup();
+impl Combine for Regions {
+    fn combine(o1: Self, o2: Self) -> Self {
+        match &o2 {
+            Self::World => o2,
+            Self::Unknown => o1,
+            Self::List(list2) => match o1 {
+                Self::World => o1,
+                Self::Unknown => o2,
+                Self::List(mut list1) => {
+                    list1.extend(list2);
+                    list1.sort_unstable();
+                    list1.dedup();
+                    Self::List(list1)
                 }
             },
         }
@@ -348,7 +356,7 @@ impl TcoCert {
 }
 
 /// Lists known certifications.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, Eq, PartialEq, Merge)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct Certifications {
     /// Manufacturer certifiad by BCorp.
     pub bcorp: Option<BCorpCert>,
@@ -387,6 +395,17 @@ impl Certifications {
         }
         if other.tco.is_some() {
             self.tco.clone_from(&other.tco);
+        }
+    }
+}
+
+impl Combine for Certifications {
+    fn combine(o1: Self, o2: Self) -> Self {
+        Self {
+            bcorp: Combine::combine(o1.bcorp, o2.bcorp),
+            eu_ecolabel: Combine::combine(o1.eu_ecolabel, o2.eu_ecolabel),
+            fti: Combine::combine(o1.fti, o2.fti),
+            tco: Combine::combine(o1.tco, o2.tco),
         }
     }
 }
@@ -655,6 +674,65 @@ impl Default for TranspaerScore {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Significance(f64);
+
+impl Significance {
+    pub fn new(value: f64) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TranspaerProductData {
+    pub score: TranspaerScore,
+    pub significance: HashMap<String, Significance>,
+}
+
+impl TranspaerProductData {
+    pub fn assign_significance(&mut self, substrate_name: String, significance: Significance) {
+        // TODO: error if the value already present.
+        self.significance.insert(substrate_name, significance);
+    }
+}
+
+impl TryCombine for TranspaerProductData {
+    type Error = ModelsError;
+
+    fn try_combine(o1: Self, o2: Self) -> Result<Self, Self::Error> {
+        Ok(Self {
+            // Score should be calculated only on fully merged data.
+            score: o1.score,
+            significance: combine::try_combine_disjoint_hashmaps(o1.significance, o2.significance)
+                .map_err(|substrate_name| ModelsError::CombineSignificances { substrate_name })?,
+        })
+    }
+}
+
+// TODO: Introduce score for organisations
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TranspaerOrganisationData {
+    pub significance: HashMap<String, Significance>,
+}
+
+impl TranspaerOrganisationData {
+    pub fn assign_significance(&mut self, substrate_name: String, significance: Significance) {
+        // TODO: error if the value already present.
+        self.significance.insert(substrate_name, significance);
+    }
+}
+
+impl TryCombine for TranspaerOrganisationData {
+    type Error = ModelsError;
+
+    fn try_combine(o1: Self, o2: Self) -> Result<Self, Self::Error> {
+        Ok(Self {
+            significance: combine::try_combine_disjoint_hashmaps(o1.significance, o2.significance)
+                .map_err(|substrate_name| ModelsError::CombineSignificances { substrate_name })?,
+        })
+    }
+}
+
 /// Represents a set of IDs of an organisation.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherOrganisationIds {
@@ -682,11 +760,12 @@ impl GatherOrganisationIds {
     }
 }
 
-impl merge::Merge for GatherOrganisationIds {
-    fn merge(&mut self, other: Self) {
-        self.wiki.extend(other.wiki);
-        self.vat_ids.extend(other.vat_ids);
-        self.domains.extend(other.domains);
+impl Combine for GatherOrganisationIds {
+    fn combine(mut o1: Self, o2: Self) -> Self {
+        o1.wiki.extend(o2.wiki);
+        o1.vat_ids.extend(o2.vat_ids);
+        o1.domains.extend(o2.domains);
+        Self { wiki: o1.wiki, vat_ids: o1.vat_ids, domains: o1.domains }
     }
 }
 
@@ -773,6 +852,9 @@ pub struct GatherOrganisation {
 
     /// Mantions in media.
     pub media: BTreeSet<Medium>,
+
+    /// The Transpaer data.
+    pub transpaer: TranspaerOrganisationData,
 }
 
 impl GatherOrganisation {
@@ -786,6 +868,7 @@ impl GatherOrganisation {
         let mut origins: Vec<_> = self.origins.into_iter().collect();
         let mut media: Vec<_> = self.media.into_iter().collect();
         let certifications = self.certifications;
+        let transpaer = self.transpaer;
 
         names.sort();
         descriptions.sort();
@@ -805,21 +888,39 @@ impl GatherOrganisation {
             products,
             certifications,
             media,
+            transpaer,
         }
     }
 }
 
-impl merge::Merge for GatherOrganisation {
-    fn merge(&mut self, other: Self) {
-        self.ids.merge(other.ids);
-        self.names.extend(other.names);
-        self.descriptions.extend(other.descriptions);
-        self.images.extend(other.images);
-        self.websites.extend(other.websites);
-        self.products.extend(other.products);
-        self.origins.extend(other.origins);
-        self.certifications.merge(other.certifications);
-        self.media.extend(other.media);
+impl TryCombine for GatherOrganisation {
+    type Error = ModelsError;
+
+    fn try_combine(mut o1: Self, o2: Self) -> Result<Self, Self::Error> {
+        let ids = Combine::combine(o1.ids, o2.ids);
+        let certifications = Combine::combine(o1.certifications, o2.certifications);
+        let transpaer = TryCombine::try_combine(o1.transpaer, o2.transpaer)?;
+
+        o1.names.extend(o2.names);
+        o1.descriptions.extend(o2.descriptions);
+        o1.images.extend(o2.images);
+        o1.websites.extend(o2.websites);
+        o1.products.extend(o2.products);
+        o1.origins.extend(o2.origins);
+        o1.media.extend(o2.media);
+
+        Ok(Self {
+            ids,
+            names: o1.names,
+            descriptions: o1.descriptions,
+            images: o1.images,
+            websites: o1.websites,
+            products: o1.products,
+            origins: o1.origins,
+            certifications,
+            media: o1.media,
+            transpaer,
+        })
     }
 }
 
@@ -852,6 +953,9 @@ pub struct StoreOrganisation {
 
     /// Mantions in media.
     pub media: Vec<Medium>,
+
+    /// The Transpaer data.
+    pub transpaer: TranspaerOrganisationData,
 }
 
 #[cfg(feature = "into-api")]
@@ -950,11 +1054,12 @@ impl GatherProductIds {
     }
 }
 
-impl merge::Merge for GatherProductIds {
-    fn merge(&mut self, other: Self) {
-        self.eans.extend(other.eans);
-        self.gtins.extend(other.gtins);
-        self.wiki.extend(other.wiki);
+impl Combine for GatherProductIds {
+    fn combine(mut o1: Self, o2: Self) -> Self {
+        o1.eans.extend(o2.eans);
+        o1.gtins.extend(o2.gtins);
+        o1.wiki.extend(o2.wiki);
+        Self { eans: o1.eans, gtins: o1.gtins, wiki: o1.wiki }
     }
 }
 
@@ -1054,8 +1159,8 @@ pub struct GatherProduct {
     /// Wikidata IDs older version products.
     pub followed_by: BTreeSet<ids::ProductId>,
 
-    /// The Transpaer score.
-    pub transpaer_score: TranspaerScore,
+    /// The Transpaer data.
+    pub transpaer: TranspaerProductData,
 }
 
 impl GatherProduct {
@@ -1073,7 +1178,7 @@ impl GatherProduct {
         let mut media: Vec<_> = self.media.into_iter().collect();
         let mut follows: Vec<_> = self.follows.into_iter().collect();
         let mut followed_by: Vec<_> = self.followed_by.into_iter().collect();
-        let transpaer_score = self.transpaer_score;
+        let transpaer = self.transpaer;
 
         names.sort();
         images.sort();
@@ -1098,7 +1203,7 @@ impl GatherProduct {
             media,
             follows,
             followed_by,
-            transpaer_score,
+            transpaer,
         }
     }
 
@@ -1119,21 +1224,42 @@ impl GatherProduct {
     }
 }
 
-impl merge::Merge for GatherProduct {
-    fn merge(&mut self, other: Self) {
-        self.ids.merge(other.ids);
-        self.names.extend(other.names);
-        self.descriptions.extend(other.descriptions);
-        self.images.extend(other.images);
-        self.categories.extend(other.categories);
-        self.regions.merge(other.regions);
-        self.origins.extend(other.origins);
-        self.certifications.merge(other.certifications);
-        self.manufacturers.extend(other.manufacturers);
-        self.shopping.extend(other.shopping);
-        self.media.extend(other.media);
-        self.follows.extend(other.follows);
-        self.followed_by.extend(other.followed_by);
+impl TryCombine for GatherProduct {
+    type Error = ModelsError;
+
+    fn try_combine(mut o1: Self, o2: Self) -> Result<Self, Self::Error> {
+        let ids = Combine::combine(o1.ids, o2.ids);
+        let regions = Combine::combine(o1.regions, o2.regions);
+        let certifications = Combine::combine(o1.certifications, o2.certifications);
+        let transpaer = TryCombine::try_combine(o1.transpaer, o2.transpaer)?;
+
+        o1.names.extend(o2.names);
+        o1.descriptions.extend(o2.descriptions);
+        o1.images.extend(o2.images);
+        o1.categories.extend(o2.categories);
+        o1.origins.extend(o2.origins);
+        o1.manufacturers.extend(o2.manufacturers);
+        o1.shopping.extend(o2.shopping);
+        o1.media.extend(o2.media);
+        o1.follows.extend(o2.follows);
+        o1.followed_by.extend(o2.followed_by);
+
+        Ok(Self {
+            ids,
+            names: o1.names,
+            descriptions: o1.descriptions,
+            images: o1.images,
+            categories: o1.categories,
+            regions,
+            origins: o1.origins,
+            certifications,
+            manufacturers: o1.manufacturers,
+            shopping: o1.shopping,
+            media: o1.media,
+            follows: o1.follows,
+            followed_by: o1.followed_by,
+            transpaer,
+        })
     }
 }
 
@@ -1179,8 +1305,8 @@ pub struct StoreProduct {
     /// Wikidata IDs older version products.
     pub followed_by: Vec<ids::ProductId>,
 
-    /// The Transpaer score.
-    pub transpaer_score: TranspaerScore,
+    /// The Transpaer data.
+    pub transpaer: TranspaerProductData,
 }
 
 #[cfg(feature = "into-api")]
@@ -1201,7 +1327,7 @@ impl StoreProduct {
         alternatives: Vec<api::CategoryAlternatives>,
     ) -> api::ProductFull {
         let mut medallions = self.certifications.into_api_medallions();
-        medallions.push(self.transpaer_score.into_api_medallion());
+        medallions.push(self.transpaer.score.into_api_medallion());
 
         api::ProductFull {
             product_ids: self.ids.to_api(),

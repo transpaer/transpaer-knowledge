@@ -30,6 +30,7 @@ kv = { version = "0.24" }
 log = { version = "0.4" }
 maplit = { version = "1.0.2" }
 md5 = { version = "0.7.0" }
+# TODO: use `transpaer_models::traits::Combine` instead.
 merge = { version = "0.1" }
 num_cpus = { version = "1.0" }
 postcard = { version = "1.1", features = ["use-std"] }

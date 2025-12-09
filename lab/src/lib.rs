@@ -28,7 +28,6 @@ mod runners;
 mod sampling;
 mod score;
 mod substrate;
-mod traits;
 mod updating;
 mod utils;
 mod wikidata;

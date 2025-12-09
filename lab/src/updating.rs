@@ -7,8 +7,9 @@ use std::{cmp::Ordering, collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 
 use transpaer_collecting::{bcorp, eu_ecolabel, open_food_facts, transpaer};
+use transpaer_models::combine::Combine;
 
-use crate::{advisors, config, errors, parallel, runners, traits, utils, wikidata::ItemExt};
+use crate::{advisors, config, errors, parallel, runners, utils, wikidata::ItemExt};
 
 fn compare_items(c1: &(String, usize), c2: &(String, usize)) -> Ordering {
     let cmp = c2.1.cmp(&c1.1);
@@ -125,7 +126,7 @@ pub struct OpenFoodFactsCollector {
     empty_category_count: usize,
 }
 
-impl traits::Combine for OpenFoodFactsCollector {
+impl Combine for OpenFoodFactsCollector {
     fn combine(mut o1: Self, o2: Self) -> Self {
         utils::merge_hashmaps_with(&mut o1.countries, o2.countries, |a, b| *a += b);
         utils::merge_hashmaps_with(&mut o1.categories, o2.categories, |a, b| *a += b);
@@ -229,7 +230,7 @@ impl runners::Stash for OpenFoodFactsStash {
 
     fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
         if let Some(collector) = self.collector.take() {
-            self.collector = Some(traits::Combine::combine(collector, input));
+            self.collector = Some(Combine::combine(collector, input));
         } else {
             self.collector = Some(input);
         }
@@ -309,7 +310,7 @@ impl WikidataCollector {
     }
 }
 
-impl traits::Combine for WikidataCollector {
+impl Combine for WikidataCollector {
     fn combine(mut o1: Self, o2: Self) -> Self {
         utils::merge_hashmaps_with(&mut o1.countries, o2.countries, |a, b| *a += b);
         utils::merge_hashmaps_with(&mut o1.classes, o2.classes, |a, b| *a += b);
@@ -486,7 +487,7 @@ impl runners::Stash for WikidataStash {
 
     fn stash(&mut self, input: Self::Input) -> Result<(), errors::ProcessingError> {
         if let Some(collector) = self.collector.take() {
-            self.collector = Some(traits::Combine::combine(collector, input));
+            self.collector = Some(Combine::combine(collector, input));
         } else {
             self.collector = Some(input);
         }
