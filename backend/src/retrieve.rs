@@ -144,6 +144,7 @@ impl Retriever {
         if let Some(organisation_id) = self.organisation_id(id_variant, id)? {
             let orgs = self.db.get_organisation_bucket()?;
             if let Some(org) = orgs.get(&organisation_id)? {
+                tracing::info!(significance = ?org.transpaer.significance, "organisation viewed");
                 let products = self.short_products(&org.products)?;
                 let org = org.into_api_full(products);
                 Ok(Some(org))
@@ -164,6 +165,7 @@ impl Retriever {
         if let Some(product_id) = self.product_id(id_variant, id)? {
             let prods = self.db.get_product_bucket()?;
             if let Some(prod) = prods.get(&product_id)? {
+                tracing::info!(significance = ?prod.transpaer.significance, "product viewed");
                 let manufacturers = self.short_organisations(&prod.manufacturers)?;
                 let alternatives =
                     self.product_alternatives_impl(product_id, &prod.categories, region)?;
@@ -228,7 +230,7 @@ impl Retriever {
                 supercategories,
             }))
         } else {
-            log::warn!("Category `{category_name}` not found");
+            tracing::warn!(category = category_name, "Category not found");
             Ok(None)
         }
     }
@@ -343,7 +345,7 @@ impl Retriever {
             if let Some(product) = products.get(id)? {
                 result.push(product.into_api_short());
             } else {
-                log::warn!("Product `{id}` not found");
+                tracing::warn!(product_id = %id, "Product not found");
             }
         }
         Ok(result)
@@ -359,7 +361,7 @@ impl Retriever {
             if let Some(organisation) = organisations.get(id)? {
                 result.push(organisation.into_api_short());
             } else {
-                log::warn!("Organisation `{id}` not found");
+                tracing::warn!(organisation_id = %id, "Organisation not found");
             }
         }
         Ok(result)
@@ -423,7 +425,7 @@ impl Retriever {
             results.truncate(10);
             Ok(Some(results.iter().map(|r| r.1.clone().into_api_short()).collect()))
         } else {
-            log::warn!("Category `{category}` not found");
+            tracing::warn!(category, "Category not found");
             Ok(None)
         }
     }
@@ -491,7 +493,7 @@ impl Retriever {
                     let result = ProductSearchResult::from_db(product_id, product);
                     results.push(result);
                 } else {
-                    log::warn!("Product `{product_id}` from keyword `{keyword}` not found");
+                    tracing::warn!(%product_id, keyword, "Product from keyword not found");
                 }
             }
         }
@@ -511,9 +513,7 @@ impl Retriever {
                     let result = OrganisationSearchResult::from_db(organisation_id, organisation);
                     results.push(result);
                 } else {
-                    log::warn!(
-                        "Organisation `{organisation_id}` from keyword `{keyword}` not found"
-                    );
+                    tracing::warn!(%organisation_id, keyword, "Organisation from keyword not found");
                 }
             }
         }

@@ -1,17 +1,15 @@
 [package]
 name = "transpaer-backend"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }
 clap = { workspace = true }
-fern = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 hyper = { workspace = true, features = ["server"] }
 hyper-util = { workspace = true }
-log = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_variant = { workspace = true }
@@ -19,7 +17,13 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 swagger = { workspace = true, features = ["serdejson", "server"] }
 tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+tracing-appender = { workspace = true }
 
 transpaer-api = { workspace = true, features = ["server"] }
 transpaer-models = { workspace = true, features = ["into-api"] }
+
+[build-dependencies]
+vergen-gix = { workspace = true, features = ["build"] }
 
