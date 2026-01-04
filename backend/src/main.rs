@@ -12,6 +12,8 @@ use clap::Parser;
 use hyper::service::Service;
 use tokio::net::TcpListener;
 
+use tracing_subscriber::prelude::*;
+
 mod errors;
 mod models;
 mod retrieve;
@@ -22,30 +24,22 @@ mod server;
 struct Args {
     #[arg(short, long)]
     db_path: String,
+
+    #[arg(short, long)]
+    log_path: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
-    if let Err(err) = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{} {: <5}] {}",
-                humantime::format_rfc3339_seconds(std::time::SystemTime::now()),
-                record.level(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Info)
-        .chain(std::io::stdout())
-        .apply()
-    {
-        println!("Logger error:\n{err}");
-        return;
-    }
-
-    log::info!("Starting Transpaer backend!");
-
     let args = Args::parse();
+
+    setup_logger(args.log_path.as_ref());
+    tracing::info!(
+        build_date = env!("VERGEN_BUILD_TIMESTAMP"),
+        commit = env!("VERGEN_GIT_SHA"),
+        "Starting Transpaer backend!"
+    );
+
     let retriever = retrieve::Retriever::new(&args.db_path).expect("DB error");
 
     let server = server::Server::new(retriever);
@@ -56,6 +50,8 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     let listener = TcpListener::bind(addr).await.expect("Bind TCP listener");
+    tracing::info!("Listening on {:?}", addr);
+
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
@@ -72,5 +68,29 @@ async fn main() {
             }
             Err(err) => eprintln!("Error accepting connection: {:?}", err),
         };
+    }
+}
+
+fn setup_logger(log_path: Option<&String>) {
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(tracing::Level::INFO.into())
+        .from_env_lossy();
+    // XXX
+    let output = tracing_subscriber::fmt::layer().json().flatten_event(true);
+
+    // XXX dockerfile "/var/log/transpaer/backend"
+    if let Some(log_path) = log_path {
+        let appender = tracing_appender::rolling::Builder::new()
+            .rotation(tracing_appender::rolling::Rotation::MINUTELY)
+            .filename_prefix("backend")
+            .filename_suffix("log")
+            .build(log_path)
+            .expect("failed to initialize log file appender");
+        let file =
+            tracing_subscriber::fmt::layer().with_writer(appender).json().flatten_event(true);
+
+        tracing_subscriber::registry().with(filter).with(output).with(file).init()
+    } else {
+        tracing_subscriber::registry().with(filter).with(output).init()
     }
 }

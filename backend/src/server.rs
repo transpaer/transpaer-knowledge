@@ -37,6 +37,7 @@ where
     C: swagger::Has<swagger::XSpanIdString> + Send + Sync,
 {
     async fn check_health(&self, _context: &C) -> Result<CheckHealthResponse, ApiError> {
+        tracing::info_span!("request", request = "health-check");
         Ok(CheckHealthResponse::Ok {
             access_control_allow_origin: CORS_ORIGIN.to_string(),
             access_control_allow_methods: CORS_METHODS.to_string(),
@@ -45,6 +46,7 @@ where
     }
 
     async fn get_library(&self, _context: &C) -> Result<GetLibraryResponse, ApiError> {
+        tracing::info_span!("request", request = "get-library");
         let items = self.retriever.library_contents()?;
         Ok(GetLibraryResponse::Ok {
             body: LibraryContents { items },
@@ -59,6 +61,7 @@ where
         topic: String,
         _context: &C,
     ) -> Result<GetLibraryItemResponse, ApiError> {
+        tracing::info_span!("request", request = "get-library-item", topic);
         if let Some(item) = self.retriever.library_item(&topic)? {
             Ok(GetLibraryItemResponse::Ok {
                 body: item,
@@ -80,6 +83,7 @@ where
         query: String,
         _context: &C,
     ) -> Result<SearchByTextResponse, ApiError> {
+        tracing::info_span!("request", request = "search-by-text", query);
         let results = self.retriever.search_by_text(query)?;
         Ok(SearchByTextResponse::Ok {
             body: TextSearchResults { results },
@@ -95,6 +99,7 @@ where
         id: String,
         _context: &C,
     ) -> Result<GetOrganisationResponse, ApiError> {
+        tracing::info_span!("request", request = "get-organisation", %id_variant, organisation_id = %id);
         if let Some(org) = self.retriever.organisation(id_variant, &id)? {
             Ok(GetOrganisationResponse::Ok {
                 body: org,
@@ -118,6 +123,7 @@ where
         region: Option<String>,
         _context: &C,
     ) -> Result<GetProductResponse, ApiError> {
+        tracing::info_span!("request", request = "get-product", %id_variant, product_id = %id);
         if let Some(prod) = self.retriever.product(id_variant, &id, region.as_deref())? {
             Ok(GetProductResponse::Ok {
                 body: prod,
@@ -141,6 +147,7 @@ where
         region: Option<String>,
         _context: &C,
     ) -> Result<GetAlternativesResponse, ApiError> {
+        tracing::info_span!("request", request = "get-alternatives", %id_variant, product_id = %id, region);
         let alternatives =
             self.retriever.product_alternatives(id_variant, &id, region.as_deref())?;
         Ok(GetAlternativesResponse::Ok {
@@ -156,6 +163,7 @@ where
         category_id: String,
         _context: &C,
     ) -> Result<GetCategoryResponse, ApiError> {
+        tracing::info_span!("request", request = "get-category", category = %category_id);
         if let Some(category) = self.retriever.category(category_id)? {
             Ok(GetCategoryResponse::Ok {
                 body: category,

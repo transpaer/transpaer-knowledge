@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     tags: ['*']
-  pull_request:
 
 jobs:
 
@@ -42,3 +41,11 @@ jobs:
       - name: Build
         run: cargo build --release
 
+  tag:
+    name: Tag
+    needs: ci
+    uses: transpaer/github-workflows/.github/workflows/tag-rust.yml@v0.1.1
+    permissions:
+      contents: write
+    secrets:
+      gh_token: ${{ secrets.GITHUB_TOKEN }}

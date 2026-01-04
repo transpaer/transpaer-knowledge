@@ -33,7 +33,7 @@ pub enum BackendError {
 impl From<BackendError> for swagger::ApiError {
     fn from(error: BackendError) -> Self {
         let message = error.to_string();
-        log::error!("{message}");
+        tracing::error!("{message}");
         Self(message)
     }
 }
