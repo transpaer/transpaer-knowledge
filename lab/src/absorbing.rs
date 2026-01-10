@@ -12,8 +12,7 @@ use transpaer_collecting::{
 use crate::{config, errors};
 
 const USER_AGENT: &str = "transpaer-lab";
-const BCORP_DOWNLOAD_URL: &str =
-    "https://download.data.world/file_download/blab/b-corp-impact-data/B%20Corp%20Impact%20Data.csv?dwr=US";
+const BCORP_DOWNLOAD_URL: &str = "https://download.data.world/file_download/blab/b-corp-impact-data/B%20Corp%20Impact%20Data.csv?dwr=US";
 const EU_ECOLABEL_DOWNLOAD_URL: &str =
     "https://publicstorage.data.env.service.ec.europa.eu/ecolabel/exports/most-recent-export.csv";
 const OPEN_FOOD_FACTS_DOWNLOAD_URL: &str =

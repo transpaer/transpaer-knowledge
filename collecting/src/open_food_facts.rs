@@ -187,7 +187,7 @@ pub mod loader {
                 method => {
                     return Err(IoOrSerdeError::CompressionMethod(
                         method.map(std::string::ToString::to_string),
-                    ))
+                    ));
                 }
             };
             let path = path.to_owned();

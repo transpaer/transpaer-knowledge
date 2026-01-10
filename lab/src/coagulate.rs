@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{BTreeMap, btree_map::Entry};
 
 use serde::{Deserialize, Serialize};
 
@@ -199,7 +199,7 @@ impl Coagulate {
                         e.insert(unique.clone());
                     }
                     Entry::Occupied(_) => {
-                        return Err(CoagulationError::ExternalIdRepeated { id: external })
+                        return Err(CoagulationError::ExternalIdRepeated { id: external });
                     }
                 }
             }
@@ -220,7 +220,7 @@ impl Coagulate {
                         e.insert(unique.clone());
                     }
                     Entry::Occupied(_) => {
-                        return Err(CoagulationError::ExternalIdRepeated { id: external })
+                        return Err(CoagulationError::ExternalIdRepeated { id: external });
                     }
                 }
             }

@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
 use snafu::prelude::*;
 
 /// Maximal EAN (highest number with 13 digits).

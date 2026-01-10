@@ -646,7 +646,11 @@ impl SamplingRunner {
                     );
                     ensure_eq!(med.bcorp.is_some(), true, "BCorp medallion empty");
                     if let Some(bcorp) = &med.bcorp {
-                        ensure_eq!(*bcorp.report_url, "https://www.bcorporation.net/en-us/find-a-b-corp/company/plaine-products/", "wrong BCorp link");
+                        ensure_eq!(
+                            *bcorp.report_url,
+                            "https://www.bcorporation.net/en-us/find-a-b-corp/company/plaine-products/",
+                            "wrong BCorp link"
+                        );
                     }
                 }
                 ensure_eq!(

@@ -69,7 +69,7 @@ impl Loader {
             method => {
                 return Err(LoaderError::CompressionMethod(
                     method.map(std::string::ToString::to_string),
-                ))
+                ));
             }
         };
 

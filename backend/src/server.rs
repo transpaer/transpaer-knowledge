@@ -8,9 +8,9 @@ use async_trait::async_trait;
 use swagger::ApiError;
 
 use transpaer_api::{
-    models::{LibraryContents, OrganisationIdVariant, ProductIdVariant, TextSearchResults},
     Api, CheckHealthResponse, GetAlternativesResponse, GetCategoryResponse, GetLibraryItemResponse,
     GetLibraryResponse, GetOrganisationResponse, GetProductResponse, SearchByTextResponse,
+    models::{LibraryContents, OrganisationIdVariant, ProductIdVariant, TextSearchResults},
 };
 
 use crate::retrieve;

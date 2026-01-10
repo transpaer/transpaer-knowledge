@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 use transpaer_models::{
@@ -717,8 +717,8 @@ mod test {
     use serde::{Deserialize, Serialize};
 
     use super::{
-        gather, Bucket, DataSetId, ExternalId, IdCombiner, IdStructure, IndividualId, InnerId,
-        UniqueId,
+        Bucket, DataSetId, ExternalId, IdCombiner, IdStructure, IndividualId, InnerId, UniqueId,
+        gather,
     };
 
     fn e(data_set_id: usize, inner_id: usize) -> ExternalId {
