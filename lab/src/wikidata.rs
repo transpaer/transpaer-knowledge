@@ -274,11 +274,7 @@ impl ItemExt for data::Item {
     }
 
     fn has_property(&self, property_id: &str) -> bool {
-        if let Some(claims) = self.claims.get(property_id) {
-            !claims.is_empty()
-        } else {
-            false
-        }
+        if let Some(claims) = self.claims.get(property_id) { !claims.is_empty() } else { false }
     }
 
     fn get_countries(&self) -> Result<Option<Vec<data::Id>>, errors::ParseIdError> {

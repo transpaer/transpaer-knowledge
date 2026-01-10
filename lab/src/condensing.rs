@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry},
     sync::Arc,
 };
 
@@ -679,7 +679,7 @@ impl CondensingOpenFoodFactsWorker {
         for tag in record.extract_sell_countries() {
             match off.get_countries(&tag) {
                 Some(models::Regions::World) => {
-                    return schema::Regions::Variant(schema::RegionVariant::All)
+                    return schema::Regions::Variant(schema::RegionVariant::All);
                 }
                 Some(models::Regions::List(list)) => result.extend(list.iter()),
                 Some(models::Regions::Unknown) | None => {}
@@ -697,11 +697,7 @@ impl CondensingOpenFoodFactsWorker {
 
     fn get_producer_id(record: &open_food_facts::data::Record) -> Option<String> {
         let id = utils::disambiguate_name(&record.brand_owner);
-        if id.is_empty() {
-            None
-        } else {
-            Some(id)
-        }
+        if id.is_empty() { None } else { Some(id) }
     }
 
     fn guess_producer_wiki_id(&self, record: &open_food_facts::data::Record) -> Option<WikiId> {
@@ -727,11 +723,7 @@ impl CondensingOpenFoodFactsWorker {
     }
 
     fn vec(string: &str) -> Vec<String> {
-        if string.is_empty() {
-            Vec::new()
-        } else {
-            vec![string.to_owned()]
-        }
+        if string.is_empty() { Vec::new() } else { vec![string.to_owned()] }
     }
 }
 

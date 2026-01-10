@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 use crate::store;

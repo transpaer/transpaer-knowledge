@@ -254,7 +254,9 @@ impl runners::Stash for OpenFoodFactsStash {
         log::info!("   - {} entries had no production country", collector.empty_production_count);
         log::info!("   - {country_percentage}% of tag use-cases assigned");
         log::info!(" - found {} categories", categories.categories.len());
-        log::info!("   - {category_assigned_percentage}% of category use-cases assigned ({category_unwanted_percentage}% unwanted)");
+        log::info!(
+            "   - {category_assigned_percentage}% of category use-cases assigned ({category_unwanted_percentage}% unwanted)"
+        );
 
         transpaer::writer::save_countries(
             &countries,
@@ -508,7 +510,9 @@ impl runners::Stash for WikidataStash {
         log::info!(" - found {} countries", countries.countries.len());
         log::info!("   - {country_percentage}% of country use-cases assigned");
         log::info!(" - found {} classes", categories.categories.len());
-        log::info!("   - {class_assigned_percentage}% of class use-cases assigned ({class_unwanted_percentage}% unwanted)");
+        log::info!(
+            "   - {class_assigned_percentage}% of class use-cases assigned ({class_unwanted_percentage}% unwanted)"
+        );
 
         transpaer::writer::save_countries(&countries, &self.config.meta.wikidata_regions_path)?;
         transpaer::writer::save_categories(
