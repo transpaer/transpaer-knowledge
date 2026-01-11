@@ -53,10 +53,10 @@ impl FilteringWorker {
         if self.substrate.has_producer_wiki_id(&item.id.into()) {
             return true;
         }
-        if let Some(websites) = item.get_official_websites() {
-            if self.substrate.has_domains(&websites) {
-                return true;
-            }
+        if let Some(websites) = item.get_official_websites()
+            && self.substrate.has_domains(&websites)
+        {
+            return true;
         }
 
         false

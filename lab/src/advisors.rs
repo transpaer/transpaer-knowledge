@@ -217,11 +217,11 @@ impl OpenFoodFactsAdvisor {
         let tags_to_categories = if let Some(data) = category_data {
             let mut tags_to_categories = HashMap::new();
             for entry in data.categories {
-                if entry.delete != Some(true) {
-                    if let Some(categories) = entry.categories {
-                        let categories = categories.iter().map(Category::get_string).collect();
-                        tags_to_categories.insert(entry.tag, categories);
-                    }
+                if entry.delete != Some(true)
+                    && let Some(categories) = entry.categories
+                {
+                    let categories = categories.iter().map(Category::get_string).collect();
+                    tags_to_categories.insert(entry.tag, categories);
                 }
             }
             tags_to_categories
@@ -444,12 +444,12 @@ impl WikidataAdvisor {
         let class_to_categories = if let Some(data) = category_data {
             let mut class_to_categories = HashMap::new();
             for entry in data.categories {
-                if entry.delete != Some(true) {
-                    if let Some(categories) = entry.categories {
-                        let id = WikiId::try_from(&entry.tag)?;
-                        let categories = categories.iter().map(Category::get_string).collect();
-                        class_to_categories.insert(id, categories);
-                    }
+                if entry.delete != Some(true)
+                    && let Some(categories) = entry.categories
+                {
+                    let id = WikiId::try_from(&entry.tag)?;
+                    let categories = categories.iter().map(Category::get_string).collect();
+                    class_to_categories.insert(id, categories);
                 }
             }
             class_to_categories

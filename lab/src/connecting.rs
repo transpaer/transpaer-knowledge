@@ -38,12 +38,11 @@ impl Matcher {
 
     /// Calculates similarity with an item.
     pub fn calc_similarity(&self, item: &Item) -> f64 {
-        if let Some(item_vat_numbers) = item.get_eu_vat_numbers() {
-            if let Some(self_vat_number) = &self.vat_number {
-                if item_vat_numbers.contains(self_vat_number) {
-                    return 10.0;
-                }
-            }
+        if let Some(item_vat_numbers) = item.get_eu_vat_numbers()
+            && let Some(self_vat_number) = &self.vat_number
+            && item_vat_numbers.contains(self_vat_number)
+        {
+            return 10.0;
         }
 
         item.get_all_labels_and_aliases()
