@@ -5,8 +5,11 @@ edition = { workspace = true }
 
 [dependencies]
 isocountry = { workspace = true }
+itertools = { workspace = true }
 kv = { workspace = true, features = ["json-value"] }
+# TODO: Change to `tracing`.
 log = { workspace = true, optional = true }
+maplit = { workspace = true }
 md5 = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -19,7 +22,6 @@ transpaer-wikidata = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
-maplit = { workspace = true }
 pretty_assertions = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

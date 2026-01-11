@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-E := "7"
+E := "0"
 S := "0"
 C := "0"
 T := "0"

@@ -62,11 +62,11 @@ impl OrganisationSearchResult {
         // TODO: perhaps we can somehow ensure that the code will stop compiling if
         // a new field is added to `ids`.
         let (variant, id) = if let Some(id) = self.ids.vat_ids.first() {
-            (api::OrganisationIdVariant::Vat, id.to_canonical_string())
+            (api::OrganisationIdVariant::Vat, id.id.to_canonical_string())
         } else if let Some(id) = self.ids.wiki.first() {
-            (api::OrganisationIdVariant::Wiki, id.to_canonical_string())
+            (api::OrganisationIdVariant::Wiki, id.id.to_canonical_string())
         } else if let Some(id) = self.ids.domains.first() {
-            (api::OrganisationIdVariant::Www, id.clone())
+            (api::OrganisationIdVariant::Www, id.website.clone())
         } else {
             // TODO: perhaps we should default to the database ID
             return None;
@@ -117,11 +117,11 @@ impl ProductSearchResult {
         // TODO: perhaps we can somehow ensure that the code will stop compiling if
         // a new field is added to `ids`.
         let (variant, id) = if let Some(id) = self.ids.gtins.first() {
-            (api::ProductIdVariant::Gtin, id.to_canonical_string())
+            (api::ProductIdVariant::Gtin, id.id.to_canonical_string())
         } else if let Some(id) = self.ids.eans.first() {
-            (api::ProductIdVariant::Ean, id.to_canonical_string())
+            (api::ProductIdVariant::Ean, id.id.to_canonical_string())
         } else if let Some(id) = self.ids.wiki.first() {
-            (api::ProductIdVariant::Wiki, id.to_canonical_string())
+            (api::ProductIdVariant::Wiki, id.id.to_canonical_string())
         } else {
             // TODO: perhaps we should default to the database ID
             return None;

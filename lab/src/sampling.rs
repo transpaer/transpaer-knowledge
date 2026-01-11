@@ -138,7 +138,8 @@ impl SamplingRunner {
     }
 
     fn check_store_prod_by_wiki_id(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
-        let fairphone_4_ids = [FAIRPHONE_4_WIKI_ID];
+        let fairphone_4_ids =
+            [models::SourcedWikiId::new(FAIRPHONE_4_WIKI_ID, models::Source::Wikidata)];
 
         let store = DbStore::new(&config.db_storage)?;
         let product_wiki_ids = store.get_wiki_id_to_product_id_bucket()?;
@@ -154,7 +155,7 @@ impl SamplingRunner {
         ensure_eq!(entry.ids.wiki, fairphone_4_ids, "wrong wiki IDs");
         ensure_eq!(
             entry.names,
-            vec![models::Text { text: "Fairphone 4".to_owned(), source: models::Source::Wikidata }],
+            vec![models::Text::new("Fairphone 4", models::Source::Wikidata)],
             "wrong name or source"
         );
         ensure_eq!(
@@ -175,7 +176,10 @@ impl SamplingRunner {
     }
 
     fn check_store_org_by_wiki_id(config: &config::SamplingTargetConfig) -> Result<(), Finding> {
-        let fairphone_org_ids = [FAIRPHONE_ORG_WIKI_ID];
+        let fairphone_org_ids = [models::SourcedWikiId::new_many(
+            FAIRPHONE_ORG_WIKI_ID,
+            vec![models::Source::Transpaer, models::Source::Tco, models::Source::Wikidata],
+        )];
 
         let store = DbStore::new(&config.db_storage)?;
         let organisation_wiki_ids = store.get_wiki_id_to_organisation_id_bucket()?;
@@ -189,13 +193,18 @@ impl SamplingRunner {
         )))?;
 
         ensure_eq!(entry.ids.wiki, fairphone_org_ids, "wrong wiki IDs");
+        ensure_eq!(entry.names.len(), 9, "wrong number of names");
         ensure_eq!(
-            entry.names,
-            vec![
-                models::Text { text: "FAIRPHONE".to_owned(), source: models::Source::Tco },
-                models::Text { text: "Fairphone".to_owned(), source: models::Source::Wikidata },
-                models::Text { text: "Fairphone".to_owned(), source: models::Source::BCorp }
-            ],
+            entry.names[0],
+            models::Text::new("FAIRPHONE", models::Source::Tco),
+            "wrong name or source"
+        );
+        ensure_eq!(
+            entry.names[1],
+            models::Text::new_many(
+                "Fairphone",
+                vec![models::Source::Transpaer, models::Source::BCorp, models::Source::Wikidata]
+            ),
             "wrong name or source"
         );
         ensure_eq!(
@@ -311,7 +320,7 @@ impl SamplingRunner {
                     product.names,
                     vec![api::models::ShortText {
                         text: api::models::ShortString::from_str("Tony's Chocolonely")?,
-                        source: api::models::DataSource("open_food_facts".to_string())
+                        sources: api::models::DataSources(vec!["open_food_facts".to_string()])
                     }],
                     "wrong name or source"
                 );
@@ -384,7 +393,7 @@ impl SamplingRunner {
                     product.names,
                     vec![api::models::ShortText {
                         text: api::models::ShortString::from_str("Fairphone 4")?,
-                        source: api::models::DataSource("wikidata".to_string())
+                        sources: api::models::DataSources(vec!["wikidata".to_string()])
                     }],
                     "wrong name or source"
                 );
@@ -472,12 +481,12 @@ impl SamplingRunner {
                     vec![api::models::Id::from_str(&FAIRPHONE_ORG_WIKI_ID.to_canonical_string())?],
                     "wrong IDS"
                 );
-                ensure_eq!(org.names.len(), 11, "wrong number of names");
+                ensure_eq!(org.names.len(), 9, "wrong number of names");
                 ensure_eq!(
                     org.names[0],
                     api::models::ShortText {
                         text: api::models::ShortString::from_str("FAIRPHONE")?,
-                        source: api::models::DataSource("tco".to_string())
+                        sources: api::models::DataSources(vec!["tco".to_string()])
                     },
                     "wrong name or source at place 0"
                 );
@@ -485,23 +494,11 @@ impl SamplingRunner {
                     org.names[1],
                     api::models::ShortText {
                         text: api::models::ShortString::from_str("Fairphone")?,
-                        source: api::models::DataSource("transpaer".to_string())
-                    },
-                    "wrong name or source at place 1"
-                );
-                ensure_eq!(
-                    org.names[2],
-                    api::models::ShortText {
-                        text: api::models::ShortString::from_str("Fairphone")?,
-                        source: api::models::DataSource("bcorp".to_string())
-                    },
-                    "wrong name or source at place 2"
-                );
-                ensure_eq!(
-                    org.names[3],
-                    api::models::ShortText {
-                        text: api::models::ShortString::from_str("Fairphone")?,
-                        source: api::models::DataSource("wikidata".to_string())
+                        sources: api::models::DataSources(vec![
+                            "transpaer".to_string(),
+                            "bcorp".to_string(),
+                            "wikidata".to_string()
+                        ])
                     },
                     "wrong name or source at place 3"
                 );
@@ -570,11 +567,13 @@ impl SamplingRunner {
                     vec![
                         api::models::ShortText {
                             text: api::models::ShortString::from_str("Aventon")?,
-                            source: api::models::DataSource("simple_environmentalist".to_string())
+                            sources: api::models::DataSources(vec![
+                                "simple_environmentalist".to_string()
+                            ])
                         },
                         api::models::ShortText {
                             text: api::models::ShortString::from_str("Aventon Bikes")?,
-                            source: api::models::DataSource("wikidata".to_string())
+                            sources: api::models::DataSources(vec!["wikidata".to_string()])
                         },
                     ],
                     "wrong name or source"
@@ -617,23 +616,20 @@ impl SamplingRunner {
                 );
                 ensure_eq!(
                     org.names,
-                    vec![
-                        api::models::ShortText {
-                            text: api::models::ShortString::from_str("Plaine Products")?,
-                            source: api::models::DataSource("bcorp".to_string())
-                        },
-                        api::models::ShortText {
-                            text: api::models::ShortString::from_str("Plaine Products")?,
-                            source: api::models::DataSource("simple_environmentalist".to_string()),
-                        },
-                    ],
+                    vec![api::models::ShortText {
+                        text: api::models::ShortString::from_str("Plaine Products")?,
+                        sources: api::models::DataSources(vec![
+                            "bcorp".to_string(),
+                            "simple_environmentalist".to_string()
+                        ])
+                    },],
                     "wrong name or source"
                 );
                 ensure_eq!(org.descriptions.len(), 1, "Wrong number of descriptions");
                 if let Some(desc) = org.descriptions.first() {
                     ensure_eq!(
-                        desc.source,
-                        api::models::DataSource("bcorp".to_string()),
+                        desc.sources,
+                        api::models::DataSources(vec!["bcorp".to_string()]),
                         "wrong source"
                     );
                 }

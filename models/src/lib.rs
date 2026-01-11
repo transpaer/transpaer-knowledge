@@ -4,7 +4,6 @@
 
 pub mod buckets;
 pub mod combine;
-pub mod errors;
 pub mod gather;
 pub mod ids;
 pub mod models;

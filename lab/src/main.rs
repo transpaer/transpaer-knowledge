@@ -63,6 +63,7 @@ async fn run() -> Result<(), transpaer_lab::ProcessingError> {
         Config::Connection(config) => {
             config.check()?;
             log::info!("Start connecting!");
+            // TODO: Remove the `connect` command.
             transpaer_lab::ConnectionRunner::run(&config)?;
         }
         Config::Sample(config) => {

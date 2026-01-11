@@ -63,7 +63,7 @@ fn regions_merge() {
 #[test]
 fn serde_product_defaults() {
     use transpaer_models::store::{
-        Certifications, Product, ProductIds, Regions, TranspaerProductData,
+        Availability, Certifications, Product, ProductIds, TranspaerProductData,
     };
 
     let original_product = Product {
@@ -72,7 +72,7 @@ fn serde_product_defaults() {
         descriptions: Vec::default(),
         images: Vec::default(),
         categories: Vec::default(),
-        regions: Regions::World,
+        availability: Availability::default(),
         origins: Vec::new(),
         certifications: Certifications::default(),
         manufacturers: Vec::default(),
@@ -94,7 +94,10 @@ fn serde_product_defaults() {
           "descriptions": [],
           "images": [],
           "categories": [],
-          "regions": "World",
+          "availability": {
+            "regions": "Unknown",
+            "sources": []
+          },
           "origins": [],
           "certifications": {
             "bcorp": null,
@@ -125,20 +128,30 @@ fn serde_product_defaults() {
 #[test]
 fn serde_product_filled() {
     use transpaer_models::store::{
-        Certifications, Product, ProductIds, Regions, TranspaerProductData,
+        Availability, Certifications, Product, ProductIds, Regions, Source, SourcedEan,
+        SourcedGtin, SourcedWikiId, TranspaerProductData,
     };
 
     let original_product = Product {
         ids: ProductIds {
-            eans: vec![ids::Ean::new(34)],
-            gtins: vec![ids::Gtin::new(56)],
-            wiki: vec![ids::WikiId::new(78)],
+            eans: vec![SourcedEan { id: ids::Ean::new(34), sources: vec![Source::Wikidata] }],
+            gtins: vec![SourcedGtin { id: ids::Gtin::new(56), sources: vec![Source::BCorp] }],
+            wiki: vec![SourcedWikiId {
+                id: ids::WikiId::new(78),
+                sources: vec![Source::Transpaer],
+            }],
         },
         names: Vec::default(),
         descriptions: Vec::default(),
         images: Vec::default(),
         categories: Vec::default(),
-        regions: Regions::List(vec![isocountry::CountryCode::FRA, isocountry::CountryCode::NLD]),
+        availability: Availability {
+            regions: Regions::List(vec![
+                isocountry::CountryCode::FRA,
+                isocountry::CountryCode::NLD,
+            ]),
+            sources: maplit::btreeset! { Source::Wikidata },
+        },
         origins: Vec::default(),
         certifications: Certifications::default(),
         manufacturers: Vec::default(),
@@ -153,23 +166,43 @@ fn serde_product_filled() {
         r#"{
           "ids": {
             "eans": [
-              34
+              {
+                "id": 34,
+                "sources": [
+                  "Wikidata"
+                ]
+              }
             ],
             "gtins": [
-              56
+              {
+                "id": 56,
+                "sources": [
+                  "BCorp"
+                ]
+              }
             ],
             "wiki": [
-              78
+              {
+                "id": 78,
+                "sources": [
+                  "Transpaer"
+                ]
+              }
             ]
           },
           "names": [],
           "descriptions": [],
           "images": [],
           "categories": [],
-          "regions": {
-            "List": [
-              "FR",
-              "NL"
+          "availability": {
+            "regions": {
+              "List": [
+                "FR",
+                "NL"
+              ]
+            },
+            "sources": [
+              "Wikidata"
             ]
           },
           "origins": [],

@@ -4,10 +4,12 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, btree_map::Entry};
 
+use maplit::btreeset;
+
 use transpaer_collecting::categories::{self, Category};
 use transpaer_models::{
     buckets::{Bucket, BucketError, DbStore},
-    combine::TryCombine,
+    combine::Combine,
     gather, store, transpaer, utils,
 };
 use transpaer_schema as schema;
@@ -163,16 +165,11 @@ impl CrystalizationCollector {
     pub fn update_organisation(
         &mut self,
         id: &gather::OrganisationId,
-        substrate_name: String,
-        mut organisation: gather::Organisation,
+        organisation: gather::Organisation,
     ) -> Result<(), errors::CrystalizationError> {
-        organisation.transpaer.assign_significance(
-            substrate_name,
-            transpaer::calculate_organisation_significance(&organisation),
-        );
         let orgs = self.get_organisation_bucket()?;
         let org = match orgs.get(id)? {
-            Some(org) => TryCombine::try_combine(org, organisation)?,
+            Some(org) => Combine::combine(org, organisation),
             None => organisation,
         };
         orgs.insert(id, &org)?;
@@ -182,16 +179,11 @@ impl CrystalizationCollector {
     pub fn update_product(
         &mut self,
         id: &gather::ProductId,
-        substrate_name: String,
-        mut product: gather::Product,
+        product: gather::Product,
     ) -> Result<(), errors::CrystalizationError> {
-        product.transpaer.assign_significance(
-            substrate_name,
-            transpaer::calculate_product_significance(&product),
-        );
         let prods = self.get_product_bucket()?;
         let prod = match prods.get(id)? {
-            Some(prod) => TryCombine::try_combine(prod, product)?,
+            Some(prod) => Combine::combine(prod, product),
             None => product,
         };
         prods.insert(id, &prod)?;
@@ -235,7 +227,7 @@ impl Processor {
     ) -> Result<(CrystalizationCollector, CrystalizationReport), errors::CrystalizationError> {
         log::info!("Processing substrates");
         for substrate in substrates.list() {
-            log::info!(" -> {}", substrate.name);
+            log::info!(" => {}", substrate.name);
             match schema::read::iter_file(&substrate.path)? {
                 schema::read::FileIterVariant::Catalog(iter) => {
                     for entry in iter {
@@ -289,34 +281,31 @@ impl Processor {
             .get_unique_id_for_producer_external_id(&external_id)
             .map_err(|id| id.to_error_not_found(substrate, "processing catalog producer"))?;
         let ids = self.convert_organisation_ids(producer.ids, substrate);
+        let images = producer
+            .images
+            .into_iter()
+            .map(|image| gather::Image { image, source: substrate.source.clone() })
+            .collect();
 
         self.collector.update_organisation(
             &unique_id,
-            substrate.name.clone(),
             gather::Organisation {
                 ids,
-                names: producer
-                    .names
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                descriptions: producer
-                    .description
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                images: producer
-                    .images
-                    .into_iter()
-                    .map(|image| gather::Image { image, source: substrate.source.clone() })
-                    .collect(),
-                websites: producer.websites.into_iter().collect(),
-                origins: Self::extract_producer_origins(producer.origins.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing catalogue producer",
-                    },
-                )?,
+                names: gather::MultiMap::new_many(producer.names, substrate.source.clone()),
+                descriptions: gather::MultiMap::new_or_empty(
+                    producer.description,
+                    substrate.source.clone(),
+                ),
+                images,
+                websites: gather::MultiMap::new_many(producer.websites, substrate.source.clone()),
+                origins: Self::extract_producer_origins(
+                    producer.origins.as_ref(),
+                    substrate.source.clone(),
+                )
+                .map_err(|source| errors::CrystalizationError::IsoCountry {
+                    source,
+                    when: "processing catalogue producer",
+                })?,
                 certifications: gather::Certifications::default(),
                 media: BTreeSet::new(),
                 products: BTreeSet::new(), //< filled later
@@ -338,49 +327,66 @@ impl Processor {
             .get_unique_id_for_product_external_id(&external_id)
             .map_err(|id| id.to_error_not_found(substrate, "processing catalog product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
+        let images = product
+            .images
+            .into_iter()
+            .map(|image| gather::Image { image, source: substrate.source.clone() })
+            .collect();
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), substrate, coagulate);
         let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
+        let categories = product
+            .categorisation
+            .map_or_else(BTreeSet::new, |c| c.categories.iter().map(|c| c.0.clone()).collect());
 
         self.collector.update_product(
             &unique_id,
-            substrate.name.clone(),
             gather::Product {
                 ids,
-                names: product
-                    .names
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                descriptions: product
-                    .description
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                images: product
-                    .images
-                    .into_iter()
-                    .map(|image| gather::Image { image, source: substrate.source.clone() })
-                    .collect(),
-                categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
-                    c.categories.iter().map(|c| c.0.clone()).collect()
-                }),
-                regions: Self::extract_regions(product.availability.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing catalogue product regions",
-                    },
-                )?,
-                origins: Self::extract_product_origins(product.origins.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing catalogue product origins",
-                    },
-                )?,
-                manufacturers,
-                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
-                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
+                names: gather::MultiMap::new_many(product.names, substrate.source.clone()),
+                descriptions: gather::MultiMap::new_or_empty(
+                    product.description,
+                    substrate.source.clone(),
+                ),
+                images,
+                categories: gather::MultiMap::new_many(
+                    categories.into_iter().collect(),
+                    substrate.source.clone(),
+                ),
+                availability: gather::Availability {
+                    regions: Self::extract_regions(product.availability.as_ref()).map_err(
+                        |source| errors::CrystalizationError::IsoCountry {
+                            source,
+                            when: "processing catalogue product regions",
+                        },
+                    )?,
+                    sources: btreeset! { substrate.source.clone() },
+                },
+                origins: Self::extract_product_origins(
+                    product.origins.as_ref(),
+                    substrate.source.clone(),
+                )
+                .map_err(|source| errors::CrystalizationError::IsoCountry {
+                    source,
+                    when: "processing catalogue product origins",
+                })?,
+                manufacturers: gather::MultiMap::new_many(
+                    manufacturers.into_iter().collect(),
+                    substrate.source.clone(),
+                ),
+                shopping: product.shopping.map_or_else(gather::MultiMap::new_empty, |shopping| {
+                    gather::MultiMap::new_from_map(
+                        shopping
+                            .iter()
+                            .map(|s| {
+                                (
+                                    gather::ShoppingKey::from_schema(s),
+                                    btreeset!{gather::ShoppingData::from_schema(s, substrate.source.clone())},
+                                )
+                            })
+                            .collect(),
+                    )
                 }),
                 media: BTreeSet::new(),
                 follows,
@@ -404,43 +410,61 @@ impl Processor {
             .get_unique_id_for_product_external_id(&external_id)
             .map_err(|id| id.to_error_not_found(substrate, "processing producer product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
+        let images = product
+            .images
+            .into_iter()
+            .map(|image| gather::Image { image, source: substrate.source.clone() })
+            .collect();
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), substrate, coagulate);
         let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
+        let categories = product.categorisation.categories.iter().map(|c| c.0.clone()).collect();
 
         self.collector.update_product(
             &unique_id,
-            substrate.name.clone(),
             gather::Product {
                 ids,
-                names: product
-                    .names
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                descriptions: BTreeSet::new(),
-                images: product
-                    .images
-                    .into_iter()
-                    .map(|image| gather::Image { image, source: substrate.source.clone() })
-                    .collect(),
-                categories: product.categorisation.categories.iter().map(|c| c.0.clone()).collect(),
-                regions: Self::extract_regions(product.availability.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing producer product regions",
-                    },
-                )?,
-                origins: Self::extract_product_origins(product.origins.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing producer product origins",
-                    },
-                )?,
-                manufacturers,
-                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
-                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
+                names: gather::MultiMap::new_many(product.names, substrate.source.clone()),
+                descriptions: gather::MultiMap::new_empty(),
+                images,
+                categories: gather::MultiMap::new_many(
+                    categories,
+                    substrate.source.clone(),
+                ),
+                availability: gather::Availability {
+                    regions: Self::extract_regions(product.availability.as_ref()).map_err(
+                        |source| errors::CrystalizationError::IsoCountry {
+                            source,
+                            when: "processing producer product regions",
+                        },
+                    )?,
+                    sources: btreeset! { substrate.source.clone() },
+                },
+                origins: Self::extract_product_origins(
+                    product.origins.as_ref(),
+                    substrate.source.clone(),
+                )
+                .map_err(|source| errors::CrystalizationError::IsoCountry {
+                    source,
+                    when: "processing producer product origins",
+                })?,
+                manufacturers: gather::MultiMap::new_many(
+                    manufacturers.into_iter().collect(),
+                    substrate.source.clone(),
+                ),
+                shopping: product.shopping.map_or_else(gather::MultiMap::new_empty, |shopping| {
+                    gather::MultiMap::new_from_map(
+                        shopping
+                            .iter()
+                            .map(|s| {
+                                (
+                                    gather::ShoppingKey::from_schema(s),
+                                    btreeset!{gather::ShoppingData::from_schema(s, substrate.source.clone())},
+                                )
+                            })
+                            .collect(),
+                    )
                 }),
                 media: BTreeSet::new(),
                 follows,
@@ -471,35 +495,35 @@ impl Processor {
             .get_unique_id_for_producer_external_id(&external_id)
             .map_err(|id| id.to_error_not_found(substrate, "processing review producer"))?;
         let ids = self.convert_organisation_ids(producer.ids, substrate);
+        let images = producer
+            .images
+            .into_iter()
+            .map(|image| gather::Image { image, source: substrate.source.clone() })
+            .collect();
 
         self.collector.update_organisation(
             &unique_id,
-            substrate.name.clone(),
             gather::Organisation {
                 ids,
-                names: producer
-                    .names
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                descriptions: producer
-                    .description
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                images: producer
-                    .images
-                    .into_iter()
-                    .map(|image| gather::Image { image, source: substrate.source.clone() })
-                    .collect(),
-                websites: producer.websites.into_iter().collect(),
-                origins: Self::extract_producer_origins(producer.origins.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing review producer",
-                    },
-                )?,
-                media: Self::extract_media_mentions(producer.reports.as_ref(), &substrate.source),
+                names: gather::MultiMap::new_many(producer.names, substrate.source.clone()),
+                descriptions: gather::MultiMap::new_or_empty(
+                    producer.description,
+                    substrate.source.clone(),
+                ),
+                images,
+                websites: gather::MultiMap::new_many(producer.websites, substrate.source.clone()),
+                origins: Self::extract_producer_origins(
+                    producer.origins.as_ref(),
+                    substrate.source.clone(),
+                )
+                .map_err(|source| errors::CrystalizationError::IsoCountry {
+                    source,
+                    when: "processing review producer",
+                })?,
+                media: Self::extract_media_mentions(
+                    producer.reports.as_ref(),
+                    substrate.source.clone(),
+                ),
                 certifications,
                 products: BTreeSet::new(), //< filled later
                 transpaer: gather::TranspaerOrganisationData::default(),
@@ -520,47 +544,68 @@ impl Processor {
             .get_unique_id_for_product_external_id(&external_id)
             .map_err(|id| id.to_error_not_found(substrate, "processing review product"))?;
         let ids = self.convert_product_ids(product.ids, substrate);
+        let images = product
+            .images
+            .into_iter()
+            .map(|image| gather::Image { image, source: substrate.source.clone() })
+            .collect();
         let (followed_by, follows) =
             self.extract_related_products(product.related.as_ref(), substrate, coagulate);
         let manufacturers =
             self.extract_manufacturer_ids(product.origins.as_ref(), substrate, coagulate);
+        let categories = product
+            .categorisation
+            .map_or_else(BTreeSet::new, |c| c.categories.iter().map(|c| c.0.clone()).collect());
 
         self.collector.update_product(
             &unique_id,
-            substrate.name.clone(),
             gather::Product {
                 ids,
-                names: product
-                    .names
-                    .into_iter()
-                    .map(|text| gather::Text { text, source: substrate.source.clone() })
-                    .collect(),
-                descriptions: BTreeSet::new(),
-                images: product
-                    .images
-                    .into_iter()
-                    .map(|image| gather::Image { image, source: substrate.source.clone() })
-                    .collect(),
-                categories: product.categorisation.map_or_else(BTreeSet::new, |c| {
-                    c.categories.iter().map(|c| c.0.clone()).collect()
+                names: gather::MultiMap::new_many(product.names, substrate.source.clone()),
+                descriptions: gather::MultiMap::new_empty(),
+                images,
+                categories: gather::MultiMap::new_many(
+                    categories.into_iter().collect(),
+                    substrate.source.clone(),
+                ),
+                availability: gather::Availability {
+                    regions: Self::extract_regions(product.availability.as_ref()).map_err(
+                        |source| errors::CrystalizationError::IsoCountry {
+                            source,
+                            when: "processing review product regions",
+                        },
+                    )?,
+                    sources: btreeset! { substrate.source.clone() },
+                },
+                origins: Self::extract_product_origins(
+                    product.origins.as_ref(),
+                    substrate.source.clone(),
+                )
+                .map_err(|source| errors::CrystalizationError::IsoCountry {
+                    source,
+                    when: "processing review product origins",
+                })?,
+                manufacturers: gather::MultiMap::new_many(
+                    manufacturers.into_iter().collect(),
+                    substrate.source.clone(),
+                ),
+                shopping: product.shopping.map_or_else(gather::MultiMap::new_empty, |shopping| {
+                    gather::MultiMap::new_from_map(
+                        shopping
+                            .iter()
+                            .map(|s| {
+                                (
+                                    gather::ShoppingKey::from_schema(s),
+                                    btreeset!{gather::ShoppingData::from_schema(s, substrate.source.clone())},
+                                )
+                            })
+                            .collect(),
+                    )
                 }),
-                regions: Self::extract_regions(product.availability.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing review product regions",
-                    },
-                )?,
-                origins: Self::extract_product_origins(product.origins.as_ref()).map_err(
-                    |source| errors::CrystalizationError::IsoCountry {
-                        source,
-                        when: "processing review product origins",
-                    },
-                )?,
-                manufacturers,
-                shopping: product.shopping.map_or_else(BTreeSet::new, |shopping| {
-                    shopping.iter().map(gather::ShoppingEntry::from_schema).collect()
-                }),
-                media: Self::extract_media_mentions(product.reports.as_ref(), &substrate.source),
+                media: Self::extract_media_mentions(
+                    product.reports.as_ref(),
+                    substrate.source.clone(),
+                ),
                 follows,
                 followed_by,
                 certifications: gather::Certifications::default(), //< Assigned later from producers
@@ -646,38 +691,45 @@ impl Processor {
 
     fn extract_product_origins(
         origins: Option<&schema::ProductOrigins>,
-    ) -> Result<BTreeSet<isocountry::CountryCode>, isocountry::CountryCodeParseErr> {
+        source: gather::Source,
+    ) -> Result<
+        gather::MultiMap<isocountry::CountryCode, gather::Source>,
+        isocountry::CountryCodeParseErr,
+    > {
         if let Some(origins) = origins {
             if let Some(regions) = &origins.regions {
-                Ok(Self::convert_region_list(regions)?.into_iter().collect())
+                Ok(gather::MultiMap::new_many(Self::convert_region_list(regions)?, source))
             } else {
-                Ok(BTreeSet::new())
+                Ok(gather::MultiMap::new_empty())
             }
         } else {
-            Ok(BTreeSet::new())
+            Ok(gather::MultiMap::new_empty())
         }
     }
 
     fn extract_producer_origins(
         origins: Option<&schema::ProducerOrigins>,
-    ) -> Result<BTreeSet<isocountry::CountryCode>, isocountry::CountryCodeParseErr> {
+        source: gather::Source,
+    ) -> Result<
+        gather::MultiMap<isocountry::CountryCode, gather::Source>,
+        isocountry::CountryCodeParseErr,
+    > {
         if let Some(origins) = origins {
             if let Some(regions) = &origins.regions {
-                Ok(Self::convert_region_list(regions)?.into_iter().collect())
+                Ok(gather::MultiMap::new_many(Self::convert_region_list(regions)?, source))
             } else {
-                Ok(BTreeSet::new())
+                Ok(gather::MultiMap::new_empty())
             }
         } else {
-            Ok(BTreeSet::new())
+            Ok(gather::MultiMap::new_empty())
         }
     }
 
     fn extract_media_mentions(
         reports: Option<&schema::Reports>,
-        source: &gather::Source,
+        source: gather::Source,
     ) -> BTreeSet<gather::Medium> {
         if let Some(reports) = reports {
-            let source = gather::MentionSource::from(source);
             let mut mentions = Vec::new();
             for report in &reports.0 {
                 if let Some(url) = &report.url
@@ -692,7 +744,7 @@ impl Processor {
             if mentions.is_empty() {
                 BTreeSet::new()
             } else {
-                maplit::btreeset! {gather::Medium { source, mentions }}
+                btreeset! {gather::Medium { source, mentions }}
             }
         } else {
             BTreeSet::new()
@@ -780,36 +832,36 @@ impl Processor {
         ids: schema::ProductIds,
         substrate: &Substrate,
     ) -> gather::ProductIds {
-        let mut eans = BTreeSet::<gather::Ean>::new();
+        let mut eans = gather::MultiMap::<gather::Ean, gather::Source>::new_empty();
         if let Some(ids) = ids.ean {
             for id in ids {
                 match gather::Ean::try_from(&id) {
                     Ok(ean) => {
-                        eans.insert(ean);
+                        eans.insert(ean, substrate.source.clone());
                     }
                     Err(_) => self.report.add_invalid_id(substrate.id, id),
                 }
             }
         }
 
-        let mut gtins = BTreeSet::<gather::Gtin>::new();
+        let mut gtins = gather::MultiMap::<gather::Gtin, gather::Source>::new_empty();
         if let Some(ids) = ids.gtin {
             for id in ids {
                 match gather::Gtin::try_from(&id) {
                     Ok(gtin) => {
-                        gtins.insert(gtin);
+                        gtins.insert(gtin, substrate.source.clone());
                     }
                     Err(_) => self.report.add_invalid_id(substrate.id, id),
                 }
             }
         }
 
-        let mut wiki = BTreeSet::<gather::WikiId>::new();
+        let mut wiki = gather::MultiMap::<gather::WikiId, gather::Source>::new_empty();
         if let Some(ids) = ids.wiki {
             for id in ids {
                 match gather::WikiId::try_from(&id) {
                     Ok(wiki_id) => {
-                        wiki.insert(wiki_id);
+                        wiki.insert(wiki_id, substrate.source.clone());
                     }
                     Err(_) => self.report.add_invalid_id(substrate.id, id),
                 }
@@ -824,34 +876,34 @@ impl Processor {
         ids: schema::ProducerIds,
         substrate: &Substrate,
     ) -> gather::OrganisationIds {
-        let mut vat_ids = BTreeSet::<gather::VatId>::new();
+        let mut vat_ids = gather::MultiMap::<gather::VatId, gather::Source>::new_empty();
         if let Some(ids) = ids.vat {
             for id in ids {
                 match gather::VatId::try_from(&id) {
                     Ok(vat) => {
-                        vat_ids.insert(vat);
+                        vat_ids.insert(vat, substrate.source.clone());
                     }
                     Err(_) => self.report.add_invalid_id(substrate.id, id),
                 }
             }
         }
 
-        let mut wiki = BTreeSet::<gather::WikiId>::new();
+        let mut wiki = gather::MultiMap::<gather::WikiId, gather::Source>::new_empty();
         if let Some(ids) = ids.wiki {
             for id in ids {
                 match gather::WikiId::try_from(&id) {
                     Ok(wiki_id) => {
-                        wiki.insert(wiki_id);
+                        wiki.insert(wiki_id, substrate.source.clone());
                     }
                     Err(_) => self.report.add_invalid_id(substrate.id, id),
                 }
             }
         }
 
-        let mut domains = BTreeSet::<gather::Domain>::new();
+        let mut domains = gather::MultiMap::<gather::Domain, gather::Source>::new_empty();
         if let Some(ids) = ids.domains {
             for domain in ids {
-                domains.insert(domain);
+                domains.insert(domain, substrate.source.clone());
             }
         }
 
@@ -866,10 +918,10 @@ pub struct Saver {
 
 impl Saver {
     /// Extracts keywords for DB text search from passed texts.
-    fn extract_keywords(texts: &BTreeSet<gather::Text>) -> BTreeSet<String> {
+    fn extract_keywords(texts: &gather::MultiMap<String, gather::Source>) -> BTreeSet<String> {
         let mut result = BTreeSet::new();
-        for text in texts {
-            for word in text.text.split_whitespace() {
+        for text in texts.keys() {
+            for word in text.split_whitespace() {
                 result.insert(word.to_lowercase());
             }
         }
@@ -889,7 +941,7 @@ impl Saver {
         log::info!(" -> assigning certifications");
         for product in products.clone().iter_autosave() {
             let mut product = product?;
-            for manufacturer_id in &product.value.manufacturers {
+            for manufacturer_id in &product.value.manufacturers.keys() {
                 if let Some(mut organisation) = organisations.edit(manufacturer_id.clone())? {
                     product
                         .value
@@ -904,11 +956,20 @@ impl Saver {
             }
         }
 
-        // Calculate product Transpaer score
-        log::info!(" -> calculating Transpaer scores");
+        // Calculate product Transpaer scores and significances
+        log::info!(" -> calculating Transpaer scores and significances for organisations");
+        for organisation in organisations.clone().iter_autosave() {
+            let mut organisation = organisation?;
+            organisation.value.transpaer.significance =
+                transpaer::calculate_organisation_significances(&organisation.value);
+        }
+
+        log::info!(" -> calculating Transpaer scores and significances for proucts");
         for product in products.clone().iter_autosave() {
             let mut product = product?;
             product.value.transpaer.score = crate::score::calculate(&product.value);
+            product.value.transpaer.significance =
+                transpaer::calculate_product_significances(&product.value);
         }
 
         Ok(())
@@ -1009,7 +1070,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in organisations.iter() {
             let (organisation_id, organisation) = item?;
-            for vat_id in organisation.ids.vat_ids {
+            for vat_id in organisation.ids.vat_ids.keys() {
                 bucket.insert(&vat_id, &organisation_id)?;
                 uniqueness_check.insert(vat_id);
             }
@@ -1038,7 +1099,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in organisations.iter() {
             let (organisation_id, organisation) = item?;
-            for wiki_id in organisation.ids.wiki {
+            for wiki_id in organisation.ids.wiki.keys() {
                 bucket.insert(&wiki_id, &organisation_id)?;
                 uniqueness_check.insert(wiki_id);
             }
@@ -1067,7 +1128,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in organisations.iter() {
             let (organisation_id, organisation) = item?;
-            for domain in organisation.ids.domains {
+            for domain in organisation.ids.domains.keys() {
                 bucket.insert(&domain, &organisation_id)?;
                 uniqueness_check.insert(domain);
             }
@@ -1147,7 +1208,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in products.iter() {
             let (product_id, product) = item?;
-            for ean in product.ids.eans {
+            for ean in product.ids.eans.keys() {
                 bucket.insert(&ean, &product_id)?;
                 uniqueness_check.insert(ean);
             }
@@ -1176,7 +1237,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in products.iter() {
             let (product_id, product) = item?;
-            for gtin in product.ids.gtins {
+            for gtin in product.ids.gtins.keys() {
                 bucket.insert(&gtin, &product_id)?;
                 uniqueness_check.insert(gtin);
             }
@@ -1206,7 +1267,7 @@ impl Saver {
         let mut uniqueness_check = HashSet::new();
         for item in products.iter() {
             let (product_id, product) = item?;
-            for wiki_id in product.ids.wiki {
+            for wiki_id in product.ids.wiki.keys() {
                 bucket.insert(&wiki_id, &product_id)?;
                 uniqueness_check.insert(wiki_id);
             }
