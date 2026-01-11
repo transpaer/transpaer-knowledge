@@ -215,13 +215,12 @@ impl ItemExt for data::Item {
             let mut result = Vec::<data::Id>::new();
             for claim in claims {
                 let data::Claim::Statement(statement) = claim;
-                if let data::Snak::Value(value) = &statement.mainsnak {
-                    if let data::DataValue::WikibaseEntityId(data::EntityIdDataValue::Item(
+                if let data::Snak::Value(value) = &statement.mainsnak
+                    && let data::DataValue::WikibaseEntityId(data::EntityIdDataValue::Item(
                         entity_info,
                     )) = &value.datavalue
-                    {
-                        result.push(entity_info.id.to_num_id()?);
-                    }
+                {
+                    result.push(entity_info.id.to_num_id()?);
                 }
             }
             Ok(Some(result))
@@ -234,15 +233,13 @@ impl ItemExt for data::Item {
         if let Some(claims) = self.claims.get(property) {
             for claim in claims {
                 let data::Claim::Statement(statement) = claim;
-                if let data::Snak::Value(value) = &statement.mainsnak {
-                    if let data::DataValue::WikibaseEntityId(data::EntityIdDataValue::Item(
+                if let data::Snak::Value(value) = &statement.mainsnak
+                    && let data::DataValue::WikibaseEntityId(data::EntityIdDataValue::Item(
                         entity_info,
                     )) = &value.datavalue
-                    {
-                        if entity_info.id == class {
-                            return true;
-                        }
-                    }
+                    && entity_info.id == class
+                {
+                    return true;
                 }
             }
         }

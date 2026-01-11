@@ -680,13 +680,13 @@ impl Processor {
             let source = gather::MentionSource::from(source);
             let mut mentions = Vec::new();
             for report in &reports.0 {
-                if let Some(url) = &report.url {
-                    if utils::extract_domain_from_url(url) == "youtube.com" {
-                        mentions.push(gather::Mention {
-                            title: report.title.as_ref().unwrap_or(url).clone(),
-                            link: url.clone(),
-                        });
-                    }
+                if let Some(url) = &report.url
+                    && utils::extract_domain_from_url(url) == "youtube.com"
+                {
+                    mentions.push(gather::Mention {
+                        title: report.title.as_ref().unwrap_or(url).clone(),
+                        link: url.clone(),
+                    });
                 }
             }
             if mentions.is_empty() {

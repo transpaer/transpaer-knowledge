@@ -69,10 +69,10 @@ fn summarize_classes(
         let description = class_descriptions.get(&tag).cloned();
 
         let categories = if let Some(entry) = &entry {
-            if let Some(categories) = &entry.categories {
-                if !categories.is_empty() {
-                    assigned_refs += count;
-                }
+            if let Some(categories) = &entry.categories
+                && !categories.is_empty()
+            {
+                assigned_refs += count;
             }
 
             if entry.delete == Some(true) {
