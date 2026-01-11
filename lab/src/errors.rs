@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 pub use transpaer_collecting::errors::IoOrSerdeError;
-pub use transpaer_models::{buckets::BucketError, errors::ModelsError};
+pub use transpaer_models::buckets::BucketError;
 pub use transpaer_wikidata::dump::LoaderError;
 
 use crate::{coagulate::ExternalId, substrate::DataSetId, wikidata::WikiId};
@@ -102,6 +102,9 @@ pub enum CrystalizationError {
     #[error("Crystalization: {0:?}")]
     ReadSubstrate(#[from] transpaer_schema::errors::ReadError),
 
+    #[error("Parsing schema IDs: {0}")]
+    IdParsing(#[from] transpaer_models::ids::ParseIdError),
+
     #[error("ISO country code while (when {when}): {source}")]
     IsoCountry { source: isocountry::CountryCodeParseErr, when: &'static str },
 
@@ -114,9 +117,6 @@ pub enum CrystalizationError {
     // TODO: Inline the variants
     #[error("Coagulation error: {0}")]
     Coagulation(#[from] CoagulationError),
-
-    #[error("Models error: {0}")]
-    Models(#[from] ModelsError),
 }
 
 /// Errors specific to the sampling command.

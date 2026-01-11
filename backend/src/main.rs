@@ -75,10 +75,8 @@ fn setup_logger(log_path: Option<&String>) {
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(tracing::Level::INFO.into())
         .from_env_lossy();
-    // XXX
-    let output = tracing_subscriber::fmt::layer().json().flatten_event(true);
+    let output = tracing_subscriber::fmt::layer();
 
-    // XXX dockerfile "/var/log/transpaer/backend"
     if let Some(log_path) = log_path {
         let appender = tracing_appender::rolling::Builder::new()
             .rotation(tracing_appender::rolling::Rotation::MINUTELY)

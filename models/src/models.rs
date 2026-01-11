@@ -5,16 +5,14 @@
 //! This modules contains definitions of data stored in the internal database.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
 };
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    combine::{self, Combine, TryCombine},
-    errors::ModelsError,
-};
+use crate::combine::Combine;
 
 #[cfg(feature = "into-api")]
 use transpaer_api::models as api;
@@ -29,37 +27,11 @@ pub type LibraryTopic = String;
 // TODO: Validate the domain when deserializing.
 pub type Domain = String;
 
-#[cfg(feature = "into-api")]
-#[allow(clippy::ptr_arg)]
-fn domain_to_id(s: &String) -> api::Id {
-    api::Id::from_str(s).expect("Converting a domain")
-}
-
-#[cfg(feature = "into-api")]
-fn wiki_to_id(id: &ids::WikiId) -> api::Id {
-    api::Id::from_str(&id.to_canonical_string()).expect("Converting Wiki ID")
-}
-
-#[cfg(feature = "into-api")]
-fn vat_to_id(id: &ids::VatId) -> api::Id {
-    api::Id::from_str(&id.to_canonical_string()).expect("Converting Vat ID")
-}
-
-#[cfg(feature = "into-api")]
-fn ean_to_id(id: &ids::Ean) -> api::Id {
-    api::Id::from_str(&id.to_canonical_string()).expect("Converting EAN")
-}
-
-#[cfg(feature = "into-api")]
-fn gtin_to_id(id: &ids::Gtin) -> api::Id {
-    api::Id::from_str(&id.to_canonical_string()).expect("Converting GTIN")
-}
-
 /// Points to a source of some data.
 ///
 /// If the source is mentioned here, we process it in a special way.
 /// The sources without special processing are marked as `Other`.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum Source {
     /// Transpaer.
@@ -126,12 +98,20 @@ impl Source {
     pub fn is_tco(&self) -> bool {
         matches!(self, Self::Tco)
     }
+
+    #[cfg(feature = "into-api")]
+    pub fn get_icon_link(&self) -> Option<String> {
+        match self {
+            Self::SimpleEnvironmentalist => Some("https://yt3.googleusercontent.com/TAUPgsU3oOD-CYNfUo1V9rpgtH-IHbAjUdo92nusdtz9e25tLjQ_uRx0ZpnAf5DnBp6tUAQUt28=s160-c-k-c0x00ffffff-no-rj".to_string()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(feature = "into-api")]
 impl Source {
-    pub fn into_api(self) -> api::DataSource {
-        let string = match self {
+    pub fn to_label(&self) -> String {
+        match self {
             Self::Transpaer => "transpaer",
             Self::BCorp => "bcorp",
             Self::EuEcolabel => "eu_ecolabel",
@@ -142,8 +122,12 @@ impl Source {
             Self::Wikidata => "wikidata",
             Self::SimpleEnvironmentalist => "simple_environmentalist",
             Self::Other => "other",
-        };
-        api::DataSource(string.to_string())
+        }
+        .to_owned()
+    }
+
+    pub fn into_api(&self) -> api::DataSource {
+        api::DataSource(self.to_label())
     }
 }
 
@@ -154,11 +138,19 @@ pub struct Text {
     pub text: String,
 
     /// Source of the text.
-    pub source: Source,
+    pub sources: Vec<Source>,
 }
 
 #[cfg(feature = "into-api")]
 impl Text {
+    pub fn new(text: &str, source: Source) -> Self {
+        Self { text: text.to_string(), sources: vec![source] }
+    }
+
+    pub fn new_many(text: &str, sources: Vec<Source>) -> Self {
+        Self { text: text.to_string(), sources }
+    }
+
     pub fn into_api_long(self) -> api::LongText {
         let text = match api::LongString::from_str(&self.text) {
             Ok(ok) => ok,
@@ -168,7 +160,7 @@ impl Text {
             }
         };
 
-        api::LongText { text, source: self.source.into_api() }
+        api::LongText { text, sources: sources_to_api(&self.sources) }
     }
 
     pub fn into_api_short(self) -> api::ShortText {
@@ -180,7 +172,7 @@ impl Text {
             }
         };
 
-        api::ShortText { text, source: self.source.into_api() }
+        api::ShortText { text, sources: sources_to_api(&self.sources) }
     }
 }
 
@@ -200,6 +192,365 @@ pub struct Image {
 impl Image {
     pub fn into_api(self) -> api::Image {
         api::Image { image: self.image, source: self.source.into_api() }
+    }
+}
+
+/// Website together with it's source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Website {
+    /// The website domain..
+    pub website: String,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+#[cfg(feature = "into-api")]
+impl Website {
+    pub fn into_api_short_string(self) -> api::ShortString {
+        match api::ShortString::from_str(&self.website) {
+            Ok(website) => website,
+            Err(err) => {
+                log::error!("Could not convert a website to a ShortString: {err}");
+                default_short_string()
+            }
+        }
+    }
+
+    pub fn into_api_id(self) -> api::Id {
+        match api::Id::from_str(&self.website) {
+            Ok(website) => website,
+            Err(err) => {
+                log::error!("Could not convert a website to an Id {err}");
+                default_id()
+            }
+        }
+    }
+}
+
+/// Organisatio ID with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourcedOrganisationId {
+    /// The website domain..
+    pub id: ids::OrganisationId,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+/// Vat ID with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Vat {
+    /// The website domain..
+    pub id: ids::VatId,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+#[cfg(feature = "into-api")]
+impl Vat {
+    pub fn into_api(self) -> api::Id {
+        api::Id::from_str(&self.id.to_canonical_string()).expect("Converting Wiki ID")
+    }
+}
+
+/// Wiki ID with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourcedWikiId {
+    /// The website domain..
+    pub id: ids::WikiId,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+impl SourcedWikiId {
+    pub fn new(id: ids::WikiId, source: Source) -> Self {
+        Self { id, sources: vec![source] }
+    }
+
+    pub fn new_many(id: ids::WikiId, sources: Vec<Source>) -> Self {
+        Self { id, sources }
+    }
+}
+
+#[cfg(feature = "into-api")]
+impl SourcedWikiId {
+    pub fn into_api(self) -> api::Id {
+        api::Id::from_str(&self.id.to_canonical_string()).expect("Converting Wiki ID")
+    }
+}
+
+/// EAN with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourcedEan {
+    /// The website domain..
+    pub id: ids::Ean,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+#[cfg(feature = "into-api")]
+impl SourcedEan {
+    pub fn into_api(self) -> api::Id {
+        api::Id::from_str(&self.id.to_canonical_string()).expect("Converting EAN")
+    }
+}
+
+/// GTIN with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SourcedGtin {
+    /// The website domain..
+    pub id: ids::Gtin,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+#[cfg(feature = "into-api")]
+impl SourcedGtin {
+    pub fn into_api(self) -> api::Id {
+        api::Id::from_str(&self.id.to_canonical_string()).expect("Converting GTIN")
+    }
+}
+
+/// Country code with its source.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Country {
+    /// The website domain..
+    pub country: isocountry::CountryCode,
+
+    /// Source of the website.
+    pub sources: Vec<Source>,
+}
+
+#[cfg(feature = "into-api")]
+impl Country {
+    pub fn into_api(self) -> isocountry::CountryCode {
+        self.country
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MultiMap<K: Ord, V: Ord>(BTreeMap<K, BTreeSet<V>>);
+
+impl<K, V> Default for MultiMap<K, V>
+where
+    K: Ord,
+    V: Ord,
+{
+    fn default() -> Self {
+        Self::new_empty()
+    }
+}
+
+impl<K, V> MultiMap<K, V>
+where
+    K: Ord,
+    V: Ord,
+{
+    pub fn new_single(key: K, value: V) -> Self {
+        Self(maplit::btreemap! { key => maplit::btreeset! { value } })
+    }
+
+    pub fn new_or_empty(key: Option<K>, value: V) -> Self {
+        if let Some(key) = key { Self::new_single(key, value) } else { Self::new_empty() }
+    }
+
+    pub fn new_empty() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn new_from_map(map: BTreeMap<K, BTreeSet<V>>) -> Self {
+        Self(map)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn insert(&mut self, key: K, value: V) {
+        use std::collections::btree_map::Entry;
+
+        match self.0.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(maplit::btreeset! { value });
+            }
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().insert(value);
+            }
+        }
+    }
+
+    pub fn contains<Q>(&self, key: &Q) -> bool
+    where
+        Q: Ord + ?Sized,
+        K: std::borrow::Borrow<Q>,
+    {
+        self.0.contains_key(key)
+    }
+}
+
+impl<K, V> MultiMap<K, V>
+where
+    K: Ord + Clone,
+    V: Ord + Clone,
+{
+    pub fn new_many(keys: Vec<K>, value: V) -> Self {
+        Self(keys.into_iter().map(|key| (key, maplit::btreeset! { value.clone() })).collect())
+    }
+
+    pub fn keys(&self) -> BTreeSet<K> {
+        self.0.keys().map(|k| (*k).clone()).collect()
+    }
+}
+
+impl<K, V> Combine for MultiMap<K, V>
+where
+    K: Ord,
+    V: Ord,
+{
+    fn combine(mut m1: Self, m2: Self) -> Self {
+        use std::collections::btree_map::Entry;
+
+        for (key, value2) in m2.0 {
+            match m1.0.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().extend(value2);
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(value2);
+                }
+            }
+        }
+        m1
+    }
+}
+
+impl<K> MultiMap<K, Source>
+where
+    K: Ord,
+{
+    pub fn collect_sources(&self) -> Vec<Source> {
+        let mut result = BTreeSet::<Source>::new();
+        for value in self.0.values() {
+            result.extend(value.clone());
+        }
+        result.into_iter().collect()
+    }
+}
+
+impl MultiMap<ids::OrganisationId, Source> {
+    pub fn into_vec_organisation_ids(self) -> Vec<SourcedOrganisationId> {
+        self.0
+            .into_iter()
+            .map(|(id, sources)| {
+                let sources = sources.into_iter().collect();
+                SourcedOrganisationId { id, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<ids::VatId, Source> {
+    pub fn into_vec_vat(self) -> Vec<Vat> {
+        self.0
+            .into_iter()
+            .map(|(id, sources)| {
+                let sources = sources.into_iter().collect();
+                Vat { id, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<ids::WikiId, Source> {
+    pub fn into_vec_wiki(self) -> Vec<SourcedWikiId> {
+        self.0
+            .into_iter()
+            .map(|(id, sources)| {
+                let sources = sources.into_iter().collect();
+                SourcedWikiId { id, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<ids::Ean, Source> {
+    pub fn into_vec_ean(self) -> Vec<SourcedEan> {
+        self.0
+            .into_iter()
+            .map(|(id, sources)| {
+                let sources = sources.into_iter().collect();
+                SourcedEan { id, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<ids::Gtin, Source> {
+    pub fn into_vec_gtin(self) -> Vec<SourcedGtin> {
+        self.0
+            .into_iter()
+            .map(|(id, sources)| {
+                let sources = sources.into_iter().collect();
+                SourcedGtin { id, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<String, Source> {
+    pub fn into_vec_text(self) -> Vec<Text> {
+        self.0
+            .into_iter()
+            .map(|(text, sources)| {
+                let sources = sources.into_iter().collect();
+                Text { text, sources }
+            })
+            .collect()
+    }
+
+    pub fn into_vec_website(self) -> Vec<Website> {
+        self.0
+            .into_iter()
+            .map(|(website, sources)| {
+                let sources = sources.into_iter().collect();
+                Website { website, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<isocountry::CountryCode, Source> {
+    pub fn into_vec_country(self) -> Vec<Country> {
+        self.0
+            .into_iter()
+            .map(|(country, sources)| {
+                let sources = sources.into_iter().collect();
+                Country { country, sources }
+            })
+            .collect()
+    }
+}
+
+impl MultiMap<ShoppingKey, ShoppingData> {
+    pub fn into_vec_shopping_entry(self) -> Vec<ShoppingEntry> {
+        self.0
+            .into_iter()
+            .map(|(key, data)| {
+                let sources = data.iter().map(|d| d.source.clone()).collect();
+                #[allow(unstable_name_collisions)]
+                let description = data
+                    .into_iter()
+                    .map(|d| d.description)
+                    .intersperse("\n\n".to_owned())
+                    .collect();
+                ShoppingEntry { id: key.id, shop: key.shop, description, sources }
+            })
+            .collect()
     }
 }
 
@@ -251,6 +602,23 @@ impl Combine for Regions {
                 }
             },
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct Availability {
+    /// Regions where the product is available.
+    pub regions: Regions,
+
+    /// Sources.
+    pub sources: BTreeSet<Source>,
+}
+
+impl Combine for Availability {
+    fn combine(mut a1: Self, a2: Self) -> Self {
+        let regions = Combine::combine(a1.regions, a2.regions);
+        a1.sources.extend(a2.sources);
+        Self { regions, sources: a1.sources }
     }
 }
 
@@ -453,39 +821,6 @@ impl Certifications {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MentionSource {
-    SimpleEnvironmentalist,
-    Other,
-}
-
-impl From<&Source> for MentionSource {
-    fn from(source: &Source) -> Self {
-        match source {
-            Source::Transpaer
-            | Source::Wikidata
-            | Source::OpenFoodFacts
-            | Source::OpenFoodRepo
-            | Source::EuEcolabel
-            | Source::BCorp
-            | Source::Fti
-            | Source::Tco
-            | Source::Other => Self::Other,
-            Source::SimpleEnvironmentalist => Self::SimpleEnvironmentalist,
-        }
-    }
-}
-
-#[cfg(feature = "into-api")]
-impl MentionSource {
-    pub fn get_icon_link(&self) -> Option<String> {
-        match self {
-            Self::SimpleEnvironmentalist => Some("https://yt3.googleusercontent.com/TAUPgsU3oOD-CYNfUo1V9rpgtH-IHbAjUdo92nusdtz9e25tLjQ_uRx0ZpnAf5DnBp6tUAQUt28=s160-c-k-c0x00ffffff-no-rj".to_string()),
-            Self::Other => None,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Mention {
     /// Title of the mention.
     pub title: String,
@@ -504,7 +839,7 @@ impl Mention {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Medium {
     /// Describes the medium.
-    pub source: MentionSource,
+    pub source: Source,
 
     /// List of all mentions from this medium.
     pub mentions: Vec<Mention>,
@@ -547,20 +882,35 @@ impl VerifiedShop {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ShoppingKey {
+    pub id: String,
+    pub shop: VerifiedShop,
+}
+
+impl ShoppingKey {
+    pub fn from_schema(entry: &schema::ShoppingEntry) -> Self {
+        Self { shop: VerifiedShop::from_schema(&entry.shop), id: entry.id.clone() }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ShoppingData {
+    pub description: String,
+    pub source: Source,
+}
+
+impl ShoppingData {
+    pub fn from_schema(entry: &schema::ShoppingEntry, source: Source) -> Self {
+        Self { description: entry.description.clone(), source }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ShoppingEntry {
     pub id: String,
     pub shop: VerifiedShop,
     pub description: String,
-}
-
-impl ShoppingEntry {
-    pub fn from_schema(entry: &schema::ShoppingEntry) -> Self {
-        Self {
-            shop: VerifiedShop::from_schema(&entry.shop),
-            id: entry.id.clone(),
-            description: entry.description.clone(),
-        }
-    }
+    pub sources: Vec<Source>,
 }
 
 #[cfg(feature = "into-api")]
@@ -681,76 +1031,42 @@ impl Significance {
     pub fn new(value: f64) -> Self {
         Self(value)
     }
+
+    pub fn add(&mut self, value: f64) {
+        self.0 += value;
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TranspaerProductData {
     pub score: TranspaerScore,
-    pub significance: HashMap<String, Significance>,
-}
-
-impl TranspaerProductData {
-    pub fn assign_significance(&mut self, substrate_name: String, significance: Significance) {
-        // TODO: error if the value already present.
-        self.significance.insert(substrate_name, significance);
-    }
-}
-
-impl TryCombine for TranspaerProductData {
-    type Error = ModelsError;
-
-    fn try_combine(o1: Self, o2: Self) -> Result<Self, Self::Error> {
-        Ok(Self {
-            // Score should be calculated only on fully merged data.
-            score: o1.score,
-            significance: combine::try_combine_disjoint_hashmaps(o1.significance, o2.significance)
-                .map_err(|substrate_name| ModelsError::CombineSignificances { substrate_name })?,
-        })
-    }
+    pub significance: HashMap<Source, Significance>,
 }
 
 // TODO: Introduce score for organisations
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TranspaerOrganisationData {
-    pub significance: HashMap<String, Significance>,
-}
-
-impl TranspaerOrganisationData {
-    pub fn assign_significance(&mut self, substrate_name: String, significance: Significance) {
-        // TODO: error if the value already present.
-        self.significance.insert(substrate_name, significance);
-    }
-}
-
-impl TryCombine for TranspaerOrganisationData {
-    type Error = ModelsError;
-
-    fn try_combine(o1: Self, o2: Self) -> Result<Self, Self::Error> {
-        Ok(Self {
-            significance: combine::try_combine_disjoint_hashmaps(o1.significance, o2.significance)
-                .map_err(|substrate_name| ModelsError::CombineSignificances { substrate_name })?,
-        })
-    }
+    pub significance: HashMap<Source, Significance>,
 }
 
 /// Represents a set of IDs of an organisation.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherOrganisationIds {
     /// VAT IDs.
-    pub vat_ids: BTreeSet<ids::VatId>,
+    pub vat_ids: MultiMap<ids::VatId, Source>,
 
     /// Organisation ID.
-    pub wiki: BTreeSet<ids::WikiId>,
+    pub wiki: MultiMap<ids::WikiId, Source>,
 
     /// Web domains.
-    pub domains: BTreeSet<Domain>,
+    pub domains: MultiMap<Domain, Source>,
 }
 
 impl GatherOrganisationIds {
     pub fn store(self) -> StoreOrganisationIds {
-        let mut vat_ids: Vec<_> = self.vat_ids.into_iter().collect();
-        let mut wiki: Vec<_> = self.wiki.into_iter().collect();
-        let mut domains: Vec<_> = self.domains.into_iter().collect();
+        let mut vat_ids = self.vat_ids.into_vec_vat();
+        let mut wiki = self.wiki.into_vec_wiki();
+        let mut domains = self.domains.into_vec_website();
 
         vat_ids.sort();
         wiki.sort();
@@ -761,41 +1077,11 @@ impl GatherOrganisationIds {
 }
 
 impl Combine for GatherOrganisationIds {
-    fn combine(mut o1: Self, o2: Self) -> Self {
-        o1.wiki.extend(o2.wiki);
-        o1.vat_ids.extend(o2.vat_ids);
-        o1.domains.extend(o2.domains);
-        Self { wiki: o1.wiki, vat_ids: o1.vat_ids, domains: o1.domains }
-    }
-}
-
-#[cfg(feature = "from-substrate")]
-impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
-    type Error = ids::ParseIdError;
-
-    fn try_from(ids: schema::ProducerIds) -> Result<Self, Self::Error> {
-        let mut vat_ids = BTreeSet::<ids::VatId>::new();
-        if let Some(ids) = ids.vat {
-            for id in ids {
-                vat_ids.insert(ids::VatId::try_from(&id)?);
-            }
-        }
-
-        let mut wiki = BTreeSet::<ids::WikiId>::new();
-        if let Some(ids) = ids.wiki {
-            for id in ids {
-                wiki.insert(ids::WikiId::try_from(&id)?);
-            }
-        }
-
-        let mut domains = BTreeSet::<Domain>::new();
-        if let Some(ids) = ids.domains {
-            for id in ids {
-                domains.insert(id);
-            }
-        }
-
-        Ok(Self { vat_ids, wiki, domains })
+    fn combine(o1: Self, o2: Self) -> Self {
+        let wiki = Combine::combine(o1.wiki, o2.wiki);
+        let vat_ids = Combine::combine(o1.vat_ids, o2.vat_ids);
+        let domains = Combine::combine(o1.domains, o2.domains);
+        Self { wiki, vat_ids, domains }
     }
 }
 
@@ -803,22 +1089,22 @@ impl TryFrom<schema::ProducerIds> for GatherOrganisationIds {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct StoreOrganisationIds {
     /// Organisation ID.
-    pub wiki: Vec<ids::WikiId>,
+    pub wiki: Vec<SourcedWikiId>,
 
     /// VAT IDs.
-    pub vat_ids: Vec<ids::VatId>,
+    pub vat_ids: Vec<Vat>,
 
     /// Web domains.
-    pub domains: Vec<Domain>,
+    pub domains: Vec<Website>,
 }
 
 #[cfg(feature = "into-api")]
 impl StoreOrganisationIds {
-    pub fn to_api(self) -> api::OrganisationIds {
+    pub fn into_api(self) -> api::OrganisationIds {
         api::OrganisationIds {
-            wiki: self.wiki.iter().map(wiki_to_id).collect(),
-            vat: self.vat_ids.iter().map(vat_to_id).collect(),
-            domains: self.domains.iter().map(domain_to_id).collect(),
+            wiki: self.wiki.into_iter().map(|id| id.into_api()).collect(),
+            vat: self.vat_ids.into_iter().map(|id| id.into_api()).collect(),
+            domains: self.domains.into_iter().map(|id| id.into_api_id()).collect(),
         }
     }
 }
@@ -830,22 +1116,22 @@ pub struct GatherOrganisation {
     pub ids: GatherOrganisationIds,
 
     /// Names of the organisation.
-    pub names: BTreeSet<Text>,
+    pub names: MultiMap<String, Source>,
 
     /// Descriptions of the organisation.
-    pub descriptions: BTreeSet<Text>,
+    pub descriptions: MultiMap<String, Source>,
 
     /// Logo images.
     pub images: BTreeSet<Image>,
 
     /// Websites.
-    pub websites: BTreeSet<String>,
+    pub websites: MultiMap<String, Source>,
 
     /// Products of this organistion.
     pub products: BTreeSet<ids::ProductId>,
 
     /// Countries where the organisation is registered in.
-    pub origins: BTreeSet<isocountry::CountryCode>,
+    pub origins: MultiMap<isocountry::CountryCode, Source>,
 
     /// Known certifications.
     pub certifications: Certifications,
@@ -860,12 +1146,12 @@ pub struct GatherOrganisation {
 impl GatherOrganisation {
     pub fn store(self) -> StoreOrganisation {
         let ids = self.ids.store();
-        let mut names: Vec<_> = self.names.into_iter().collect();
-        let mut descriptions: Vec<_> = self.descriptions.into_iter().collect();
+        let mut names: Vec<_> = self.names.into_vec_text();
+        let mut descriptions: Vec<_> = self.descriptions.into_vec_text();
         let mut images: Vec<_> = self.images.into_iter().collect();
-        let mut websites: Vec<_> = self.websites.into_iter().collect();
+        let mut websites: Vec<_> = self.websites.into_vec_website();
         let mut products: Vec<_> = self.products.into_iter().collect();
-        let mut origins: Vec<_> = self.origins.into_iter().collect();
+        let mut origins: Vec<_> = self.origins.into_vec_country();
         let mut media: Vec<_> = self.media.into_iter().collect();
         let certifications = self.certifications;
         let transpaer = self.transpaer;
@@ -893,34 +1179,35 @@ impl GatherOrganisation {
     }
 }
 
-impl TryCombine for GatherOrganisation {
-    type Error = ModelsError;
-
-    fn try_combine(mut o1: Self, o2: Self) -> Result<Self, Self::Error> {
+impl Combine for GatherOrganisation {
+    fn combine(mut o1: Self, o2: Self) -> Self {
         let ids = Combine::combine(o1.ids, o2.ids);
-        let certifications = Combine::combine(o1.certifications, o2.certifications);
-        let transpaer = TryCombine::try_combine(o1.transpaer, o2.transpaer)?;
 
-        o1.names.extend(o2.names);
-        o1.descriptions.extend(o2.descriptions);
+        let names = Combine::combine(o1.names, o2.names);
+        let descriptions = Combine::combine(o1.descriptions, o2.descriptions);
+        let websites = Combine::combine(o1.websites, o2.websites);
+        let origins = Combine::combine(o1.origins, o2.origins);
+        let certifications = Combine::combine(o1.certifications, o2.certifications);
+
+        // This data is filled after merging all organisations.
+        let transpaer = TranspaerOrganisationData::default();
+
         o1.images.extend(o2.images);
-        o1.websites.extend(o2.websites);
         o1.products.extend(o2.products);
-        o1.origins.extend(o2.origins);
         o1.media.extend(o2.media);
 
-        Ok(Self {
+        Self {
             ids,
-            names: o1.names,
-            descriptions: o1.descriptions,
+            names,
+            descriptions,
             images: o1.images,
-            websites: o1.websites,
+            websites,
             products: o1.products,
-            origins: o1.origins,
+            origins,
             certifications,
             media: o1.media,
             transpaer,
-        })
+        }
     }
 }
 
@@ -940,10 +1227,10 @@ pub struct StoreOrganisation {
     pub images: Vec<Image>,
 
     /// Websites.
-    pub websites: Vec<String>,
+    pub websites: Vec<Website>,
 
     /// Countries where the organisation is registered in.
-    pub origins: Vec<isocountry::CountryCode>,
+    pub origins: Vec<Country>,
 
     /// Products of this organistion.
     pub products: Vec<ids::ProductId>,
@@ -959,6 +1246,11 @@ pub struct StoreOrganisation {
 }
 
 #[cfg(feature = "into-api")]
+fn default_id() -> api::Id {
+    api::Id::from_str("").expect("Id from an empty string")
+}
+
+#[cfg(feature = "into-api")]
 fn default_short_string() -> api::ShortString {
     api::ShortString::from_str("").expect("ShortString from an empty string")
 }
@@ -966,6 +1258,11 @@ fn default_short_string() -> api::ShortString {
 #[cfg(feature = "into-api")]
 fn default_long_string() -> api::LongString {
     api::LongString::from_str("").expect("LongString from an empty string")
+}
+
+#[cfg(feature = "into-api")]
+fn sources_to_api(sources: &[Source]) -> api::DataSources {
+    api::DataSources(sources.iter().map(|s| s.to_label()).collect())
 }
 
 #[cfg(feature = "into-api")]
@@ -987,20 +1284,20 @@ fn text_to_short_string(text: &Text) -> api::ShortString {
 fn text_to_long_text(text: &Text) -> api::LongText {
     api::LongText {
         text: api::LongString::from_str(&text.text).expect("Converting texts"),
-        source: text.source.clone().into_api(),
+        sources: sources_to_api(&text.sources),
     }
 }
 
 #[cfg(feature = "into-api")]
-fn country_code_to_region_code(code: isocountry::CountryCode) -> api::RegionCode {
-    api::RegionCode::from_str(code.alpha3()).expect("alpha3 code must have length of 3")
+fn country_code_to_region_code(country: Country) -> api::RegionCode {
+    api::RegionCode::from_str(country.country.alpha3()).expect("alpha3 code must have length of 3")
 }
 
 #[cfg(feature = "into-api")]
 impl StoreOrganisation {
     pub fn into_api_short(self) -> api::OrganisationShort {
         api::OrganisationShort {
-            organisation_ids: self.ids.to_api(),
+            organisation_ids: self.ids.into_api(),
             name: self.names.first().map_or_else(default_short_string, text_to_short_string),
             description: self.descriptions.first().map(text_to_long_text),
             badges: self.certifications.to_api_badges(),
@@ -1010,11 +1307,11 @@ impl StoreOrganisation {
 
     pub fn into_api_full(self, products: Vec<api::ProductShort>) -> api::OrganisationFull {
         api::OrganisationFull {
-            organisation_ids: self.ids.to_api(),
+            organisation_ids: self.ids.into_api(),
             names: self.names.into_iter().map(|n| n.into_api_short()).collect(),
             descriptions: self.descriptions.into_iter().map(|d| d.into_api_long()).collect(),
             images: self.images.into_iter().map(|i| i.into_api()).collect(),
-            websites: self.websites.into_iter().map(str_to_short_string).collect(),
+            websites: self.websites.into_iter().map(|w| w.into_api_short_string()).collect(),
             origins: self.origins.into_iter().map(country_code_to_region_code).collect(),
             medallions: self.certifications.into_api_medallions(),
             media: self.media.into_iter().map(|m| m.into_api()).collect(),
@@ -1027,13 +1324,13 @@ impl StoreOrganisation {
 #[derive(Default, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct GatherProductIds {
     /// GTIN of the product.
-    pub eans: BTreeSet<ids::Ean>,
+    pub eans: MultiMap<ids::Ean, Source>,
 
     /// GTIN of the product.
-    pub gtins: BTreeSet<ids::Gtin>,
+    pub gtins: MultiMap<ids::Gtin, Source>,
 
     /// Wiki ID.
-    pub wiki: BTreeSet<ids::WikiId>,
+    pub wiki: MultiMap<ids::WikiId, Source>,
 }
 
 impl GatherProductIds {
@@ -1042,9 +1339,9 @@ impl GatherProductIds {
     }
 
     pub fn store(self) -> StoreProductIds {
-        let mut eans: Vec<_> = self.eans.into_iter().collect();
-        let mut gtins: Vec<_> = self.gtins.into_iter().collect();
-        let mut wiki: Vec<_> = self.wiki.into_iter().collect();
+        let mut eans = self.eans.into_vec_ean();
+        let mut gtins = self.gtins.into_vec_gtin();
+        let mut wiki = self.wiki.into_vec_wiki();
 
         eans.sort();
         gtins.sort();
@@ -1055,41 +1352,11 @@ impl GatherProductIds {
 }
 
 impl Combine for GatherProductIds {
-    fn combine(mut o1: Self, o2: Self) -> Self {
-        o1.eans.extend(o2.eans);
-        o1.gtins.extend(o2.gtins);
-        o1.wiki.extend(o2.wiki);
-        Self { eans: o1.eans, gtins: o1.gtins, wiki: o1.wiki }
-    }
-}
-
-#[cfg(feature = "from-substrate")]
-impl TryFrom<schema::ProductIds> for GatherProductIds {
-    type Error = ids::ParseIdError;
-
-    fn try_from(ids: schema::ProductIds) -> Result<Self, Self::Error> {
-        let mut eans = BTreeSet::<ids::Ean>::new();
-        if let Some(ids) = ids.ean {
-            for id in ids {
-                eans.insert(ids::Ean::try_from(&id)?);
-            }
-        }
-
-        let mut gtins = BTreeSet::<ids::Gtin>::new();
-        if let Some(ids) = ids.gtin {
-            for id in ids {
-                gtins.insert(ids::Gtin::try_from(&id)?);
-            }
-        }
-
-        let mut wiki = BTreeSet::<ids::WikiId>::new();
-        if let Some(ids) = ids.wiki {
-            for id in ids {
-                wiki.insert(ids::WikiId::try_from(&id)?);
-            }
-        }
-
-        Ok(Self { eans, gtins, wiki })
+    fn combine(o1: Self, o2: Self) -> Self {
+        let eans = Combine::combine(o1.eans, o2.eans);
+        let gtins = Combine::combine(o1.gtins, o2.gtins);
+        let wiki = Combine::combine(o1.wiki, o2.wiki);
+        Self { eans, gtins, wiki }
     }
 }
 
@@ -1097,22 +1364,22 @@ impl TryFrom<schema::ProductIds> for GatherProductIds {
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct StoreProductIds {
     /// GTIN of the product.
-    pub eans: Vec<ids::Ean>,
+    pub eans: Vec<SourcedEan>,
 
     /// GTIN of the product.
-    pub gtins: Vec<ids::Gtin>,
+    pub gtins: Vec<SourcedGtin>,
 
     /// Wiki ID.
-    pub wiki: Vec<ids::WikiId>,
+    pub wiki: Vec<SourcedWikiId>,
 }
 
 #[cfg(feature = "into-api")]
 impl StoreProductIds {
     pub fn to_api(self) -> api::ProductIds {
         api::ProductIds {
-            eans: self.eans.iter().map(ean_to_id).collect(),
-            gtins: self.gtins.iter().map(gtin_to_id).collect(),
-            wiki: self.wiki.iter().map(wiki_to_id).collect(),
+            eans: self.eans.into_iter().map(|id| id.into_api()).collect(),
+            gtins: self.gtins.into_iter().map(|id| id.into_api()).collect(),
+            wiki: self.wiki.into_iter().map(|id| id.into_api()).collect(),
         }
     }
 }
@@ -1124,31 +1391,31 @@ pub struct GatherProduct {
     pub ids: GatherProductIds,
 
     /// Names of the product.
-    pub names: BTreeSet<Text>,
+    pub names: MultiMap<String, Source>,
 
     /// Descriptions of the product.
-    pub descriptions: BTreeSet<Text>,
+    pub descriptions: MultiMap<String, Source>,
 
     /// Product images.
     pub images: BTreeSet<Image>,
 
     /// Product categories.
-    pub categories: BTreeSet<String>,
+    pub categories: MultiMap<String, Source>,
 
     /// Regions where the product is available.
-    pub regions: Regions,
+    pub availability: Availability,
 
     /// Regions where the product is manufactures.
-    pub origins: BTreeSet<isocountry::CountryCode>,
+    pub origins: MultiMap<isocountry::CountryCode, Source>,
 
     /// Known certifications.
     pub certifications: Certifications,
 
     /// DB IDs of manufacturers.
-    pub manufacturers: BTreeSet<ids::OrganisationId>,
+    pub manufacturers: MultiMap<ids::OrganisationId, Source>,
 
     /// Info about possible ways to buy this product.
-    pub shopping: BTreeSet<ShoppingEntry>,
+    pub shopping: MultiMap<ShoppingKey, ShoppingData>,
 
     /// Mentions in media.
     pub media: BTreeSet<Medium>,
@@ -1166,15 +1433,15 @@ pub struct GatherProduct {
 impl GatherProduct {
     pub fn store(self) -> StoreProduct {
         let ids = self.ids.store();
-        let mut names: Vec<_> = self.names.into_iter().collect();
-        let descriptions = self.descriptions.into_iter().collect();
+        let mut names = self.names.into_vec_text();
+        let descriptions = self.descriptions.into_vec_text();
         let mut images: Vec<_> = self.images.into_iter().collect();
-        let mut categories: Vec<_> = self.categories.into_iter().collect();
-        let regions = self.regions;
-        let origins = self.origins.into_iter().collect();
+        let mut categories = self.categories.into_vec_text();
+        let availability = self.availability;
+        let origins = self.origins.into_vec_country();
         let certifications = self.certifications;
-        let mut manufacturers: Vec<_> = self.manufacturers.into_iter().collect();
-        let mut shopping: Vec<_> = self.shopping.into_iter().collect();
+        let mut manufacturers = self.manufacturers.into_vec_organisation_ids();
+        let mut shopping = self.shopping.into_vec_shopping_entry();
         let mut media: Vec<_> = self.media.into_iter().collect();
         let mut follows: Vec<_> = self.follows.into_iter().collect();
         let mut followed_by: Vec<_> = self.followed_by.into_iter().collect();
@@ -1195,7 +1462,7 @@ impl GatherProduct {
             descriptions,
             images,
             categories,
-            regions,
+            availability,
             origins,
             certifications,
             manufacturers,
@@ -1210,7 +1477,7 @@ impl GatherProduct {
     pub fn all_categories(&self, category_separator: char) -> BTreeSet<String> {
         let sep = category_separator.to_string();
         let mut result = BTreeSet::new();
-        for category in &self.categories {
+        for category in self.categories.keys() {
             let mut buffer = String::with_capacity(category.len());
             for part in category.split(category_separator) {
                 if !buffer.is_empty() {
@@ -1224,42 +1491,42 @@ impl GatherProduct {
     }
 }
 
-impl TryCombine for GatherProduct {
-    type Error = ModelsError;
-
-    fn try_combine(mut o1: Self, o2: Self) -> Result<Self, Self::Error> {
+impl Combine for GatherProduct {
+    fn combine(mut o1: Self, o2: Self) -> Self {
         let ids = Combine::combine(o1.ids, o2.ids);
-        let regions = Combine::combine(o1.regions, o2.regions);
+        let names = Combine::combine(o1.names, o2.names);
+        let descriptions = Combine::combine(o1.descriptions, o2.descriptions);
+        let categories = Combine::combine(o1.categories, o2.categories);
+        let origins = Combine::combine(o1.origins, o2.origins);
+        let availability = Combine::combine(o1.availability, o2.availability);
         let certifications = Combine::combine(o1.certifications, o2.certifications);
-        let transpaer = TryCombine::try_combine(o1.transpaer, o2.transpaer)?;
+        let manufacturers = Combine::combine(o1.manufacturers, o2.manufacturers);
+        let shopping = Combine::combine(o1.shopping, o2.shopping);
 
-        o1.names.extend(o2.names);
-        o1.descriptions.extend(o2.descriptions);
+        // This data is filled after merging all organisations.
+        let transpaer = TranspaerProductData::default();
+
         o1.images.extend(o2.images);
-        o1.categories.extend(o2.categories);
-        o1.origins.extend(o2.origins);
-        o1.manufacturers.extend(o2.manufacturers);
-        o1.shopping.extend(o2.shopping);
         o1.media.extend(o2.media);
         o1.follows.extend(o2.follows);
         o1.followed_by.extend(o2.followed_by);
 
-        Ok(Self {
+        Self {
             ids,
-            names: o1.names,
-            descriptions: o1.descriptions,
+            names,
+            descriptions,
             images: o1.images,
-            categories: o1.categories,
-            regions,
-            origins: o1.origins,
+            categories,
+            availability,
+            origins,
             certifications,
-            manufacturers: o1.manufacturers,
-            shopping: o1.shopping,
+            manufacturers,
+            shopping,
             media: o1.media,
             follows: o1.follows,
             followed_by: o1.followed_by,
             transpaer,
-        })
+        }
     }
 }
 
@@ -1279,19 +1546,19 @@ pub struct StoreProduct {
     pub images: Vec<Image>,
 
     /// Product categories.
-    pub categories: Vec<String>,
+    pub categories: Vec<Text>,
 
     /// Regions where the product is available.
-    pub regions: Regions,
+    pub availability: Availability,
 
     /// Regions where the product is produced.
-    pub origins: Vec<isocountry::CountryCode>,
+    pub origins: Vec<Country>,
 
     /// Known certifications.
     pub certifications: Certifications,
 
     /// DB IDs of manufacturers.
-    pub manufacturers: Vec<ids::OrganisationId>,
+    pub manufacturers: Vec<SourcedOrganisationId>,
 
     /// Info about possible ways to buy this product.
     pub shopping: Vec<ShoppingEntry>,
@@ -1562,11 +1829,11 @@ mod tests {
     #[test]
     fn products_all_categories() {
         let product = GatherProduct {
-            categories: maplit::btreeset! {
-                "aaa/bbb/ccc".to_string(),
-                "aaa/bbb".to_string(),
-                "ddd/eee".to_string(),
-            },
+            categories: MultiMap::new_from_map(maplit::btreemap! {
+                "aaa/bbb/ccc".to_string() => maplit::btreeset!{},
+                "aaa/bbb".to_string() => maplit::btreeset!{},
+                "ddd/eee".to_string() => maplit::btreeset!{},
+            }),
             ..GatherProduct::default()
         };
         let expected = maplit::btreeset! {

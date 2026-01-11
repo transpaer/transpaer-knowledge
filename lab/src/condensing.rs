@@ -14,7 +14,6 @@ use transpaer_collecting::{
 };
 use transpaer_models::{
     gather as models,
-    ids::WikiId,
     utils::{extract_domain_from_url, extract_domains_from_urls},
 };
 use transpaer_schema as schema;
@@ -31,9 +30,6 @@ const LANG_EN: &str = "en";
 pub struct CondensationSources {
     /// Wikidata data.
     pub wikidata: advisors::WikidataAdvisor,
-
-    /// Names (company, brand, etc...) matched to Wikidata items representing them.
-    pub matches: advisors::TranspaerMatchesAdvisor,
 
     /// B-Corp data.
     pub bcorp: advisors::BCorpAdvisor,
@@ -95,7 +91,6 @@ impl CondensationSources {
             &config.meta.wikidata_regions_path,
             &config.meta.wikidata_categories_path,
         )?;
-        let matches = advisors::TranspaerMatchesAdvisor::load(&config.meta.match_path)?;
         let bcorp = advisors::BCorpAdvisor::load(
             &config.origin.bcorp_path,
             &config.meta.bcorp_regions_path,
@@ -110,7 +105,7 @@ impl CondensationSources {
             &config.meta.open_food_facts_categories_path,
         )?;
 
-        Ok(Self { wikidata, matches, bcorp, eu_ecolabel, tco, fti, off })
+        Ok(Self { wikidata, bcorp, eu_ecolabel, tco, fti, off })
     }
 }
 
@@ -700,28 +695,6 @@ impl CondensingOpenFoodFactsWorker {
         if id.is_empty() { None } else { Some(id) }
     }
 
-    fn guess_producer_wiki_id(&self, record: &open_food_facts::data::Record) -> Option<WikiId> {
-        if let Some(name) = Self::get_producer_id(record) {
-            if let Some(wiki_id) = self.sources.matches.name_to_wiki(&name) {
-                Some(WikiId::from(*wiki_id))
-            } else {
-                let mut matches = HashSet::<WikiId>::new();
-                for name in record.extract_brand_labels() {
-                    let name = utils::disambiguate_name(&name);
-                    if let Some(id) = self.sources.matches.name_to_wiki(&name) {
-                        matches.insert(WikiId::from(*id));
-                    }
-                }
-                if matches.len() == 1 {
-                    return matches.iter().next().copied();
-                }
-                None
-            }
-        } else {
-            None
-        }
-    }
-
     fn vec(string: &str) -> Vec<String> {
         if string.is_empty() { Vec::new() } else { vec![string.to_owned()] }
     }
@@ -772,13 +745,7 @@ impl runners::OpenFoodFactsWorker for CondensingOpenFoodFactsWorker {
             if let Some(producer_id) = producer_id {
                 let producer = schema::CatalogProducer {
                     id: producer_id,
-                    ids: schema::ProducerIds {
-                        vat: None,
-                        wiki: self
-                            .guess_producer_wiki_id(&record)
-                            .map(|id| vec![id.to_canonical_string()]),
-                        domains: None,
-                    },
+                    ids: schema::ProducerIds::default(),
                     description: None,
                     images: Vec::new(),
                     names: record.extract_brand_labels(),

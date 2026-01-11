@@ -353,15 +353,15 @@ impl Retriever {
 
     fn short_organisations(
         &self,
-        ids: &[ids::OrganisationId],
+        ids: &[store::SourcedOrganisationId],
     ) -> Result<Vec<api::OrganisationShort>, BackendError> {
         let organisations = self.db.get_organisation_bucket()?;
         let mut result = Vec::new();
         for id in ids {
-            if let Some(organisation) = organisations.get(id)? {
+            if let Some(organisation) = organisations.get(&id.id)? {
                 result.push(organisation.into_api_short());
             } else {
-                tracing::warn!(organisation_id = %id, "Organisation not found");
+                tracing::warn!(organisation_id = %id.id, "Organisation not found");
             }
         }
         Ok(result)
@@ -370,18 +370,18 @@ impl Retriever {
     fn product_alternatives_impl(
         &self,
         id: ids::ProductId,
-        categories: &[String],
+        categories: &[store::Text],
         region_code: Option<&str>,
     ) -> Result<Vec<api::CategoryAlternatives>, BackendError> {
         let mut result = Vec::new();
         for category in categories.iter() {
             // TODO: format the category nicely.
-            let category_label = category.clone();
-            let category_id = Self::encode_category_param(category);
+            let category_label = category.text.clone();
+            let category_id = Self::encode_category_param(&category.text);
 
             let excluded = vec![id.clone()];
             if let Some(alternatives) =
-                self.product_category_alternatives(category, region_code, &excluded)?
+                self.product_category_alternatives(&category.text, region_code, &excluded)?
             {
                 result.push(api::CategoryAlternatives {
                     category_id,
@@ -411,7 +411,7 @@ impl Retriever {
                         continue;
                     }
                     if let Some(product) = products.get(product_id)? {
-                        if product.regions.is_available_in(region_code) {
+                        if product.availability.regions.is_available_in(region_code) {
                             continue;
                         }
 
@@ -459,7 +459,7 @@ impl Retriever {
             let mut matched = false;
 
             for vat in &organisation.ids.vat_ids {
-                if vat.as_str().contains(&uppercase_token) {
+                if vat.id.as_str().contains(&uppercase_token) {
                     matched = true;
                     break;
                 }
@@ -468,7 +468,7 @@ impl Retriever {
             if !matched {
                 let domain = utils::extract_domain_from_str(token)
                     .unwrap_or_else(|| lowercase_token.to_owned());
-                if organisation.ids.domains.contains(&domain) {
+                if organisation.ids.domains.iter().any(|d| d.website == domain) {
                     matched = true;
                 }
             }

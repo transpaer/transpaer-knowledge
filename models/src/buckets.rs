@@ -13,7 +13,7 @@ use crate::store;
 #[derive(Error, Debug)]
 pub enum BucketError {
     #[error("Failed to serde the entry: {0}")]
-    Serde2(#[from] postcard::Error),
+    Serde(#[from] postcard::Error),
 
     #[error("KV operation failed: {0}")]
     Store(#[from] kv::Error),

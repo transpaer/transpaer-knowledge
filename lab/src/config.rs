@@ -316,9 +316,6 @@ pub struct MetaConfig {
 
     /// Path to file mapping B-Corp countries to Transpaer regions.
     pub bcorp_regions_path: PathBuf,
-
-    /// Path to mapping from names to Wikidata IDs.
-    pub match_path: PathBuf,
 }
 
 impl MetaConfig {
@@ -333,7 +330,6 @@ impl MetaConfig {
             open_food_facts_regions_path: meta.join("open_food_facts_regions.yaml"),
             open_food_facts_categories_path: meta.join("open_food_facts_categories.yaml"),
             bcorp_regions_path: meta.join("bcorp_regions.yaml"),
-            match_path: meta.join("matches.yaml"),
         }
     }
 
@@ -347,7 +343,6 @@ impl MetaConfig {
         utils::file_exists(&self.wikidata_regions_path)?;
         utils::file_exists(&self.open_food_facts_regions_path)?;
         utils::file_exists(&self.bcorp_regions_path)?;
-        utils::file_exists(&self.match_path)?;
         Ok(())
     }
 }
